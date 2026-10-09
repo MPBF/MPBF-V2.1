@@ -7,11 +7,11 @@ import { FilmDurationSummary } from "./FilmDurationSummary";
 type Record = ProductionHistoryRecords[ProductionHistoryKind];
 type Props = {
   kind: ProductionHistoryKind; language: string; title: string; orderId?: number;
-  locations?: StorageLocation[]; refresh?: unknown;
+  locations?: StorageLocation[]; refresh?: unknown; defaultOpen?: boolean;
 };
-export function ProductionHistory({ kind, language, title, orderId, locations = [], refresh }: Props) {
+export function ProductionHistory({ kind, language, title, orderId, locations = [], refresh, defaultOpen = false }: Props) {
   const en = language === "en", label = (ar: string, english: string) => en ? english : ar;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [draft, setDraft] = useState({ search: "", status: "", from: "", to: "", location: "" });
   const [filter, setFilter] = useState<ProductionHistoryFilter>({});
   const [cursors, setCursors] = useState<(number | undefined)[]>([undefined]);

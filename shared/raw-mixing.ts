@@ -12,7 +12,7 @@ export function canViewRawInventory(user: ProductionUser): boolean {
   return hasProductionPermission(user, "view_raw_inventory", "manage_raw_materials");
 }
 export type RawMaterial = {
-  id: number; code: string; name: string; name_ar: string; quantity_kg: string; is_active: boolean;
+  id: number; item_id: string; code: string; name: string; name_ar: string; quantity_kg: string; is_active: boolean;
 };
 export type MixingInput = {
   request_id: string; machine_id: string; notes?: string;
@@ -28,7 +28,14 @@ export type MixingState = {
   materials: RawMaterial[];
   machines: { id: string; name: string | null; name_ar: string | null; status: string }[];
   records: MixingRecord[]; next_before: number | null;
+  raw_vouchers?: RawVoucher[];
 };
-export type RawMaterialInput = {
-  request_id: string; code: string; name: string; name_ar: string; opening_kg: string;
+export type RawMovementInput = {
+  request_id: string; kind: "receipt" | "issue"; notes?: string;
+  items: { material_id: number; quantity_kg: string }[];
+};
+export type RawVoucher = {
+  id: number; kind: "receipt" | "issue"; total_kg: string; created_at: string;
+  created_by: number; actor_name: string | null; actor_name_ar: string | null; notes: string | null;
+  items: MixingRecord["items"];
 };

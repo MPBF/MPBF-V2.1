@@ -61,12 +61,17 @@ router.post("/mixing", handler(async (req, res) => {
   res.json(await mixing.record(req.user!, input));
 }));
 router.post("/raw-materials", handler(async (req, res) => {
-  const nonempty = (max: number) => safeText(max).refine(v => v.length > 0);
+  // Retire the old free-form definition endpoint rather than silently accepting
+  // stale editors. Catalogue definitions belong to the existing Items module.
+  res.status(410).json({ message:"اختر المواد من الأصناف المعرّفة مسبقًا؛ الإدخال الحر غير متاح", message_en:"Select predefined catalogue items. Free-form material creation is no longer available." });
+}));
+router.post("/raw-materials/movements", handler(async (req, res) => {
   const input = request.extend({
-    code: nonempty(40), name: nonempty(120), name_ar: nonempty(120),
-    opening_kg: z.string().regex(weightPattern).refine(v => weightPattern.test(v) && kgHundredths(v) >= 0n),
+    kind: z.enum(["receipt","issue"]), notes:safeText(2000).optional(),
+    items:z.array(z.object({material_id:id,quantity_kg:weight}).strict()).min(1).max(100)
+      .refine(items => new Set(items.map(i => i.material_id)).size===items.length),
   }).parse(req.body);
-  res.json(await mixing.createMaterial(req.user!, input));
+  res.json(await mixing.movement(req.user!, input));
 }));
 router.get("/state", handler(async (req, res) => {
   const scope = z.enum(["management", "film", "printing", "cutting", "hall", "warehouse", "roll"]).default("management").parse(req.query.scope);

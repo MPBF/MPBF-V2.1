@@ -18,6 +18,7 @@ import { availableWarehouseViews, canOpenWarehouseView, initialWarehousePath } f
 import { productionActorName } from "../../lib/production-actors";
 import { formatWholeNumber } from "../../lib/format-number";
 import "./production.css";
+import "../warehouse/warehouse-cards.css";
 import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
 
@@ -51,7 +52,9 @@ const messages: Record<string, [string, string]> = {
   management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"], printing: ["تشغيل الطباعة", "Printing operations"], cutting: ["تشغيل القص", "Cutting operations"], hall: ["صالة الإنتاج", "Production hall"], warehouse: ["مخزون المواد التامة", "Finished inventory"], roll: ["سجل الرول", "Roll record"],
   reload: ["تحديث البيانات", "Refresh data"], retry: ["إعادة المحاولة", "Retry"], failedLoad: ["تعذر تحميل بيانات الإنتاج.", "Production data could not be loaded."], loading: ["جارٍ تحميل بيانات الإنتاج", "Loading production data"], noRows: ["لا توجد سجلات لعرضها الآن", "There are no records to show right now"], unrecorded: ["غير مسجل", "Unrecorded"], ready: ["جاهز", "Ready"], running: ["قيد التشغيل", "In progress"], started: ["بدأ الإنتاج", "Production started"], start: ["بدء الإنتاج", "Start production"], noEligible: ["لا توجد أوامر مؤهلة لهذه المرحلة.", "No orders are eligible for this stage."],
   order: ["أمر الإنتاج", "Production order"], customerOrder: ["طلب العميل", "Customer order"], customerStatus: ["حالة طلب العميل", "Customer order status"], productionStatus: ["حالة أمر الإنتاج", "Production-order status"], stage: ["مرحلة الأمر", "Order stage"], rollStage: ["مرحلة الرول", "Roll stage"], product: ["المنتج", "Product"], planned: ["المخطط النهائي", "Final planned"], produced: ["المنتج فعلياً", "Produced actual"], readyKg: ["الجاهز", "Ready"], received: ["المستلم", "Received"], waste: ["الهدر", "Waste"], remaining: ["المتبقي للاستلام", "Receivable"], rolls: ["الرولات", "Rolls"], created: ["تم الحفظ بنجاح.", "Saved successfully."], saving: ["جارٍ الحفظ…", "Saving…"], readonly: ["عرض فقط — لا تتوفر صلاحية التشغيل.", "Read only — operation permission is not granted."],
+  incomplete: ["غير مكتمل", "Incomplete"], receiptComplete: ["مكتمل", "Complete"], readyOrders: ["الأوامر الجاهزة للاستلام", "Orders ready for receipt"], orderReadyState: ["حالة الاستلام", "Receipt status"],
   startedAt: ["بدأ في", "Started"], closedAt: ["إغلاق الفيلم", "Film closure"], filmClosed: ["الفيلم مغلق", "Film closed"], historical: ["أمر تاريخي بلا سجلات تنفيذ؛ لا تُعرض أوزان فعلية.", "Historical order without execution records; actual weights are not reported."], filmReadyExplanation: ["الخطة معتمدة وجاهزة. يبدأ التنفيذ عند اختيار «بدء الإنتاج».", "The plan is released and ready. Execution begins when an operator selects Start production."],
+  productionIncomplete: ["الإنتاج غير مكتمل", "Production incomplete"], productionComplete: ["الإنتاج مكتمل", "Production complete"],
   addRoll: ["تسجيل رول", "Register roll"], weight: ["وزن الفيلم (كجم)", "Film weight (kg)"], machine: ["ماكينة التشغيل", "Operating machine"], chooseMachine: ["اختر ماكينة", "Choose machine"], changeMachine: ["تغيير الماكينة", "Change machine"], lastRoll: ["آخر رول — إغلاق الفيلم", "This is the final roll — close film"], inline: ["طباعة إنلاين", "Inline printing"], noMachine: ["لا توجد ماكينة نشطة مناسبة.", "No active compatible machine is available."], machineSaved: ["تم حفظ اختيار الماكينة لهذا المشغل.", "Machine choice saved for this operator."],
   printRoll: ["تسجيل الطباعة", "Record printing"], cutRoll: ["إكمال القص", "Complete cutting"], netWeight: ["الوزن الصافي بعد القص (كجم)", "Net weight after cutting (kg)"], completed: ["مكتمل", "Complete"], queue: ["توزيع الطابور", "Queue assignment"], stageSelect: ["المرحلة", "Stage"], position: ["الترتيب", "Position"], assign: ["إضافة للطابور", "Add to queue"], queueList: ["طوابير الماكينات", "Machine queues"], remove: ["إزالة", "Remove"], up: ["أعلى", "Move up"], down: ["أسفل", "Move down"], noQueue: ["لا توجد أوامر موزعة على الطوابير.", "No orders are assigned to queues."],
   eligibleWeight: ["الوزن الجاهز غير المستلم", "Ready, not yet received"], receiveBatch: ["استلام دفعة", "Receive batch"], storage: ["موقع التخزين", "Storage location"], quantity: ["كمية الاستلام (كجم)", "Receipt quantity (kg)"], notes: ["ملاحظات السند", "Voucher notes"], packaging: ["بيانات التعبئة اختيارية", "Optional packaging details"], rollGrams: ["وزن الرول (جرام)", "Roll weight (grams)"], rollsUnit: ["رولات في الوحدة", "Rolls per unit"], units: ["عدد الوحدات", "Units"], addLine: ["إضافة أمر للاستلام", "Add order to receipt"], saveReceipt: ["حفظ سند الاستلام", "Save receipt"], location: ["الموقع", "Location"], saveLocation: ["حفظ الموقع", "Save location"], locationName: ["اسم الموقع", "Location name"], locationAr: ["الاسم بالعربية", "Arabic name"], locationEn: ["الاسم بالإنجليزية", "English name"], active: ["نشط", "Active"], inactive: ["غير نشط", "Inactive"], locations: ["مواقع التخزين", "Storage locations"], balances: ["أرصدة المواد التامة", "Finished-goods balances"], movements: ["حركات المخزون", "Inventory movements"], vouchers: ["سندات الاستلام المحفوظة", "Saved receipt vouchers"], noLocations: ["أضف موقع تخزين قبل حفظ سند.", "Add a storage location before saving a voucher."], unknownRoll: ["الرول غير موجود أو لا تملك صلاحية عرضه.", "The roll does not exist or you do not have permission to view it."],
@@ -86,6 +89,13 @@ function useProductionState(allowed: boolean, view: ProductionView) {
     finally { if (request === generation.current) setLoading(false); }
   }, [allowed, view]);
   useEffect(() => { void load(); return () => { generation.current++; }; }, [load]);
+  useEffect(() => {
+    if (!allowed || (view !== "hall" && view !== "warehouse")) return;
+    const refreshIfVisible = () => { if (document.visibilityState === "visible") void load(); };
+    const timer = window.setInterval(refreshIfVisible, 15000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refreshIfVisible); };
+  }, [allowed, load, view]);
   return { state: allowed && snapshot?.view === view ? snapshot.state : null, loading, error, reload: load };
 }
 
@@ -403,9 +413,27 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
   };
   const setRow=(index:number,key:keyof ReceiptDraft,value:string|boolean)=>setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value}:row));
   const locationOptions=state.locations.filter(location=>location.is_active);
+  const readyOrders=eligible.filter(order=>Number(order.ready_kg)>0||Number(order.received_kg)>0);
   return <>
     {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
     <div className="prod-grid"><Metric label={text("eligibleWeight",language)} value={`${number(eligible.reduce((total,order)=>total+Number(order.remaining_kg),0),language)} kg`}/><Metric label={text("order",language)} value={number(eligible.length,language,0)} unit={text("ordersUnit",language)}/><Metric label={text("locations",language)} value={number(locationOptions.length,language,0)} unit={text("activeLocations",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
+    <section className="warehouse-hall-section">
+      <div className="warehouse-section-heading"><div><span className="warehouse-section-kicker">CUTTING → RECEIVING</span><h3>{text("readyOrders",language)}</h3></div><span>{number(readyOrders.length,language,0)} {text("ordersUnit",language)}</span></div>
+      {readyOrders.length ? <div className="warehouse-hall-grid">
+        {readyOrders.map(order=>{
+          const complete=Boolean(order.completed_at);
+          return <article className="warehouse-order-card" key={order.id}>
+            <header><div><span className="warehouse-order-number">{order.production_order_number}</span><small>{text("customerOrder",language)} · {order.order_number}</small></div><span className={`warehouse-order-state${complete?" complete":""}`}><small>{text("productionStatus",language)}</small>{text(complete?"productionComplete":"productionIncomplete",language)}</span></header>
+            <div className="warehouse-order-product"><strong>{orderProduct(order,language)}</strong><span>{customerName(order,language)}</span></div>
+            <div className="warehouse-order-metrics">
+              <div><span>{text("readyKg",language)}</span><strong>{number(order.ready_kg,language)} <small>kg</small></strong></div>
+              <div><span>{text("received",language)}</span><strong>{number(order.received_kg,language)} <small>kg</small></strong></div>
+              <div className="remaining"><span>{text("remaining",language)}</span><strong>{number(order.remaining_kg,language)} <small>kg</small></strong></div>
+            </div>
+          </article>;
+        })}
+      </div> : <Empty title={text("noEligible",language)}/>}
+    </section>
     <Card title={text("receiveBatch",language)}>
       {canReceive ? <form onSubmit={submit}>
         {!locationOptions.length&&<div className="prod-callout">{text("noLocations",language)}</div>}
@@ -456,7 +484,7 @@ function Warehouse({state,user,language,reload}:{state:ProductionState;user:Prod
       </form>}
       {locations.length?locations.map(location=><div className="prod-location-row" key={location.id}><div><strong>{localized(location.name_ar,location.name,language)}</strong><small className="prod-muted">{location.name} · {location.name_ar}</small></div><span className={`prod-chip ${location.is_active?"":"muted"}`}>{location.is_active?text("active",language):text("inactive",language)}</span>{canWrite&&<button className="prod-btn secondary" onClick={()=>edit(location)}><Settings2/>{text("edit",language)}</button>}</div>):<Empty title={text("noLocations",language)}/>}
     </Card>
-    <ProductionHistory kind="inventory" title={text("balances",language)} language={language} locations={locations} refresh={state}/>
+    <div className="warehouse-finished-view"><ProductionHistory kind="inventory" title={text("balances",language)} language={language} locations={locations} refresh={state} defaultOpen/></div>
     <ProductionHistory kind="receipts" title={text("vouchers",language)} language={language} locations={locations} refresh={state}/>
     <ProductionHistory kind="movements" title={text("movements",language)} language={language} locations={locations} refresh={state}/>
   </>;

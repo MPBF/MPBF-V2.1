@@ -65,12 +65,30 @@ describe("raw mixing HTTP validation and authorization", () => {
     expect((await post(valid())).status).toBe(500);
     expect(connect).toHaveBeenCalledTimes(1);
   });
-  it("does not confer raw catalog write access on film operators",async()=>{
-    expect((await post({request_id:randomUUID(),code:"HDPE",name:"HDPE",name_ar:"خام",opening_kg:"0"},"operate_film","/raw-materials")).status).toBe(403);
+  it("retires free-form creation even for administrators",async()=>{
+    expect((await post({request_id:randomUUID(),code:"HDPE",name:"HDPE",name_ar:"خام",opening_kg:"0"},"admin","/raw-materials")).status).toBe(410);
     expect(connect).not.toHaveBeenCalled();
   });
-  it("validates nonnegative opening balances",async()=>{
-    expect((await post({request_id:randomUUID(),code:"HDPE",name:"HDPE",name_ar:"خام",opening_kg:"-1"},"admin","/raw-materials")).status).toBe(400);
+  it.each(["operate_film","view_raw_inventory","view_mixing"])("does not grant %s manual stock write access",async grant=>{
+    expect((await post({request_id:randomUUID(),kind:"receipt",items:[{material_id:1,quantity_kg:"1"}]},grant,"/raw-materials/movements")).status).toBe(403);
+    expect(connect).not.toHaveBeenCalled();
+  });
+  it.each(["receipt","issue"])("accepts %s only as a catalogue movement",async kind=>{
+    expect((await post({request_id:randomUUID(),kind,items:[{material_id:1,quantity_kg:"1"}]},"manage_raw_materials","/raw-materials/movements")).status).toBe(500);
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+  it.each(["-1","0","1.234","NaN"])("rejects movement quantity %s",async quantity=>{
+    expect((await post({request_id:randomUUID(),kind:"receipt",items:[{material_id:1,quantity_kg:quantity}]},"admin","/raw-materials/movements")).status).toBe(400);
+    expect(connect).not.toHaveBeenCalled();
+  });
+  it.each(["name","code","item_id","created_by","created_at"])("rejects free-form/spoofed movement field %s",async field=>{
+    const body={request_id:randomUUID(),kind:"issue",items:[{material_id:1,quantity_kg:"1",[field]:"forged"}]};
+    expect((await post(body,"admin","/raw-materials/movements")).status).toBe(400);
+    expect(connect).not.toHaveBeenCalled();
+  });
+  it("rejects invalid direction and duplicate stock lines",async()=>{
+    expect((await post({request_id:randomUUID(),kind:"transfer",items:[{material_id:1,quantity_kg:"1"}]},"admin","/raw-materials/movements")).status).toBe(400);
+    expect((await post({request_id:randomUUID(),kind:"issue",items:[{material_id:1,quantity_kg:"1"},{material_id:1,quantity_kg:"2"}]},"admin","/raw-materials/movements")).status).toBe(400);
   });
   it("denies unrelated readers without connecting",async()=>{
     expect((await fetch(origin+"/api/production/mixing",{headers:{"x-test-permissions":"operate_cutting"}})).status).toBe(403);
