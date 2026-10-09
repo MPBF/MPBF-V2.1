@@ -89,6 +89,20 @@ or a corresponding production-hall receipt voucher.
 
 **How to apply:** retain the mixing record as the traceable source of its
 stock deduction; keep independent hall vouchers separate from mixing.
+
+All warehouse and mixing material identities must be selected from predefined
+items; raw selections must be items in the raw category. Do not introduce
+free-form material definitions in operational screens.
+
+**Why:** the user corrected the separate raw-material editor: «ويتم اختيار
+المواد من قائمة وليس ادخال حر وهي الاصناف التي من فئة خام المعرفة مسبقا»
+and «لا اريد اي ادخال حر لاي من المواد او الخام».
+
+**How to apply:** keep quantities editable, but select material identities from
+the existing catalogue and validate raw eligibility on the server as well.
+Show hall contents as cards; the production hall shows actual cut quantities
+immediately, including incomplete production orders. The raw hall has separate
+«إدخال مواد خام» and «صرف مواد خام» actions.
 Industrial hardware integration, automatic scheduling and public roll
 sharing still require separate approval.
 

@@ -26,11 +26,11 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   let rejectMix = false;
   const rawState = {
     materials: [
-      {id:1,code:"HDPE",name:"High density resin",name_ar:"خام عالي الكثافة",quantity_kg:"1.00",is_active:true},
-      {id:2,code:"LDPE",name:"Low density resin",name_ar:"خام منخفض الكثافة",quantity_kg:"0.00",is_active:true},
+      {id:1,item_id:"ITM001",code:"HDPE",name:"High density resin",name_ar:"خام عالي الكثافة",quantity_kg:"1.00",is_active:true},
+      {id:2,item_id:"ITM002",code:"LDPE",name:"Low density resin",name_ar:"خام منخفض الكثافة",quantity_kg:"0.00",is_active:true},
     ],
     machines:[{id:"F1",name:"Film One",name_ar:"فيلم واحد",status:"active"}],
-    records:[],next_before:null,
+    records:[],next_before:null,raw_vouchers:[],
   };
   let roleMetadata = {};
   let failStart = false;
@@ -144,8 +144,22 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
               }
             }
             if (route === "/production/raw-materials") {
-              body={id:99+committed.size,code:input.code,name:input.name,name_ar:input.name_ar,quantity_kg:Number(input.opening_kg).toFixed(2),is_active:true};
-              rawState.materials.push(body);
+              status=410;body={message:"اختر صنفًا معرفًا",message_en:"Select a predefined item."};
+            }
+            if (route === "/production/raw-materials/movements") {
+              if (rejectMix) {
+                rejectMix=false;status=400;body={message:"الصنف غير نشط",message_en:"The item is inactive."};
+              } else {
+                const items=input.items.map(item=>{
+                  const material=rawState.materials.find(r=>r.id===item.material_id);
+                  material.quantity_kg=(Number(material.quantity_kg)+(input.kind==="issue"?-1:1)*Number(item.quantity_kg)).toFixed(2);
+                  return {...item,code:material.code,name:material.name,name_ar:material.name_ar};
+                });
+                body={id:99+committed.size,kind:input.kind,total_kg:items.reduce((sum,i)=>sum+Number(i.quantity_kg),0).toFixed(2),
+                  created_by:42,created_at:"2026-10-09T20:00:00Z",actor_name:"Fixture stock manager",actor_name_ar:"مدير مخزون الاختبار",
+                  notes:input.notes||null,items,balances:rawState.materials.map(r=>({id:r.id,quantity_kg:r.quantity_kg}))};
+                rawState.raw_vouchers.unshift(structuredClone(body));
+              }
             }
             if (filmReadyOnly && /^\/production\/orders\/\d+\/start$/.test(route)) {
               if (failStart) {
@@ -163,7 +177,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
               } else [first.position,second.position]=[second.position,first.position];
             }
             if(status===200){
-              if (!["/production/mixing","/production/raw-materials"].includes(route))
+              if (!["/production/mixing","/production/raw-materials/movements"].includes(route))
                 body={id:99+committed.size,voucher_number:"FR-00000099",items:input.items||[]};
               committed.set(input.request_id,{route,input:structuredClone(input),body});
             }
@@ -260,6 +274,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
      if (rawMixingOnly) {
        const submitRaw = () => evaluate("document.querySelector('.raw-ops form').requestSubmit()");
        const waitMix = () => wait("document.querySelector('#mix-machine option[value=\"F1\"]') && document.querySelector('#mix-material-0 option[value=\"1\"]')");
+       Object.assign(state.orders.find(o=>o.id===8),{ready_kg:"12.34",remaining_kg:"12.34",received_kg:"0.00",completed_at:null});
+       Object.assign(state.orders.find(o=>o.id===4),{completed_at:"2026-10-09T18:00:00Z"});
        for (const lang of ["ar","en"]) {
          language=lang;
          for (const width of [390,768,1440]) {
@@ -291,11 +307,26 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            check(`${lang} ${width}: unrelated stage denied`,await evaluate("!!document.querySelector('.raw-ops-banner.error') && !document.querySelector('#mix-machine')"));
            permissions=["view_raw_inventory"];roleMetadata={};
            await navigate("/warehouse/raw-materials");
-           await wait("!!document.querySelector('.raw-ops-table tbody tr')");
-           check(`${lang} ${width}: inventory shows signed balance`,await evaluate("!!document.querySelector('.raw-ops-balance.negative')"));
-           check(`${lang} ${width}: inventory readers have no create form`,await evaluate("!document.querySelector('#raw-code')"));
+           await wait("!!document.querySelector('.raw-stock-card')");
+           check(`${lang} ${width}: inventory shows signed balance`,await evaluate("!!document.querySelector('.raw-stock-quantity.negative')"));
+           check(`${lang} ${width}: inventory readers have no material creation or movement controls`,await evaluate("!document.querySelector('#raw-code') && !document.querySelector('.raw-movement-launcher')"));
+           check(`${lang} ${width}: raw stock is cards not a table`,await evaluate("document.querySelectorAll('.raw-stock-card').length===2 && !document.querySelector('table')"));
            check(`${lang} ${width}: raw-only navigation is scoped`,await evaluate("[...document.querySelectorAll('.raw-ops-nav a')].map(a=>a.getAttribute('href'))"),["/warehouse/raw-materials"]);
            check(`${lang} ${width}: raw inventory fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           if(lang==="ar")await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false}).then(image=>fs.writeFile(`/tmp/raw-stock-${width}.png`,Buffer.from(image.data,"base64")));
+           permissions=["view_production_hall"];roleMetadata={};
+           await navigate("/warehouse/hall");
+           await wait("document.querySelectorAll('.warehouse-order-card').length>=2");
+           check(`${lang} ${width}: partial cut output immediately visible`,await evaluate("[...document.querySelectorAll('.warehouse-order-card')].some(card=>card.innerText.includes('PO-8')&&card.innerText.includes('12.34'))"));
+           check(`${lang} ${width}: manufacture completeness independent of remaining receipt`,await evaluate("[...document.querySelectorAll('.warehouse-order-card')].some(card=>card.innerText.includes('PO-4')&&!!card.querySelector('.warehouse-order-state.complete'))"));
+           check(`${lang} ${width}: no duplicate hall order lists`,await evaluate("!document.querySelector('.warehouse-hall-section + .prod-list')"));
+           check(`${lang} ${width}: hall cards fit viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           if(lang==="ar")await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false}).then(image=>fs.writeFile(`/tmp/warehouse-hall-${width}.png`,Buffer.from(image.data,"base64")));
+           permissions=["view_finished_inventory"];
+           await navigate("/warehouse/finished-inventory");
+           await wait("!!document.querySelector('.warehouse-finished-view .prod-record')");
+           check(`${lang} ${width}: finished contents shown immediately as cards`,await evaluate("getComputedStyle(document.querySelector('.warehouse-finished-view .prod-list')).display==='grid'"));
+           check(`${lang} ${width}: finished inventory fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
          }
        }
        language="en";permissions=["operate_film"];roleMetadata={};
@@ -324,12 +355,34 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
        check("retry unlocks and clears original submitted draft",await evaluate("document.querySelector('#mix-quantity-0').value===''&&!document.querySelector('#mix-quantity-0').disabled"));
        permissions=["admin"];roleMetadata={};
        await navigate("/warehouse/raw-materials");
-       await wait("!!document.querySelector('#raw-code')");
-       await setInput("#raw-code","REGRIND");await setInput("#raw-name","Regrind");await setInput("#raw-name-ar","خام معاد");await setInput("#raw-opening","1500.25");
+       await wait("!!document.querySelector('.raw-movement-launcher')");
+       check("no free-form definition inputs even for admin",await evaluate("!document.querySelector('#raw-code,#raw-name,#raw-name-ar,#raw-opening')"));
+       await evaluate("document.querySelector('.raw-movement-launcher button').click()");
+       await wait("!!document.querySelector('#raw-material-0 option[value=\"1\"]')");
+       check("movement only offers predefined catalogue items",await evaluate("[...document.querySelector('#raw-material-0').options].map(o=>o.value)"),["","1","2"]);
+       await setInput("#raw-material-0","1");await setInput("#raw-quantity-0","1500.25");
+       const receiptStart=Number(rawState.materials[0].quantity_kg);
        await submitRaw();await wait("!!document.querySelector('.raw-ops-banner.success')");
-       check("catalog create records real opening amount",rawState.materials.at(-1).quantity_kg,"1500.25");
-       check("stock display groups thousands",await evaluate("document.querySelector('.raw-ops-table').innerText.includes('1,500.25')"));
-       check("mixes never use voucher APIs",writes.every(write=>["/production/mixing","/production/raw-materials"].includes(write.route)));
+       check("receipt increases balance of existing material",rawState.materials[0].quantity_kg,(receiptStart+1500.25).toFixed(2));
+       check("receipt creates no material definition",rawState.materials.length,2);
+       await wait("!!document.querySelector('.raw-voucher-card')");
+       check("receipt actor shown",await evaluate("document.querySelector('.raw-voucher-card').innerText.includes('Fixture stock manager')"));
+       check("stock display groups thousands",await evaluate("document.querySelector('.raw-stock-card .raw-stock-quantity').innerText.includes(',')"));
+       await evaluate("document.querySelectorAll('.raw-movement-launcher button')[1].click()");
+       await wait("!!document.querySelector('#raw-material-0')");
+       await setInput("#raw-material-0","2");await setInput("#raw-quantity-0","100.25");
+       check("negative issue warning does not block confirm",await evaluate("!!document.querySelector('.raw-movement-warning')&&!document.querySelector('.raw-movement-dialog button[type=submit]').disabled"));
+       const issueStart=Number(rawState.materials[1].quantity_kg),voucherCount=rawState.raw_vouchers.length;
+       failWrite=true;await submitRaw();await wait("!!document.querySelector('.raw-ops-banner.error button')");
+       const submittedIssue=writes.at(-1);
+       check("lost issue response still subtracts exact amount",rawState.materials[1].quantity_kg,(issueStart-100.25).toFixed(2));
+       await navigate("/warehouse/raw-materials");await wait("!!document.querySelector('.raw-ops-banner.error button')");
+       await evaluate("document.querySelector('.raw-ops-banner.error button').click()");
+       await wait("!!document.querySelector('.raw-ops-banner.success')");
+       check("recovered issue retries exact payload",writes.at(-1).input,submittedIssue.input);
+       check("issue retry creates no duplicate voucher",rawState.raw_vouchers.length,voucherCount+1);
+       check("issue retry never subtracts twice",rawState.materials[1].quantity_kg,(issueStart-100.25).toFixed(2));
+       check("only controlled mixing and stock movements are sent",writes.every(write=>["/production/mixing","/production/raw-materials/movements"].includes(write.route)));
        check("browser has no unhandled errors",errors,[]);
        console.log(`Raw mixing browser verification passed: ${passed} assertions.`);
        return;
