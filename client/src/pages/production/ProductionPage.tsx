@@ -10,7 +10,7 @@ import "./roll-labels.css";
 import {
   canStartFilmProductionOrder, eligibleForCutting, hasProductionPermission, machineStage,
   type FilmInput, type ProductionMachine, type ProductionOrderRecord, type ProductionRollDetail, type ProductionRollRecord,
-  type ProductionStage, type ProductionState, type ProductionUser, type ReceiptInput, type StorageLocation,
+  type ProductionStage, type ProductionState, type ProductionUser, type ProductionReceipt, type ReceiptInput, type StorageLocation,
 } from "../../../../shared/production";
 import { productionApi } from "../../lib/production-api";
 import { availableProductionViews, canOpenProductionView } from "../../lib/production-navigation";
@@ -21,6 +21,7 @@ import "./production.css";
 import "../warehouse/warehouse-cards.css";
 import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
+import { ReceiptVoucherModal, type ReceiptDraft } from "../warehouse/ReceiptVoucherModal";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
 export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" };
@@ -389,29 +390,43 @@ function OperatorBoard({ state,user,stage,language,reload,machineSlot }: {state:
   </>;
 }
 
-type ReceiptDraft = { orderId: string; locationId: string; quantity: string; packaging: boolean; rollWeight: string; rollsPerUnit: string; units: string };
 const emptyDraft = ():ReceiptDraft=>({orderId:"",locationId:"",quantity:"",packaging:false,rollWeight:"",rollsPerUnit:"",units:""});
 function Hall({state,user,language,reload}:{state:ProductionState;user:ProductionUser;language:string;reload:()=>Promise<void>}) {
   const canReceive=hasProductionPermission(user,"receive_production"), write=useWrite(reload,language);
   const [drafts,setDrafts]=useState<ReceiptDraft[]>([emptyDraft()]),[notes,setNotes]=useState("");
+  const [receiptOpen,setReceiptOpen]=useState(false),[savedReceipt,setSavedReceipt]=useState<ProductionReceipt|null>(null),[formError,setFormError]=useState("");
+  const receiptOpener=useRef<HTMLButtonElement|null>(null);
+  const closeReceipt=useCallback(()=>setReceiptOpen(false),[]);
   const receiptDraft=useRef("");
   receiptDraft.current=JSON.stringify({drafts,notes});
   const eligible=state.orders.filter(order=>Number(order.remaining_kg)>0);
-  const addLine=()=>setDrafts(rows=>[...rows,emptyDraft()]);
+  const addLine=()=>{setSavedReceipt(null);setDrafts(rows=>[...rows,emptyDraft()]);};
   const submit=(event:FormEvent)=>{
     event.preventDefault();
-    const items=drafts.filter(row=>row.orderId&&row.locationId&&row.quantity).map(row=>({
-      production_order_id:Number(row.orderId),location_id:Number(row.locationId),quantity_kg:latinDigits(row.quantity),
-      ...(row.packaging?{packaging:{roll_weight_grams:latinDigits(row.rollWeight),rolls_per_unit:Number(row.rollsPerUnit),units:Number(row.units)}}:{})
+    const normalized=drafts.map(row=>({...row,quantity:latinDigits(row.quantity),rollWeight:latinDigits(row.rollWeight),rollsPerUnit:latinDigits(row.rollsPerUnit),units:latinDigits(row.units)}));
+    const invalidLine=normalized.findIndex(row=>!row.orderId||!row.locationId||!row.quantity||!Number.isFinite(Number(row.quantity))||Number(row.quantity)<=0||
+      (row.packaging&&(!row.rollWeight||!Number.isFinite(Number(row.rollWeight))||Number(row.rollWeight)<=0||!Number.isInteger(Number(row.rollsPerUnit))||Number(row.rollsPerUnit)<=0||!Number.isInteger(Number(row.units))||Number(row.units)<=0)));
+    if(invalidLine>=0){setFormError(language==="en"?`Complete every field in line ${invalidLine+1} before saving.`:`أكمل جميع حقول السطر ${invalidLine+1} قبل الحفظ.`);return;}
+    const totalsByOrder=new Map<string,number>();
+    normalized.forEach(row=>totalsByOrder.set(row.orderId,(totalsByOrder.get(row.orderId)??0)+Math.round(Number(row.quantity)*100)));
+    const exceeded=[...totalsByOrder].find(([orderId,total])=>total>Math.round(Number(eligible.find(order=>String(order.id)===orderId)?.remaining_kg??0)*100));
+    if(exceeded){const order=eligible.find(item=>String(item.id)===exceeded[0]);setFormError(language==="en"?`Receipt quantity exceeds the available ${order?.production_order_number??"order"} balance.`:`كمية الاستلام تتجاوز المتاح للأمر ${order?.production_order_number??""}.`);return;}
+    setFormError("");
+    const items=normalized.map(row=>({
+      production_order_id:Number(row.orderId),location_id:Number(row.locationId),quantity_kg:row.quantity,
+      ...(row.packaging?{packaging:{roll_weight_grams:row.rollWeight,rolls_per_unit:Number(row.rollsPerUnit),units:Number(row.units)}}:{})
     }));
-    if(!items.length)return;
     const input:ReceiptInput={request_id:"",notes:notes.trim()||undefined,items};
     const submittedDraft=receiptDraft.current;
-    void write.perform({op:"receive",items,notes:input.notes},requestId=>productionApi.receive({...input,request_id:requestId}),"receiptCreated",()=>{
+    void write.perform({op:"receive",items,notes:input.notes},async requestId=>{
+      const receipt=await productionApi.receive({...input,request_id:requestId}) as ProductionReceipt;
+      setSavedReceipt(receipt);
+      return receipt;
+    },"receiptCreated",()=>{
       if(receiptDraft.current===submittedDraft){setDrafts([emptyDraft()]);setNotes("");}
     });
   };
-  const setRow=(index:number,key:keyof ReceiptDraft,value:string|boolean)=>setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value}:row));
+  const setRow=(index:number,key:keyof ReceiptDraft,value:string|boolean)=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value}:row));};
   const locationOptions=state.locations.filter(location=>location.is_active);
   const readyOrders=eligible.filter(order=>Number(order.ready_kg)>0||Number(order.received_kg)>0);
   return <>
@@ -434,27 +449,31 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
         })}
       </div> : <Empty title={text("noEligible",language)}/>}
     </section>
-    <Card title={text("receiveBatch",language)}>
-      {canReceive ? <form onSubmit={submit}>
-        {!locationOptions.length&&<div className="prod-callout">{text("noLocations",language)}</div>}
-        {drafts.map((row,index)=>{
-          const order=eligible.find(item=>String(item.id)===row.orderId);
-          return <div className="prod-record" key={index} style={{marginBottom:12}}>
-            <div className="prod-form-grid">
-              <div className="prod-field"><label htmlFor={`receipt-order-${index}`}>{text("order",language)}</label><select id={`receipt-order-${index}`} value={row.orderId} onChange={event=>setRow(index,"orderId",event.target.value)} required><option value="">{text("chooseOrder",language)}</option>{eligible.map(item=><option key={item.id} value={item.id}>{item.production_order_number} · {item.order_number} · {orderProduct(item,language)}</option>)}</select></div>
-              <div className="prod-field"><label htmlFor={`receipt-location-${index}`}>{text("storage",language)}</label><select id={`receipt-location-${index}`} value={row.locationId} onChange={event=>setRow(index,"locationId",event.target.value)} required><option value="">{text("chooseMachine",language)}</option>{locationOptions.map(location=><option key={location.id} value={location.id}>{localized(location.name_ar,location.name,language)}</option>)}</select></div>
-              <div className="prod-field"><label htmlFor={`receipt-quantity-${index}`}>{text("quantity",language)}{order?` · ${text("remaining",language)} ${number(order.remaining_kg,language)} kg`:""}</label><input id={`receipt-quantity-${index}`} type="number" inputMode="decimal" min="0.01" max={order?.remaining_kg} step="0.01" value={row.quantity} onChange={event=>setRow(index,"quantity",event.target.value)} required/></div>
-              <label className="prod-label-inline"><input type="checkbox" checked={row.packaging} onChange={event=>setRow(index,"packaging",event.target.checked)}/>{text("packaging",language)}</label>
-            </div>
-            {row.packaging&&<div className="prod-form-grid" style={{marginTop:12}}><div className="prod-field"><label htmlFor={`grams-${index}`}>{text("rollGrams",language)}</label><input id={`grams-${index}`} type="number" min="0.0001" step="0.0001" value={row.rollWeight} onChange={event=>setRow(index,"rollWeight",event.target.value)} required/></div><div className="prod-field"><label htmlFor={`per-unit-${index}`}>{text("rollsUnit",language)}</label><input id={`per-unit-${index}`} type="number" min="1" step="1" value={row.rollsPerUnit} onChange={event=>setRow(index,"rollsPerUnit",event.target.value)} required/></div><div className="prod-field"><label htmlFor={`units-${index}`}>{text("units",language)}</label><input id={`units-${index}`} type="number" min="1" step="1" value={row.units} onChange={event=>setRow(index,"units",event.target.value)} required/></div></div>}
-          </div>;
-        })}
-        <div className="prod-inline"><button className="prod-btn secondary" type="button" disabled={write.saving} onClick={addLine}><Plus/>{text("addLine",language)}</button></div>
-        <div className="prod-field" style={{marginTop:14}}><label htmlFor="receipt-notes">{text("notes",language)}</label><textarea id="receipt-notes" value={notes} onChange={event=>setNotes(event.target.value)}/></div>
-        <div className="prod-savebar"><button className="prod-btn" disabled={write.saving||!locationOptions.length}>{text(write.saving?"saving":"saveReceipt",language)}</button></div>
-      </form>:<div className="prod-muted">{text("readonly",language)}</div>}
-      {eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}
+    <Card title={text("receiveBatch",language)} action={canReceive?<button ref={receiptOpener} data-receipt-launcher className="prod-btn" type="button" disabled={!locationOptions.length} onClick={()=>{setSavedReceipt(null);setFormError("");setReceiptOpen(true);}}>{language==="en"?"Finished goods receipt voucher":"سند استلام مواد تامة"}</button>:undefined}>
+      {canReceive ? <>{!locationOptions.length&&<div className="prod-callout">{text("noLocations",language)}</div>}{eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}</>:<div className="prod-muted">{text("readonly",language)}</div>}
     </Card>
+    {canReceive&&receiptOpen&&<ReceiptVoucherModal
+      language={language}
+      eligible={eligible}
+      locations={locationOptions}
+      drafts={drafts}
+      notes={notes}
+      saving={write.saving}
+      error={formError||write.error}
+      savedReceipt={savedReceipt}
+      openerRef={receiptOpener}
+      onDraftChange={setRow}
+      onAddLine={addLine}
+      onRemoveLine={index=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.filter((_,i)=>i!==index));}}
+      onNotesChange={value=>{setSavedReceipt(null);setFormError("");setNotes(value);}}
+      onSubmit={submit}
+      onRetry={write.error&&!formError?()=>void write.retry():undefined}
+      onClose={closeReceipt}
+      orderLabel={order=>orderProduct(order,language)}
+      customerLabel={order=>customerName(order,language)}
+      locationLabel={location=>localized(location.name_ar,location.name,language)}
+      number={number}
+    />}
   </>;
 }
 
