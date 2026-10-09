@@ -1,4 +1,9 @@
 const productionEnglish: Record<string, string> = {
+  "الاستلام والمخزون التام": "Receiving and finished inventory",
+  "تسجيل الرولات والطباعة والقص يحتاج صلاحيات التشغيل. الاستلام ينقل الكمية الجاهزة إلى المخزون دون إنهاء التصنيع. صلاحيات المستودع والصالة القديمة لا تمنح هذه الإجراءات.": "Recording rolls, printing and cutting requires operation permissions. Receiving moves ready quantities into inventory without completing manufacturing. Legacy warehouse and hall permissions do not grant these actions.",
+  "عرض المخزون وسندات الاستلام وحركاته فقط؛ دون تسجيل إنتاج أو استلام أو تعديل المواقع.": "View inventory, receipt vouchers and movements only; no production recording, receiving or location changes.",
+  "عرض الجاهز في صالة الإنتاج وتسجيل استلامه في موقع نشط، مع عرض المخزون والسندات؛ دون تسجيل إنتاج أو تعديل المواقع.": "View ready output in the production hall and receive it into an active location, with access to inventory and vouchers; no production recording or location changes.",
+  "إنشاء وتعديل وتفعيل مواقع تخزين الإنتاج التام، مع عرض المخزون والسندات؛ لا تمنح الاستلام أو إدارة المواد الخام والمشتريات والتحويلات والتسليم.": "Create, edit and activate finished production storage locations, with access to inventory and vouchers; does not grant receiving or management of raw materials, purchasing, transfers or delivery.",
   "تفاصيل الطلب تعرض الكميات المطلوبة والمخططة فقط. سجلات التنفيذ الفعلي متاحة في وحدة الإنتاج بحسب الصلاحيات.": "Order details show requested and planned quantities only. Actual execution records are available in the production module according to your permissions.",
   "عرض صالة الإنتاج": "View production hall",
   "إدارة مواقع الإنتاج التام": "Manage finished production storage locations",

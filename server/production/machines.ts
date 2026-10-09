@@ -1,6 +1,18 @@
 import { machineStage, type ProductSnapshot, type ProductionMachine, type ProductionStage } from "../../shared/production";
 import { one, ProductionError, type Connection } from "./core";
 
+/** Saved snapshots retain the cylinder's display unit; compare inches, not NaN. */
+function printingCylinderInches(value: string | null): number | null {
+  const normalized = String(value ?? "").trim()
+    .replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/٫/g, ".");
+  const match = /^(\d+(?:\.\d+)?)(?:\s*(?:"|″|”|in(?:ch(?:es)?)?\.?|بوصة|بوصه|إنش|انش))?$/iu.exec(normalized);
+  if (!match) return null;
+  const inches = Number(match[1]);
+  return Number.isFinite(inches) && inches > 0 ? inches : null;
+}
+
 export async function machine(tx: Connection, id: string, stage: ProductionStage, product: ProductSnapshot) {
   const selected = await one<ProductionMachine & {
     raw_material_type: string | null; max_print_colors: number | null;
@@ -17,7 +29,7 @@ export async function machine(tx: Connection, id: string, stage: ProductionStage
   if (stage !== "cutting" && !inRange(product.width, selected.min_width_cm, selected.max_width_cm) ||
       stage === "film" && !inRange(product.universal_thickness, selected.min_thickness, selected.max_thickness) ||
       stage === "cutting" && !inRange(product.cutting_length_cm, selected.min_length_cm, selected.max_length_cm) ||
-      stage === "printing" && !inRange(product.printing_cylinder, selected.min_cylinder_inch, selected.max_cylinder_inch))
+      stage === "printing" && !inRange(printingCylinderInches(product.printing_cylinder), selected.min_cylinder_inch, selected.max_cylinder_inch))
     throw new ProductionError("مواصفات المنتج خارج حدود الماكينة أو غير مكتملة", "The product specifications are missing or outside the machine limits.");
   if (stage === "film" && selected.raw_material_type && selected.raw_material_type !== "MIX" &&
       selected.raw_material_type !== product.raw_material)

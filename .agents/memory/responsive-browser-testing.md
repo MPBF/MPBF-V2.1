@@ -77,3 +77,9 @@ Check removed URL filters by parsing search parameters, not matching the entire 
 **Why:** Wouter can leave a trailing `?` after the last parameter is removed; an exact URL wait then times out even though the filter was correctly cleared.
 
 **How to apply:** assert the pathname and absence of the relevant search parameter in browser navigation checks.
+
+Do not assume the browser returned by Playwright's executable-path helper is installed in this workspace.
+
+**Why:** the supplied Playwright runtime reported cache paths for both full Chromium and headless shell, but neither executable existed; the installed system Chromium worked.
+
+**How to apply:** verify the executable exists before launching. Prefer the existing system Chromium when the Playwright cache is absent; do not reinstall project dependencies just to obtain a browser.
