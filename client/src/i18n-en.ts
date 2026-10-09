@@ -610,6 +610,7 @@ const english: Record<string, string> = {
   "الأصناف": "Items",
   "الأقسام": "Sections",
   "الإنتاج والتشغيل": "Production and operations",
+  "المستودع": "Warehouse",
   "الاثنين": "Monday",
   "الارتفاع الكلي (سم)": "Overall height (cm)",
   "الاسم الإنجليزي": "English name",

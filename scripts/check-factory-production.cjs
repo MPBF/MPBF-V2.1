@@ -20,6 +20,7 @@ const QRCode = require("qrcode");
    const operatorLayoutOnly = process.argv.includes("--operator-layout-only");
   const operatorNavigationOnly = process.argv.includes("--operator-navigation-only");
   const compactControlsOnly = process.argv.includes("--compact-controls-only");
+  const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
   let roleMetadata = {};
   let failStart = false;
   const pending = new Map(), errors = [], writes = [], committed = new Map(), historyCalls = [], stateScopes = [];
@@ -199,7 +200,7 @@ const QRCode = require("qrcode");
       await send("Page.navigate", { url: origin + route }); await loaded;
       await wait("!!document.querySelector('.production-app')");
       await wait("!document.querySelector('.prod-loading')");
-       if (operatorNavigationOnly) return;
+       if (operatorNavigationOnly || warehouseNavigationOnly) return;
        if(["/production/film","/production/printing","/production/cutting"].includes(route)){
          check(`${language} ${route}: all orders initially collapsed`,await evaluate("document.querySelectorAll('[data-film-order-id][aria-expanded=\"true\"],[data-operator-order-id][aria-expanded=\"true\"]').length"),0);
        }
@@ -221,6 +222,70 @@ const QRCode = require("qrcode");
       await evaluate(`(()=>{const button=document.querySelector('[data-operator-order-id="${id}"]');if(!button)throw Error('Missing operator group ${id}');if(button.getAttribute('aria-expanded')!=='true')button.click()})()`);
       await wait(`document.querySelector('[data-operator-order-id="${id}"]').getAttribute('aria-expanded')==='true'`);
     };
+     if (warehouseNavigationOnly) {
+       for (const lang of ["ar", "en"]) {
+         language = lang;
+         for (const width of [390, 768, 1440]) {
+           await send("Emulation.setDeviceMetricsOverride", { width, height: 950, deviceScaleFactor: 1, mobile: width < 500 });
+           roleMetadata = {};
+           permissions = ["admin"];
+           await navigate("/production");
+           check(`${lang} ${width}: production contains manufacturing tabs only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"),
+             ["/production", "/production/film", "/production/printing", "/production/cutting"]);
+           check(`${lang} ${width}: warehouse is a separate sidebar entry`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/warehouse\"]').innerText"), lang === "ar" ? "المستودع" : "Warehouse");
+           for (const [oldPath, newPath] of [["/production/hall", "/warehouse/hall"], ["/production/warehouse", "/warehouse/finished-inventory"]]) {
+             await navigate(oldPath);
+             check(`${lang} ${width}: ${oldPath} keeps existing bookmarks working`, await evaluate("location.pathname"), newPath);
+             check(`${lang} ${width}: warehouse module has two tabs`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), ["/warehouse/hall", "/warehouse/finished-inventory"]);
+             check(`${lang} ${width}: warehouse title is localized`, await evaluate("document.querySelector('.prod-heading h2').innerText"), lang === "ar" ? "المستودع" : "Warehouse");
+             check(`${lang} ${width}: main title and selected section match warehouse`, await evaluate("document.querySelector('.topbar h1').innerText"), lang === "ar" ? "المستودع" : "Warehouse");
+             check(`${lang} ${width}: current warehouse remains in mobile navigation`, await evaluate("!!document.querySelector('.mobile-nav a[href=\"/warehouse\"].active')"));
+             check(`${lang} ${width}: production shortcut does not appear inside warehouse`, await evaluate("!document.querySelector('.prod-heading a[href=\"/production\"]')"));
+             check(`${lang} ${width}: viewport does not overflow`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           }
+           for (const [grants, path, expected] of [
+             [["view_production_hall"], "/warehouse/hall", ["/warehouse/hall"]],
+             [["receive_production"], "/warehouse/hall", ["/warehouse/hall", "/warehouse/finished-inventory"]],
+             [["view_finished_inventory"], "/warehouse/finished-inventory", ["/warehouse/finished-inventory"]],
+             [["manage_finished_warehouse"], "/warehouse/finished-inventory", ["/warehouse/finished-inventory"]],
+           ]) {
+             permissions = grants;
+             await navigate("/warehouse");
+             check(`${lang} ${width} ${grants}: correct authorized landing page`, await evaluate("location.pathname"), path);
+             check(`${lang} ${width} ${grants}: exact warehouse tabs`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), expected);
+             check(`${lang} ${width} ${grants}: no manufacturing entry`, await evaluate("!document.querySelector('.sidebar .nav a[href=\"/production\"]')"));
+           }
+           permissions = ["view_finished_inventory"];
+           await navigate("/production/rolls/2");
+           check(`${lang} ${width}: old private QR remains usable by inventory reader`, await evaluate("location.pathname"), "/warehouse/rolls/2");
+           await wait("!!document.querySelector('.prod-qr img')");
+           check(`${lang} ${width}: roll details can return to inventory`, await evaluate("!!document.querySelector('.prod-heading a[href=\"/warehouse/finished-inventory\"]')"));
+           await navigate("/warehouse/hall");
+           check(`${lang} ${width}: inventory read does not authorize hall`, await evaluate("document.querySelectorAll('.prod-card').length"), 0);
+           for (const stage of ["film", "printing", "cutting"]) {
+             permissions = [`operate_${stage}`, "view_production"];
+             roleMetadata = { production_role_binding: { mode: "operator", stages: [stage] } };
+             await navigate(`/production/${stage}`);
+             check(`${lang} ${width}: ${stage} retains one stage tab`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), [`/production/${stage}`]);
+             check(`${lang} ${width}: ${stage} does not gain warehouse entry`, await evaluate("!document.querySelector('.sidebar .nav a[href=\"/warehouse\"]')"));
+             const before = stateScopes.length;
+             await navigate("/warehouse/hall");
+             check(`${lang} ${width}: ${stage} cannot read warehouse data`, stateScopes.length, before);
+             check(`${lang} ${width}: ${stage} has no warehouse content`, await evaluate("document.querySelectorAll('.prod-card').length"), 0);
+           }
+           permissions = ["admin"]; roleMetadata = {};
+           await navigate("/warehouse/finished-inventory");
+           if (lang === "ar" && [390, 1440].includes(width)) {
+             const image = await send("Page.captureScreenshot", { format: "png" });
+             await fs.writeFile(`/tmp/warehouse-module-${width}.png`, Buffer.from(image.data, "base64"));
+           }
+         }
+       }
+       check("warehouse relocation has no browser exceptions", errors, []);
+       check("warehouse relocation does not write business data", writes, []);
+       console.log(`Verified ${passed} warehouse module navigation assertions with isolated API fixtures.`);
+       return;
+     }
      if (compactControlsOnly) {
        await navigate("/production/film");
        for (const lang of ["ar", "en"]) {
@@ -320,13 +385,15 @@ const QRCode = require("qrcode");
              check(`${label}: no general management shortcut`, await evaluate("document.querySelectorAll('.prod-actions a').length"), 0);
              check(`${label}: current tab is selected`, await evaluate("document.querySelector('.prod-view-nav a').getAttribute('aria-current')"), "page");
              check(`${label}: navigation fits viewport`, await evaluate("document.documentElement.scrollWidth <= innerWidth + 1"));
-             for (const forbidden of ["film", "printing", "cutting", "hall", "warehouse"].filter(view => view !== stage)) {
+             for (const forbidden of ["film", "printing", "cutting"].filter(view => view !== stage)) {
                const before = stateScopes.length;
                await navigate(`/production/${forbidden}`);
                check(`${label}: direct ${forbidden} board is denied`, await evaluate(`document.querySelector('.production-app').innerText.includes(${jsLiteral(lang === "ar" ? "لا تتوفر صلاحية لهذا العرض." : "You do not have permission to view this page.")})`));
                check(`${label}: denied ${forbidden} does not load production data`, stateScopes.length, before);
                check(`${label}: denied ${forbidden} has no operator controls`, await evaluate("!document.querySelector('.film-operator-orders,.roll-operator-orders,.prod-order-group')"));
              }
+             await navigate("/warehouse");
+             check(`${label}: explicit receiving grants remain in the separate warehouse`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), ["/warehouse/hall", "/warehouse/finished-inventory"]);
            }
            permissions = ["view_production", "operate_printing", "operate_cutting"];
            await navigate("/production");
@@ -335,7 +402,7 @@ const QRCode = require("qrcode");
              permissions = grants;
              await navigate("/production");
              check(`${lang} ${width}: management navigation unchanged for ${grants}`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"),
-               ["/production", "/production/film", "/production/printing", "/production/cutting", ...(grants.includes("admin") ? ["/production/hall", "/production/warehouse"] : [])]);
+               ["/production", "/production/film", "/production/printing", "/production/cutting"]);
            }
          }
        }
@@ -679,8 +746,8 @@ const QRCode = require("qrcode");
     check("operator-only navigation opens permitted board", await evaluate("location.pathname"), "/production/film");
     permissions = ["view_finished_inventory"];
     await navigate("/production");
-    await wait("location.pathname==='/production/warehouse'");
-    check("warehouse-only navigation opens inventory", await evaluate("location.pathname"), "/production/warehouse");
+    await wait("location.pathname==='/warehouse/finished-inventory'");
+    check("warehouse-only navigation opens inventory", await evaluate("location.pathname"), "/warehouse/finished-inventory");
     await evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.trim()==='Saved receipt vouchers').click()");
     await wait("!!document.querySelector('.prod-voucher')");
     await evaluate("document.querySelectorAll('.prod-voucher').forEach(voucher=>voucher.open=true)");
@@ -697,8 +764,8 @@ const QRCode = require("qrcode");
     Object.assign(state.orders.find(order=>order.id===4), {ready_kg:"0.30",received_kg:"0.20",remaining_kg:"0.10"});
     permissions = ["receive_production"];
     await navigate("/production");
-    await wait("location.pathname==='/production/hall'");
-    check("receiver-only navigation opens hall", await evaluate("location.pathname"), "/production/hall");
+    await wait("location.pathname==='/warehouse/hall'");
+    check("receiver-only navigation opens hall", await evaluate("location.pathname"), "/warehouse/hall");
     await setInput("#receipt-order-0","4"); await setInput("#receipt-location-0","1"); await setInput("#receipt-quantity-0","0.10");
     check("exact remaining 0.10 kg is accepted without floating subtraction", await evaluate("document.querySelector('#receipt-quantity-0').validity.valid"));
     await setInput("#receipt-notes","Fixture recovery note");failWrite=true;

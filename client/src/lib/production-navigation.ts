@@ -1,15 +1,14 @@
 import { hasProductionPermission, productionStageReadPermissions, type ProductionStage, type ProductionUser } from "../../../shared/production";
+import { availableWarehouseViews } from "./warehouse-navigation";
 
 export const productionViews = [
   { view: "management", href: "/production", permissions: ["view_production", "manage_production"] },
   { view: "film", href: "/production/film", permissions: ["view_production", "manage_production", ...productionStageReadPermissions.film] },
   { view: "printing", href: "/production/printing", permissions: ["view_production", "manage_production", ...productionStageReadPermissions.printing] },
   { view: "cutting", href: "/production/cutting", permissions: ["view_production", "manage_production", ...productionStageReadPermissions.cutting] },
-  { view: "hall", href: "/production/hall", permissions: ["view_production_hall", "receive_production"] },
-  { view: "warehouse", href: "/production/warehouse", permissions: ["view_finished_inventory", "receive_production", "manage_finished_warehouse"] },
 ] as const;
 
-export type ProductionTab = typeof productionViews[number]["view"];
+export type ProductionTab = typeof productionViews[number]["view"] | "hall" | "warehouse";
 
 /** General read grants must not turn an operator's page into other stage boards. */
 export function availableProductionViews(user: ProductionUser) {
@@ -29,7 +28,7 @@ export function availableProductionViews(user: ProductionUser) {
 export function canOpenProductionView(user: ProductionUser, view: ProductionTab | "roll"): boolean {
   // Roll records remain accessible from the permitted board; they are not tabs.
   return view === "roll"
-    ? productionViews.some(({ permissions }) => hasProductionPermission(user, ...permissions))
+    ? productionViews.some(({ permissions }) => hasProductionPermission(user, ...permissions)) || availableWarehouseViews(user).length > 0
     : availableProductionViews(user).some(candidate => candidate.view === view);
 }
 
