@@ -59,15 +59,30 @@ one another in wrapping cards, rather than one full-width row per roll.
 multiple columns where readable on phone/tablet/desktop and use one column only
 on very narrow screens.
 
-The approved warehouse scope is finished goods received from production with
-storage locations, not purchasing, transfers, raw materials, or customer
-delivery. Industrial hardware integration, automatic scheduling and public
-roll sharing need separate approval.
+The user requested extending Warehouse to four halls: raw materials,
+production, finished goods and delivery, each with incoming/outgoing vouchers.
+Raw materials receive from suppliers and supply production; production holds
+work in progress and cleared cutting quantities with completion indicators;
+finished goods receive output and hold it until customer delivery.
 
-**Why:** these extensions were explicitly outside the user's approved scope.
+**Why:** the user explicitly expanded the previous finished-goods-only scope.
 
-**How to apply:** do not infer permission to add them from the presence of
-production inventory or QR traceability.
+**How to apply:** preserve historical balances and vouchers while designing
+the interconnected flows. This does not authorize changing the published
+database without separate approval.
+
+Raw-material mixing belongs in a new Production and Operation tab visible
+to film operators. Record actual quantities of each material, the mixer
+operator, time and destination machine. Mixed quantities deduct from raw
+inventory, with negative raw balances allowed.
+
+**Why:** the user explicitly requested actual mixing records and negative
+raw balances so stock constraints do not prevent recording mixes.
+
+**How to apply:** do not block mixing for insufficient raw stock; do not
+infer that finished-goods or delivery balances may also become negative.
+Industrial hardware integration, automatic scheduling and public roll
+sharing still require separate approval.
 
 Order release is a focused transition to ready for production, not a general
 status editor or automatic manufacturing start.
