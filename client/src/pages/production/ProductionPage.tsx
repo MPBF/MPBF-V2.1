@@ -14,6 +14,7 @@ import {
 } from "../../../../shared/production";
 import { productionApi } from "../../lib/production-api";
 import { availableProductionViews, canOpenProductionView } from "../../lib/production-navigation";
+import { availableWarehouseViews, canOpenWarehouseView, initialWarehousePath } from "../../lib/warehouse-navigation";
 import { productionActorName } from "../../lib/production-actors";
 import { formatWholeNumber } from "../../lib/format-number";
 import "./production.css";
@@ -21,7 +22,7 @@ import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
-export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string };
+export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" };
 
 const executableOrder = (status: string) => status === "for_production" || status === "in_production";
 const unstartableProductionStatuses = new Set(["completed", "archived", "cancelled"]);
@@ -86,10 +87,11 @@ function useProductionState(allowed: boolean, view: ProductionView) {
   return { state: allowed && snapshot?.view === view ? snapshot.state : null, loading, error, reload: load };
 }
 
-function Header({ view, language, refreshing, onRefresh, machineSlotRef, children }: { view: ProductionView; language: string; refreshing: boolean; onRefresh: () => void; machineSlotRef: (node: HTMLDivElement | null) => void; children?: ReactNode }) {
+function Header({ view, language, refreshing, onRefresh, machineSlotRef, children, moduleContext }: { view: ProductionView; language: string; refreshing: boolean; onRefresh: () => void; machineSlotRef: (node: HTMLDivElement | null) => void; children?: ReactNode; moduleContext: "production" | "warehouse" }) {
   const isOperatorView = view === "film" || view === "printing" || view === "cutting";
+  const heading = moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : text(view, language);
   return <header className={`prod-heading${isOperatorView ? " operator-header" : ""}`}>
-    <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{text(view, language)}</h2><p>{view === "management" ? text("intro", language) : text("title", language)}</p></div>
+    <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{heading}</h2><p>{moduleContext === "warehouse" ? (language === "en" ? "Receiving, finished inventory and movement history." : "الاستلام والمخزون التام وحركاتهما.") : view === "management" ? text("intro", language) : text("title", language)}</p></div>
     <div className="prod-heading-controls">
       <button className="prod-btn quiet prod-header-refresh" data-production-header-refresh onClick={onRefresh} disabled={refreshing}><RefreshCw />{text("reload", language)}</button>
       {children}
@@ -463,10 +465,12 @@ function HallView({state,user,language,reload}:{state:ProductionState;user:Produ
   if(!permission)return <Empty title={text("permission",language)}/>;
   return <Hall state={state} user={user} language={language} reload={reload}/>;
 }
-function RollDetail({rollId,user,language,state}:{rollId:string;user:ProductionUser;language:string;state:ProductionState|null}) {
+function RollDetail({rollId,user,language,state,moduleContext}:{rollId:string;user:ProductionUser;language:string;state:ProductionState|null;moduleContext:"production"|"warehouse"}) {
   const [roll,setRoll]=useState<ProductionRollDetail|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(""),[qr,setQr]=useState(""),[qrUrl,setQrUrl]=useState("");
   const [attempt,setAttempt]=useState(0);
-  const allowed=hasProductionPermission(user,"view_production","manage_production","operate_film","operate_printing","operate_cutting","view_production_hall","receive_production","view_finished_inventory","manage_finished_warehouse");
+  const allowed=moduleContext === "warehouse"
+    ? canOpenWarehouseView(user,"hall") || canOpenWarehouseView(user,"warehouse")
+    : hasProductionPermission(user,"view_production","manage_production","operate_film","operate_printing","operate_cutting","view_production_hall","receive_production","view_finished_inventory","manage_finished_warehouse");
   useEffect(()=>{let alive=true; if(!allowed){setLoading(false);return;}setLoading(true);productionApi.roll(rollId).then(value=>{if(alive){setRoll(value);setError("");}}).catch(cause=>{if(alive)setError(cause instanceof Error?cause.message:text("unknownRoll",language));}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};},[allowed,rollId,language,attempt]);
   useEffect(()=>{let alive=true;setQr("");setQrUrl("");if(!roll)return;void productionApi.qr(roll.id).then(value=>{if(alive){setQr(value.image);setQrUrl(value.url);}}).catch(cause=>{if(alive)setError(cause instanceof Error?cause.message:text("errorGeneric",language));});return()=>{alive=false;};},[roll,language]);
   if(!allowed)return <Empty title={text("permission",language)}/>;
@@ -504,24 +508,30 @@ function RollDetail({rollId,user,language,state}:{rollId:string;user:ProductionU
   </Card><aside className="prod-qr"><strong>{text("qr",language)}</strong>{qr?<img src={qr} alt={text("qr",language)}/>:<div className="prod-skeleton" style={{height:190,marginTop:12}}/>}<small>{qrUrl}</small></aside></div>;
 }
 
-export default function ProductionPage({user,view,rollId}:ProductionPageProps) {
+export default function ProductionPage({user,view,rollId,moduleContext="production"}:ProductionPageProps) {
   const {i18n}=useTranslation();
   const language=i18n.language==="en"?"en":"ar";
   const [machineSlot,setMachineSlot]=useState<HTMLDivElement|null>(null);
-  const allowed = canOpenProductionView(user, view);
-  const visibleViews = availableProductionViews(user);
+  const allowed = moduleContext === "warehouse"
+    ? view === "roll"
+      ? canOpenWarehouseView(user,"hall") || canOpenWarehouseView(user,"warehouse")
+      : (view === "hall" || view === "warehouse") && canOpenWarehouseView(user,view)
+    : canOpenProductionView(user, view);
+  const visibleViews = moduleContext === "warehouse" ? availableWarehouseViews(user) : availableProductionViews(user);
+  const returnPath = moduleContext === "warehouse" ? initialWarehousePath(user) : null;
   const data=useProductionState(allowed,view);
   const state=data.state;
   return <section className="production production-app">
-    <Header view={view} language={language} refreshing={data.loading} onRefresh={()=>void data.reload()} machineSlotRef={setMachineSlot}>
-      {view!=="management"&&canOpenProductionView(user,"management")&&<Link className="prod-btn secondary" href="/production"><ChevronRight/>{text("goManagement",language)}</Link>}
+    <Header view={view} language={language} refreshing={data.loading} onRefresh={()=>void data.reload()} machineSlotRef={setMachineSlot} moduleContext={moduleContext}>
+      {moduleContext === "production" && view!=="management"&&canOpenProductionView(user,"management")&&<Link className="prod-btn secondary" href="/production"><ChevronRight/>{text("goManagement",language)}</Link>}
+      {moduleContext === "warehouse" && view === "roll" && returnPath && <Link className="prod-btn secondary" href={returnPath}><ChevronRight/>{language==="en"?"Back to warehouse":"العودة إلى المستودع"}</Link>}
     </Header>
-    <nav className="prod-view-nav" aria-label={text("title",language)}>
+    <nav className="prod-view-nav" aria-label={moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : text("title",language)}>
       {visibleViews.map(({view: destination,href})=>
         <Link key={destination} href={href} className={`prod-btn ${view===destination?"":"secondary"}`} aria-current={view===destination?"page":undefined}>{text(destination,language)}</Link>
       )}
     </nav>
-      {!allowed?<Empty title={text("permission",language)}/>:view==="roll"?<>{data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}<RollDetail rollId={rollId??""} user={user} language={language} state={state}/></>:data.loading&&!state?<Loading language={language}/>:data.error&&!state?<ErrorBanner message={data.error||text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:!state?<ErrorBanner message={text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:
+      {!allowed?<Empty title={text("permission",language)}/>:view==="roll"?<>{data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}<RollDetail rollId={rollId??""} user={user} language={language} state={state} moduleContext={moduleContext}/></>:data.loading&&!state?<Loading language={language}/>:data.error&&!state?<ErrorBanner message={data.error||text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:!state?<ErrorBanner message={text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:
       <>
         {data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}
         {view==="management"&&<Management state={state} user={user} language={language} reload={data.reload}/>}

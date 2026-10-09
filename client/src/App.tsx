@@ -5,6 +5,8 @@ import { Link, Redirect, Route, Switch, useLocation, useRoute, useSearchParams }
 import { availableOrderTabs, selectedOrderTab, type OrderPageTab } from "./lib/order-tabs";
 import { productionPermissions } from "../../shared/production";
 import { initialProductionPath } from "./lib/production-navigation";
+import { initialWarehousePath } from "./lib/warehouse-navigation";
+import ProductionRoleBindingFields from "./components/ProductionRoleBindingFields";
 import { finishedGoodsPermissionGroup, finishedGoodsPermissionDescriptions } from "./lib/finished-goods-permissions";
 import { defaultBranding, fetchBrandingSnapshot, type BrandingSnapshot } from "./lib/branding";
 import PageHero from "./components/PageHero";
@@ -22,6 +24,7 @@ import i18n, { applyLanguage, localizedName, normalizeLanguage, translate, trans
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const HumanResources = lazy(() => import("./pages/HumanResources"));
 const ProductionPage = lazy(() => import("./pages/production/ProductionPage"));
+const WarehousePage = lazy(() => import("./pages/warehouse/WarehousePage"));
 const OrderCreateModal = lazy(() => import("./components/OrderCreateModal"));
 const CustomerProductModal = lazy(() => import("./components/CustomerProductModal"));
 const CustomerModal = lazy(() => import("./components/CustomerModal"));
@@ -208,9 +211,21 @@ const nav = [
   ["/", "لوحة الإدارة", Gauge, ["admin"]], ["/my-dashboard", "لوحة المستخدم", Users, []], ["/customers", "العملاء", Users, configs.customers.read],
   ["/orders", "الطلبات", FileText, [...configs.orders.read, ...configs.production.read]],
   ["/production", "الإنتاج والتشغيل", Factory, ["admin", ...productionPermissions]],
+  ["/warehouse", "المستودع", Boxes, ["view_production_hall", "view_finished_inventory", "receive_production", "manage_finished_warehouse"]],
   ["/hr", "الموارد البشرية", UsersRound, ["manage_hr", "manage_attendance", "admin"]],
   ["/admin", "الإدارة", Shield, ["manage_users", "manage_roles", "manage_sections", "manage_settings", "manage_machines", "manage_maintenance", "manage_categories", "manage_items", "manage_master_batch", "manage_definitions", "view_orders", "manage_customers", "manage_orders", "admin"]],
 ] as const;
+
+function mainNavActive(href: string, location: string) {
+  return location === href || (href === "/production" || href === "/warehouse") && location.startsWith(`${href}/`);
+}
+
+function canOpenMainNavigation(user: Row, href: string, permissions: readonly string[]) {
+  const account = { id: Number(user.id), permissions: user.permissions ?? [], production_role_binding: user.production_role_binding };
+  if (href === "/production") return !!initialProductionPath(account);
+  if (href === "/warehouse") return !!initialWarehousePath(account);
+  return !permissions.length || can(user, permissions);
+}
 
 function useAuth(enabled = true) {
   const [user, setUser] = useState<Row | null>(null);
@@ -309,12 +324,18 @@ function Layout({ children, user, setUser, branding }: { children: ReactNode; us
   const displayName = localizedName(user.display_name_ar, user.display_name, user.username || "—");
   const roleSwitcherUser = { role_id: user.role_id ?? null, role_name: user.role_name ?? null,
     role_name_ar: user.role_name_ar ?? null, role_preview: user.role_preview };
-  const [loc, setLoc] = useLocation(); const visibleNav = nav.filter(([href, , , permissions]) => href === "/production" ? !!initialProductionPath({ id: user.id, permissions: user.permissions ?? [], role_name: user.role_name, role_name_ar: user.role_name_ar }) : !permissions.length || can(user, permissions)); const adminNav = visibleNav.find(([href]) => href === "/admin"); const mobileNav = visibleNav.length <= 5 ? visibleNav : [...visibleNav.slice(0, 4), adminNav || visibleNav[4]]; const title = loc === "/" && !can(user, ["admin"]) ? "لوحة المستخدم" : nav.find(([href]) => href === loc)?.[1] || "الإدارة التشغيلية";
+  const [loc, setLoc] = useLocation();
+  const visibleNav = nav.filter(([href, , , permissions]) => canOpenMainNavigation(user, href, permissions));
+  const adminNav = visibleNav.find(([href]) => href === "/admin");
+  const mobileNav = visibleNav.length <= 5 ? [...visibleNav] : [...visibleNav.slice(0, 4), adminNav || visibleNav[4]];
+  const currentModule = visibleNav.find(([href]) => (href === "/production" || href === "/warehouse") && mainNavActive(href, loc));
+  if (currentModule && !mobileNav.includes(currentModule)) mobileNav[3] = currentModule;
+  const title = loc === "/" && !can(user, ["admin"]) ? "لوحة المستخدم" : nav.find(([href]) => mainNavActive(href, loc))?.[1] || "الإدارة التشغيلية";
   const logout = async () => { try { await api("/logout", { method: "POST" }); } finally { setUser(null); setLoc("/"); } };
   return <div className="shell">
     <aside className="sidebar">
       <BrandIdentity branding={branding} />
-      <nav className="nav">{visibleNav.map(([href, label, Icon]) => <Link key={href} href={href} className={loc === href ? "active" : ""}><Icon /><span>{translate(label)}</span></Link>)}</nav>
+      <nav className="nav">{visibleNav.map(([href, label, Icon]) => <Link key={href} href={href} className={mainNavActive(href, loc) ? "active" : ""}><Icon /><span>{translate(label)}</span></Link>)}</nav>
       <div className="side-foot">
         {user.role_preview && <DeferredContent><RoleSwitcher user={roleSwitcherUser} placement="sidebar" /></DeferredContent>}
         {translate("نظام تشغيل المصنع")}<br /><span className="mono">MPBF / CORE 01</span>
@@ -331,7 +352,7 @@ function Layout({ children, user, setUser, branding }: { children: ReactNode; us
       </header>
       {user.role_preview && <DeferredContent><RoleSwitcher user={roleSwitcherUser} placement="mobile" /></DeferredContent>}
       <div className="content">{children}</div>
-      <nav className="mobile-nav">{mobileNav.map(([href, label, Icon]) => <Link key={href} href={href} className={loc === href ? "active" : ""}><Icon /><span>{translate(label)}</span></Link>)}</nav>
+      <nav className="mobile-nav">{mobileNav.map(([href, label, Icon]) => <Link key={href} href={href} className={mainNavActive(href, loc) ? "active" : ""}><Icon /><span>{translate(label)}</span></Link>)}</nav>
     </main>
   </div>;
 }
@@ -341,7 +362,7 @@ function Dashboard({ user }: { user: Row }) {
   const load = () => { setRefreshing(true); setError(""); api("/dashboard").then(setData).catch((e) => setError(e.message)).finally(() => setRefreshing(false)); };
   useEffect(load, []);
   const cards = [["customers", "العملاء", "عملاء مسجلون"], ["orders", "الطلبات", "إجمالي الطلبات"], ["production_orders", "أوامر الإنتاج", "قيد المتابعة"], ["machines", "الماكينات", "أصول المصنع"], ["users", "المستخدمون", "حسابات النظام"]];
-  const shortcuts = nav.filter(([href, , , permissions]) => !["/", "/my-dashboard", "/admin"].includes(href) && (href === "/production" ? !!initialProductionPath({ id: user.id, permissions: user.permissions ?? [], role_name: user.role_name, role_name_ar: user.role_name_ar }) : can(user, permissions)));
+  const shortcuts = nav.filter(([href, , , permissions]) => !["/", "/my-dashboard", "/admin"].includes(href) && canOpenMainNavigation(user, href, permissions));
   return <><PageHero kicker="نظرة تشغيلية · اليوم" title={translate("لوحة الإدارة")} description="ملخص مباشر لأداء المصنع ومحطات العمل." onRefresh={load} refreshing={refreshing} actions={<span className="tag">{translate("اتصال مباشر بالبيانات")}</span>} />{error && <div className="error">{error}</div>}<div className="stats">{cards.map(([key, label, sub]) => <div className="stat" key={key}><label>{translate(label)}</label><strong>{data ? data[key] ?? 0 : <span className="skeleton" style={{ display: "inline-block", width: 55 }} />}</strong><small>{translate(sub)}</small></div>)}</div><div className="panel"><div className="panel-head"><h3>{translate("محطات العمل")}</h3><span className="eyebrow">{translate("اختصارات سريعة")}</span></div><div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>{shortcuts.map(([href, label, Icon]) => <Link className="btn btn-muted" href={href} key={href}><Icon size={17} />{translate(label)}</Link>)}</div></div></>;
 }
 
@@ -907,7 +928,7 @@ function UsersAdmin({ user, refreshToken = 0 }: { user: Row; refreshToken?: numb
 }
 
 function RoleModal({ row, user, onClose, onSaved }: { row: Row; user: Row; onClose: () => void; onSaved: () => void }) {
-  const existing: string[] = Array.isArray(row.permissions) ? row.permissions.map(String) : []; const [form, setForm] = useState<Row>({ ...row, permissions: existing }); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
+  const existing: string[] = Array.isArray(row.permissions) ? row.permissions.map(String) : []; const [form, setForm] = useState<Row>({ ...row, permissions: existing, production_role_binding: row.production_role_binding ?? { mode: "general", stages: [] } }); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
   const actorPermissions: string[] = Array.isArray(user.permissions) ? user.permissions.map(String) : [];
   const isAdmin = can(user, ["admin"]);
   const canGrant = (permission: string) => isAdmin || (permission !== "admin" && (actorPermissions.includes("*") || actorPermissions.includes(permission)));
@@ -923,7 +944,7 @@ function RoleModal({ row, user, onClose, onSaved }: { row: Row; user: Row; onClo
     const newlyGranted = form.permissions.filter((permission: string) => !existing.includes(permission));
     if (newlyGranted.some((permission: string) => !canGrant(permission))) { setError(translate("لا يمكنك منح صلاحيات لا تملكها")); return; }
     setSaving(true); setError("");
-    try { await api(row.id ? `/roles/${row.id}` : "/roles", { method: row.id ? "PUT" : "POST", body: JSON.stringify({ name: String(form.name).trim(), name_ar: form.name_ar || null, permissions: form.permissions }) }); onSaved(); } catch (err) { setError((err as Error).message); } finally { setSaving(false); }
+    try { await api(row.id ? `/roles/${row.id}` : "/roles", { method: row.id ? "PUT" : "POST", body: JSON.stringify({ name: String(form.name).trim(), name_ar: form.name_ar || null, permissions: form.permissions, production_role_binding: form.production_role_binding }) }); onSaved(); } catch (err) { setError((err as Error).message); } finally { setSaving(false); }
   };
   useEffect(() => { const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !saving) onClose(); }; window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, [saving, onClose]);
   return <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !saving && onClose()}>
@@ -935,6 +956,8 @@ function RoleModal({ row, user, onClose, onSaved }: { row: Row; user: Row; onClo
         <div className="field"><label htmlFor="role-name">{translate("اسم الدور بالإنجليزية")}</label><input id="role-name" required value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
         <div className="field"><label htmlFor="role-name-ar">{translate("اسم الدور بالعربية")}</label><input id="role-name-ar" value={form.name_ar ?? ""} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} /></div>
       </div>
+      <ProductionRoleBindingFields value={form.production_role_binding} disabled={saving}
+        onChange={production_role_binding => setForm({ ...form, production_role_binding })} />
       <div className="permission-summary"><KeyRound size={17} /> <strong>{form.permissions.length}</strong>{" "}{translate("صلاحية محددة")}{" "}<span>{translate("الصلاحيات التي لا تملكها محفوظة دون تغيير؛ منح صلاحية مدير النظام يتطلب تأكيداً صريحاً من مدير النظام.")}</span></div>
       <div className="permission-groups">
         {permissionGroups.map((group) => {
@@ -1414,8 +1437,9 @@ function App() {
   }
   const isAdmin = can(auth.user, ["admin"]);
   const productionUser = { id: Number(auth.user.id), permissions: auth.user.permissions ?? [],
-    role_name: auth.user.role_name ?? null, role_name_ar: auth.user.role_name_ar ?? null };
+    production_role_binding: auth.user.production_role_binding };
   const productionHome = initialProductionPath(productionUser);
+  const warehouseHome = initialWarehousePath(productionUser);
   return <Layout user={auth.user} setUser={auth.setUser} branding={branding}><DeferredContent><Switch>
     <Route path="/">{isAdmin ? <Dashboard user={auth.user} /> : <UserDashboard user={auth.user} />}</Route>
     <Route path="/my-dashboard"><UserDashboard user={auth.user} /></Route>
@@ -1424,13 +1448,17 @@ function App() {
     <Route path="/customers"><CustomersPage user={auth.user} /></Route>
     <Route path="/products"><Redirect to="/customers?tab=products" replace /></Route>
     <Route path="/orders"><OrdersPage user={auth.user} /></Route>
-    <Route path="/production/rolls/:id">{params => <ProductionPage user={productionUser} view="roll" rollId={params.id} />}</Route>
+    <Route path="/production/rolls/:id">{params => !productionHome && warehouseHome ? <Redirect to={`/warehouse/rolls/${params.id}`} replace /> : <ProductionPage user={productionUser} view="roll" rollId={params.id} />}</Route>
     <Route path="/production/film"><ProductionPage user={productionUser} view="film" /></Route>
     <Route path="/production/printing"><ProductionPage user={productionUser} view="printing" /></Route>
     <Route path="/production/cutting"><ProductionPage user={productionUser} view="cutting" /></Route>
-    <Route path="/production/hall"><ProductionPage user={productionUser} view="hall" /></Route>
-    <Route path="/production/warehouse"><ProductionPage user={productionUser} view="warehouse" /></Route>
-    <Route path="/production">{productionHome && productionHome !== "/production" ? <Redirect to={productionHome} replace /> : <ProductionPage user={productionUser} view="management" />}</Route>
+    <Route path="/production/hall"><Redirect to="/warehouse/hall" replace /></Route>
+    <Route path="/production/warehouse"><Redirect to="/warehouse/finished-inventory" replace /></Route>
+    <Route path="/warehouse/rolls/:id">{params => <WarehousePage user={productionUser} view="roll" rollId={params.id} />}</Route>
+    <Route path="/warehouse/hall"><WarehousePage user={productionUser} view="hall" /></Route>
+    <Route path="/warehouse/finished-inventory"><WarehousePage user={productionUser} view="warehouse" /></Route>
+    <Route path="/warehouse">{warehouseHome ? <Redirect to={warehouseHome} replace /> : <WarehousePage user={productionUser} view="hall" />}</Route>
+    <Route path="/production">{productionHome && productionHome !== "/production" ? <Redirect to={productionHome} replace /> : !productionHome && warehouseHome ? <Redirect to={warehouseHome} replace /> : <ProductionPage user={productionUser} view="management" />}</Route>
     <Route path="/admin"><Admin user={auth.user} /></Route>
     <Route>{isAdmin ? <Dashboard user={auth.user} /> : <UserDashboard user={auth.user} />}</Route>
   </Switch></DeferredContent></Layout>;

@@ -1,3 +1,5 @@
+import type { ProductionRoleBinding } from "./production-role";
+
 export type ProductionStage = "film" | "printing" | "cutting";
 export type ProductionStateScope = "management" | ProductionStage | "hall" | "warehouse" | "roll";
 export const productionPermissions = [
@@ -13,6 +15,7 @@ export const productionStageReadPermissions = {
 export type ProductionUser = {
   id: number; permissions: string[];
   role_name?: string | null; role_name_ar?: string | null;
+  production_role_binding?: ProductionRoleBinding;
 };
 export const hasProductionPermission = (user: ProductionUser, ...keys: string[]) =>
   user.permissions.includes("admin") || keys.some(key => user.permissions.includes(key));

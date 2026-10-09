@@ -1,4 +1,11 @@
 const productionEnglish: Record<string, string> = {
+  "تخصيص لوحة الإنتاج للدور": "Role production navigation",
+  "نوع التنقّل": "Navigation type",
+  "الفيلم": "Film",
+  "القص": "Cutting",
+  "عام / إدارة — حسب الصلاحيات": "General / management — by permissions",
+  "مشغل — مراحل محددة فقط": "Operator — selected stages only",
+  "هذا الربط لا يمنح صلاحيات. تظهر المراحل المحددة فقط مع صلاحية عرضها أو تشغيلها. الإدارة تبقى حسب صلاحيات الإدارة.": "This binding grants no permissions. Selected stages require view or operate permission. Management access still follows management permissions.",
   "الاستلام والمخزون التام": "Receiving and finished inventory",
   "تسجيل الرولات والطباعة والقص يحتاج صلاحيات التشغيل. الاستلام ينقل الكمية الجاهزة إلى المخزون دون إنهاء التصنيع. صلاحيات المستودع والصالة القديمة لا تمنح هذه الإجراءات.": "Recording rolls, printing and cutting requires operation permissions. Receiving moves ready quantities into inventory without completing manufacturing. Legacy warehouse and hall permissions do not grant these actions.",
   "عرض المخزون وسندات الاستلام وحركاته فقط؛ دون تسجيل إنتاج أو استلام أو تعديل المواقع.": "View inventory, receipt vouchers and movements only; no production recording, receiving or location changes.",

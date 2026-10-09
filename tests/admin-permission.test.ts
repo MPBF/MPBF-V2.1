@@ -89,6 +89,7 @@ describe("explicit administration permission", () => {
     const userRows: any[] = [];
     const insert = (table: unknown) => ({
       values: (values: any) => ({
+        onConflictDoUpdate: async () => {},
         returning: async () => {
           const row = { ...values, id: 99 };
           (table === roles ? roleRows : userRows).push(row);
@@ -147,7 +148,7 @@ describe("explicit administration permission", () => {
 
   it("preserves wildcard delegation and assignment of ordinary permissions", async () => {
     const insert = jest.fn((_table: unknown) => ({
-      values: (values: any) => ({ returning: async () => [{ ...values, id: 99 }] }),
+      values: (values: any) => ({ returning: async () => [{ ...values, id: 99 }], onConflictDoUpdate: async () => {} }),
     }));
     const tx = {
       select: () => {

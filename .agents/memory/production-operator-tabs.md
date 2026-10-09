@@ -34,12 +34,16 @@ Legacy operator roles were originally configured with dashboard-read grants.
 Do not assume that every deployment has newer operational grants, and do not
 silently turn dashboard reading into permission to record production.
 A dashboard reader is not necessarily an operator: Sales can also read a stage.
-Use the effective role's identity as well as its actual grants for legacy
-operator navigation; preserve non-operator read access.
+Use a stable, explicit role-to-stage binding together with actual grants for
+operator navigation; preserve non-operator read access. Display names may change
+in either language and must never change a persisted stage binding. The selected
+preview role supplies the binding, not the original administrator.
 
 **Why:** the first restriction passed artificial operate-only fixtures but failed
 for the real Film role. The user reported that Printing and Cutting still
-appeared. Inspecting the actual role definitions exposed the mismatch.
+appeared. Inspecting the actual role definitions exposed the mismatch. The user
+also required that renaming a role never adds stages, with no fixed role numbers
+and no automatic write grants.
 
 **How to apply:** inspect current role definitions before diagnosing stage
 visibility, and test their actual grant combinations with effective role

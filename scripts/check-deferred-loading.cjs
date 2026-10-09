@@ -15,6 +15,10 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
   const root = path.resolve("dist/public");
   const initialAssets = collectInitialAssets(root);
   let language = "ar", signedIn = false, permissions = ["admin"], failChunk = false;
+  let productionBinding, roleName = "Administrator";
+  const filmRole = { id: 891, name: "Night team", name_ar: "فريق الليل",
+    permissions: ["view_production", "view_film_dashboard"],
+    production_role_binding: { mode: "operator", stages: ["film"] } };
   const assets = [], apiRequests = [], errors = [];
   const employee = { id: 42, username: "fixture", display_name: "Fixture Employee",
     display_name_ar: "موظف تجريبي", section_id: "S1", section_name: "Fixture Section" };
@@ -42,9 +46,11 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
         let data = [], status = 200;
         if (url.pathname === "/api/me") {
           status = signedIn ? 200 : 401;
-          data = signedIn ? { user: { ...employee, preferred_language: language, permissions } } : { message: "Sign in required" };
+          data = signedIn ? { user: { ...employee, preferred_language: language, permissions,
+            role_name: roleName, production_role_binding: productionBinding } } : { message: "Sign in required" };
         } else if (url.pathname === "/api/public-branding") data = { companyNameAr: "مصنع تجريبي", companyNameEn: "Fixture Factory", defaultLanguage: language };
         else if (url.pathname === "/api/dashboard") data = {};
+        else if (url.pathname === "/api/roles") data = [filmRole];
         else if (url.pathname === "/api/hr/data") data = { shifts: [], users: [employee], history: [] };
         else if (url.pathname === "/api/hr/attendance-summary") data = { rows: [{ ...employee, workedMinutes: 480,
           daysWorked: 1, absentDays: 2, overtimeMinutes: 30, incompleteDays: 3 }] };
@@ -219,6 +225,31 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       check(`${lang} customer editor not loaded by list`, assets.some(value => /CustomerModal-.*\.js/.test(value)), false);
       await click(".page-heading .btn-primary"); await wait("!!document.querySelector('.customer-modal')");
       check(`${lang} customer editor loaded by create action`, assets.some(value => /CustomerModal-.*\.js/.test(value)));
+      await open("/admin"); await wait("!!document.querySelector('#admin-tab-roles')");
+      await click("#admin-tab-roles"); await wait("!!document.querySelector('.role-card button')");
+      await click(".role-card button"); await wait("!!document.querySelector('#production-role-mode')");
+      check(`${lang} renamed role editor retains operator binding`, await evaluate("document.querySelector('#production-role-mode').value"), "operator");
+      check(`${lang} role editor shows selected stages without adding write grants`,
+        await evaluate("[...document.querySelectorAll('fieldset input')].map(input=>input.checked)"), [true, false, false]);
+      check(`${lang} role binding fieldset is translated`,
+        await evaluate("document.querySelector('fieldset legend').textContent"), lang === "ar" ? "تخصيص لوحة الإنتاج للدور" : "Role production navigation");
+      check(`${lang} role binding stage labels are translated`,
+        await evaluate("[...document.querySelectorAll('fieldset .permission span')].map(span=>span.textContent)"),
+        lang === "ar" ? ["الفيلم", "الطباعة", "القص"] : ["Film", "Printing", "Cutting"]);
+      await click("fieldset .permission:nth-child(3) input");
+      check(`${lang} editor supports multiple stages`, await evaluate("[...document.querySelectorAll('fieldset input')].map(input=>input.checked)"), [true, false, true]);
+      await click(".role-modal footer button[type=button]");
+      check(`${lang} cancelling never changes stored role binding`, filmRole.production_role_binding.stages, ["film"]);
+      permissions = [...filmRole.permissions]; productionBinding = filmRole.production_role_binding; roleName = filmRole.name;
+      await open("/production"); await wait("!!document.querySelector('.prod-view-nav')");
+      check(`${lang} renamed operator lands on Film`, await evaluate("location.pathname"), "/production/film");
+      check(`${lang} renamed operator has only Film tab`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(a=>a.getAttribute('href'))"), ["/production/film"]);
+      permissions = ["view_production"];
+      const beforeRevocation = apiRequests.length;
+      await open("/production/film"); await wait("!!document.querySelector('.production-app .prod-empty')");
+      check(`${lang} revocation removes every production tab`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), 0);
+      check(`${lang} revoked Film route never requests production data`, apiRequests.slice(beforeRevocation).includes("/api/production/state"), false);
+      permissions = ["admin"]; productionBinding = undefined; roleName = "Administrator";
     }
     check("No unexpected browser or fixture errors", errors, []);
     // A fresh document clears the React.lazy cache so failure/retry is real.

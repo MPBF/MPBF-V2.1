@@ -5,6 +5,8 @@ import { eq, or } from "drizzle-orm";
 import { db } from "./db";
 import { roles, users } from "@shared/schema";
 import type { RolePreviewState } from "../shared/role-preview";
+import type { ProductionRoleBinding } from "../shared/production-role";
+import { resolveProductionRoleBinding } from "./production-role";
 
 export type AuthenticatedUser = {
   id: number;
@@ -17,6 +19,7 @@ export type AuthenticatedUser = {
   section_id: string | null;
   preferred_language: "ar" | "en" | null;
   permissions: string[];
+  production_role_binding?: ProductionRoleBinding;
   must_change_password: boolean;
   role_preview?: RolePreviewState;
 };
@@ -42,10 +45,12 @@ export type PreviewRole = {
   name: string;
   name_ar: string | null;
   permissions: string[] | null;
+  production_role_binding?: ProductionRoleBinding;
 };
 
 export async function resolvePreviewRole(id: number): Promise<PreviewRole | null> {
-  return (await db.select().from(roles).where(eq(roles.id, id)).limit(1))[0] ?? null;
+  const role = (await db.select().from(roles).where(eq(roles.id, id)).limit(1))[0];
+  return role ? { ...role, production_role_binding: await resolveProductionRoleBinding(role.id) } : null;
 }
 
 /** Keep identity/account restrictions; replace only the effective role grants. */
@@ -60,6 +65,7 @@ export function withRolePreview(user: AuthenticatedUser, roleId?: number, role?:
       role_name_ar: role?.name_ar ?? null,
       // A deleted preview role must never silently restore administrative access.
       permissions: Array.isArray(role?.permissions) ? role.permissions.filter(p => typeof p === "string") : [],
+      production_role_binding: role?.production_role_binding ?? { mode: "operator", stages: [] },
     } : {}),
     role_preview: {
       active,
@@ -91,6 +97,7 @@ export async function resolveUser(userId: number): Promise<AuthenticatedUser | n
       ? row.user.preferred_language
       : null,
     permissions: Array.isArray(row.role?.permissions) ? row.role.permissions : [],
+    production_role_binding: row.role ? await resolveProductionRoleBinding(row.role.id) : { mode: "operator", stages: [] },
     must_change_password: Boolean(row.user.must_change_password),
   });
 }

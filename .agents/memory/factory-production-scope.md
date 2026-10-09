@@ -29,6 +29,17 @@ that roll as the last roll.
 **How to apply:** preserve these distinctions when adding labels, reports,
 scheduling, or warehouse extensions.
 
+المستودع صفحة رئيسية مستقلة تضم «صالة الإنتاج» و«مخزن المواد التامة».
+These are warehouse tabs, not production/operator tabs.
+
+**Why:** the user explicitly requested a new main Warehouse page and moving
+both tabs out of Production.
+
+**How to apply:** preserve the existing receiving/inventory permissions and
+business behavior, including private roll links and independent partial
+receipts. Do not grant warehouse access merely through an operational stage or
+general production permission.
+
 Future-stage queue planning must remain possible while film production is
 still open, even if there are no currently eligible rolls for that stage.
 
