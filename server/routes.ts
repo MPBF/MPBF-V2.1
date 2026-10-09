@@ -1,3 +1,5 @@
+import { productionRoleBindingSchema } from "../shared/production-role";
+import { ensureProductionRoleBinding, resolveProductionRoleBinding, saveProductionRoleBinding, productionRoleSettingPrefix } from "./production-role";
 import { Router, type Request, type Response } from "express";
 import { releaseOrderToProduction } from "./order-production-release";
 import { deleteOrderProduction, lockOrderProductionDeletion } from "./order-production-delete";
@@ -142,6 +144,7 @@ const roleAdminSchema = insertRoleSchema.strict().extend({
   name: requiredAdminText(50),
   name_ar: optionalAdminText(100),
   permissions: adminPermissions,
+  production_role_binding: productionRoleBindingSchema.optional(),
 });
 const userAdminSchema = insertUserSchema.omit({ preferred_language: true }).strict().extend({
   username: z.string().trim().min(1).max(50).optional(),
@@ -905,13 +908,16 @@ router.delete("/users/:id", admin, async (req, res, next) => {
 router.get("/roles", rolesRead, async (req, res, next) => {
   try {
     const { search } = page(req);
-    res.json(await db.select().from(roles)
+    const found = await db.select().from(roles)
       .where(search ? or(
         ilike(roles.name, `%${search}%`),
         ilike(roles.name_ar, `%${search}%`),
         sql`${roles.id}::text ILIKE ${`%${search}%`}`,
       ) : undefined)
-      .orderBy(roles.id));
+      .orderBy(roles.id);
+    res.json(await Promise.all(found.map(async role => ({
+      ...role, production_role_binding: await resolveProductionRoleBinding(role.id),
+    }))));
   } catch (e) { next(e); }
 });
 router.get("/sections", sectionsRead, async (req, res, next) => {
@@ -930,7 +936,12 @@ router.post("/roles", rolesWrite, async (req, res, next) => {
   try {
     const body = parsed(roleAdminSchema, stripCreateId({ ...(req.body ?? {}) }));
     assertGrantWithinActor(req.user?.permissions ?? [], body.permissions);
-    const row = await db.insert(roles).values(body).returning();
+    const { production_role_binding = { mode: "general", stages: [] }, ...fields } = body;
+    const row = await db.transaction(async tx => {
+      const inserted = await tx.insert(roles).values(fields).returning();
+      await saveProductionRoleBinding(tx, inserted[0].id, production_role_binding);
+      return inserted.map(role => ({ ...role, production_role_binding }));
+    });
     res.status(201).json(row[0]);
   } catch (e) { next(e); }
 });
@@ -959,14 +970,20 @@ router.put("/roles/:id", rolesWrite, async (req, res, next) => {
     assertPutIdIsImmutable(input, id);
     const body = parsed(roleAdminSchema.partial(), input);
     const row = await db.transaction(async (tx) => {
-      const [current] = await tx.select({ permissions: roles.permissions }).from(roles)
+      const [current] = await tx.select().from(roles)
         .where(eq(roles.id, id)).for("update").limit(1);
       if (!current) return [];
       assertGrantWithinActor(req.user?.permissions ?? [], current.permissions);
       if (Object.prototype.hasOwnProperty.call(body, "permissions")) {
         assertGrantWithinActor(req.user?.permissions ?? [], body.permissions);
       }
-      return tx.update(roles).set(body).where(eq(roles.id, id)).returning();
+      const { production_role_binding, ...fields } = body;
+      const previousBinding = await ensureProductionRoleBinding(tx, current);
+      if (production_role_binding) await saveProductionRoleBinding(tx, id, production_role_binding);
+      const updated = Object.keys(fields).length
+        ? await tx.update(roles).set(fields).where(eq(roles.id, id)).returning()
+        : [current];
+      return updated.map(role => ({ ...role, production_role_binding: production_role_binding ?? previousBinding }));
     });
     if (!row[0]) return res.status(404).json({ message: "الدور غير موجود" });
     res.json(row[0]);
@@ -1664,7 +1681,12 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
         });
         return res.status(201).json(row[0]);
       }
-      if (path === "system-settings") input.updated_by = req.user!.id;
+      if (path === "system-settings") {
+        if (String(input.setting_key ?? "").startsWith(productionRoleSettingPrefix)) {
+          return res.status(403).json({ message: "يجب تعديل ربط الإنتاج من إعدادات الأدوار" });
+        }
+        input.updated_by = req.user!.id;
+      }
       const body = parsed(schemas[path].strict(), input);
       const row: any[] = (await db.insert(table).values(body).returning()) as any;
       res.status(201).json(row[0]);
@@ -1699,12 +1721,12 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
           return res.status(400).json({ message: "قيمة الإعداد غير صالحة" });
         }
         const current = await db
-          .select({ is_editable: system_settings.is_editable })
+          .select({ is_editable: system_settings.is_editable, setting_key: system_settings.setting_key })
           .from(system_settings)
           .where(eq(system_settings.id, key as number))
           .limit(1);
         if (!current[0]) return res.status(404).json({ message: "الإعداد غير موجود" });
-        if (current[0].is_editable === false) {
+        if (current[0].is_editable === false || current[0].setting_key.startsWith(productionRoleSettingPrefix)) {
           return res.status(403).json({ message: "هذا الإعداد غير قابل للتعديل" });
         }
         const updated = await db
@@ -1949,6 +1971,12 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
         if (path === "categories") await tx.execute(sql`SELECT pg_advisory_xact_lock(${29832}, ${2})`);
         if (path === "machines") await tx.execute(sql`SELECT pg_advisory_xact_lock(${29832}, ${5})`);
         if (path === "orders") await lockOrderProductionDeletion(tx);
+        if (path === "system-settings") {
+          const [setting] = await tx.select().from(system_settings).where(eq(system_settings.id, key as number)).for("update").limit(1);
+          if (setting?.setting_key.startsWith(productionRoleSettingPrefix)) {
+            throw orderError("يجب تعديل ربط الإنتاج من إعدادات الأدوار", 403);
+          }
+        }
         if (path === "customer-products") {
           const [current] = await tx.select({ id: customer_products.id }).from(customer_products)
             .where(eq(customer_products.id, key as number)).for("update").limit(1);

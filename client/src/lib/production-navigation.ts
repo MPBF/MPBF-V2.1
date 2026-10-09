@@ -11,27 +11,17 @@ export const productionViews = [
 
 export type ProductionTab = typeof productionViews[number]["view"];
 
-// Existing operator roles use dashboard-read grants, not operate_* grants.
-// Do not mistake Sales' dashboard-read grant for an operator identity.
-function operatorRoleStage(user: ProductionUser): ProductionStage | null {
-  const names = [user.role_name, user.role_name_ar]
-    .map(name => (name ?? "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " "));
-  if (names.some(name => /^(extruder operator|film operator|مشغل (ال)?فيلم)$/.test(name))) return "film";
-  if (names.some(name => /^(printing operator|مشغل (ال)?طباعة)$/.test(name))) return "printing";
-  if (names.some(name => /^(cutting operator|مشغل (ال)?تقطيع|مشغل (ال)?قص)$/.test(name))) return "cutting";
-  return null;
-}
-
 /** General read grants must not turn an operator's page into other stage boards. */
 export function availableProductionViews(user: ProductionUser) {
   const operationalStages = (["film", "printing", "cutting"] as const)
     .filter(stage => user.permissions.includes(`operate_${stage}`));
-  const roleStage = operatorRoleStage(user);
+  const binding = user.production_role_binding;
+  const stages: readonly ProductionStage[] = binding?.mode === "operator" ? binding.stages : operationalStages;
   const operatorOnly = !hasProductionPermission(user, "manage_production") &&
-    (operationalStages.length > 0 || roleStage !== null);
+    (binding ? binding.mode === "operator" : operationalStages.length > 0);
   return productionViews.filter(({ view, permissions }) => operatorOnly
     ? (view === "film" || view === "printing" || view === "cutting") &&
-      (operationalStages.length > 0 ? operationalStages.includes(view) : view === roleStage) &&
+      stages.includes(view) &&
       hasProductionPermission(user, ...productionStageReadPermissions[view])
     : hasProductionPermission(user, ...permissions));
 }
