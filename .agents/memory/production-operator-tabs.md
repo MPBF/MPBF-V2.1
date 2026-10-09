@@ -8,6 +8,19 @@ operators see only Cutting. General production read permission must not expose
 other tabs to an operator. Multiple operational stage grants may expose those
 explicitly granted stages.
 
+Each of these three operator roles must have full operation authority for its
+own board, not just dashboard reading. Preserve the separation between stages;
+do not use administrator or general production-management grants to enable it.
+
+**Why:** the user explicitly requested full Film-board permissions, then added
+that Printing and Cutting operators must be able to work in their respective
+pages.
+
+**How to apply:** configure the actual saved roles with the corresponding
+operational grant and test both allowed recording and denied other-stage actions.
+Keep ordinary read-only viewers read-only. Published role-data changes need
+separate approval; development role edits do not automatically update production.
+
 **Why:** the user requested stage-specific operator tabs and approved
 «نعم، تقييد المشغلين فقط» while keeping administrator and production-management
 navigation unchanged.
@@ -17,8 +30,8 @@ page access and management shortcuts consistent. Preserve existing administrator
 and production-management grants. This is a page-navigation rule, not permission
 to revoke unrelated backend grants or remove roll-record access.
 
-Existing operator roles use legacy dashboard-read grants. Do not assume they
-have newer operational grants, and do not rewrite stored role permissions or
+Legacy operator roles were originally configured with dashboard-read grants.
+Do not assume that every deployment has newer operational grants, and do not
 silently turn dashboard reading into permission to record production.
 A dashboard reader is not necessarily an operator: Sales can also read a stage.
 Use the effective role's identity as well as its actual grants for legacy
@@ -32,3 +45,12 @@ appeared. Inspecting the actual role definitions exposed the mismatch.
 visibility, and test their actual grant combinations with effective role
 metadata, including role preview. Keep legacy read access read-only and verify
 that Sales and production management are not accidentally treated as operators.
+
+Keep refresh beside the page/tab title and the machine selection/change
+controls at the top of the operator page, rather than a separate machine card.
+
+**Why:** the user requested these moves to reduce the page's vertical length.
+
+**How to apply:** preserve one live picker, immediate saved selection, a
+continued Change action, and operational drafts when refreshing or moving the
+controls. Keep the title and refresh in the same row on phones.
