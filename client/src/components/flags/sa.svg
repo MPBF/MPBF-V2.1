@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" role="img" aria-label="Saudi Arabia">
+  <rect width="300" height="200" fill="#006c35"/>
+  <text x="150" y="91" fill="#fff" text-anchor="middle" direction="rtl" unicode-bidi="plaintext" font-family="Noto Naskh Arabic, Amiri, serif" font-size="22" font-weight="700" letter-spacing="-.7">لا إله إلا الله محمد رسول الله</text>
+  <path d="M79 121c30 5 77 4 126-1 8-.8 15-3 20-6l-1 8c-3 6-10 9-19 10-45 5-91 6-128 1-7-1-12-4-14-8l16-4Z" fill="#fff"/>
+  <path d="M205 118l12-8 8 3-8 7 8 6-8 3-12-7" fill="#fff"/>
+</svg>

@@ -1,0 +1,9 @@
+.order-release-action { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .4rem; max-width: 100%; }
+.order-release-button { min-height: 42px; gap: .4rem; }
+.entity-card .actions { flex-wrap: wrap; white-space: normal; }
+.order-release-error { display: block; max-width: 22rem; white-space: normal; overflow-wrap: anywhere; font-size: .8rem; color: #a12f38; }
+.odm-head-actions { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .odm-head-actions .order-release-action { flex-basis: 100%; order: 3; }
+  .odm-head-actions .order-release-button { font-size: .8rem; padding: .5rem .65rem; }
+}

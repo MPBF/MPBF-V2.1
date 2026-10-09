@@ -1,0 +1,8 @@
+[
+  {
+    "key": "بحث في",
+    "from": { "file": "i18n-en-reviewed.ts", "value": "Search" },
+    "to": { "file": "i18n-en.ts", "value": "Search in" },
+    "reason": "Preserve the existing base-dictionary priority and the more specific search-field label. This audit does not authorize changing UI wording."
+  }
+]

@@ -1,0 +1,96 @@
+modules = ["nodejs-20", "web", "nodejs-24", "python-3.11", "postgresql-16"]
+run = "npm run dev"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-24_05"
+packages = ["htop"]
+
+[deployment]
+deploymentTarget = "autoscale"
+build = ["npm", "run", "build"]
+run = ["npm", "run", "start"]
+
+[env]
+PORT = "5000"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Start application"
+mode = "sequential"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "initial-load"
+
+[[workflows.workflow]]
+name = "initial-load"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node --test tests/initial-load-budget.test.cjs && npm run build && node scripts/check-initial-load-budget.cjs && node scripts/check-deferred-loading.cjs"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[agent]
+integrations = [
+	"javascript_log_in_with_replit:1.0.0",
+	"javascript_database:1.0.0",
+	"javascript_openai_ai_integrations:2.0.0",
+	"javascript_object_storage:2.0.0",
+]
+
+[objectStorage]
+defaultBucketID = "replit-objstore-f051a8bd-4d25-4be5-96f2-cace19458c51"
+
+[userenv]
+
+[userenv.shared]
+META_PHONE_NUMBER_ID = "707125052493951"
+META_BUSINESS_ACCOUNT_ID = "1179138877371660"
+TAQNYAT_SENDER_NAME = "MPBF"
+ADOBE_CLIENT_ID = "8aa5634f5c82489a944a48f93ef723da"
+ADOBE_ORGANIZATION_ID = "530624B567F2CE210A495EAC@AdobeOrg"
+
+[userenv.development]
+PUBLIC_BASE_URL = "https://m.modplastic.com"
+TWILIO_ALLOWED_NUMBERS = "+966550609050,+966539911985"
+
+[userenv.production]
+PUBLIC_BASE_URL = "https://m.modplastic.com"
+TWILIO_ALLOWED_NUMBERS = "+966550609050,+966539911985"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5123
+externalPort = 3000
+exposeLocalhost = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 300000

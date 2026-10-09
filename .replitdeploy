@@ -1,0 +1,26 @@
+# Replit Deployment Configuration
+# Configuration to handle platform migration issues
+
+[build]
+command = "npm run build"
+publicDir = "dist"
+
+[env]
+NODE_ENV = "production"
+
+[health]
+path = "/api/health"
+port = 5000
+
+[start]
+command = "npm start"
+
+# Additional deployment settings to handle database issues
+[database]
+# Skip automatic migrations to avoid platform issues
+automigrate = false
+
+[deployment]
+# Enhanced error handling for platform issues
+retryOnFailure = true
+maxRetries = 3

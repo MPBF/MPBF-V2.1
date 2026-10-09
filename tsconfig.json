@@ -1,0 +1,36 @@
+{
+  "include": [
+    "client/src/App.tsx",
+    "client/src/main.tsx",
+    "client/src/index.css",
+    "shared/schema.ts",
+    "server/index.ts",
+    "server/routes.ts",
+    "server/auth.ts",
+    "server/db.ts",
+    "server/vite.ts"
+  ],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "compilerOptions": {
+    "ignoreDeprecations": "5.0",
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "strict": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/*": ["./client/src/*"],
+      "@shared/*": ["./shared/*"],
+      "@assets/*": ["./attached_assets/*"]
+    }
+  }
+}

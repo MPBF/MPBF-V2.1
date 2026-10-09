@@ -1,0 +1,43 @@
+.order-workspace { margin: 0 0 14px; color: var(--ink); }
+.order-workspace__filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 8px; }
+.order-workspace__filters .order-workspace__folders { flex: 1 1 420px; min-width: 0; }
+.order-workspace__search { flex: 0 1 280px; min-width: 0; }
+.order-workspace__search .search { flex: 1; min-width: 0; width: 100%; }
+.order-workspace__folders { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; padding: 4px 0 10px; scrollbar-width: thin; }
+.order-workspace__folder { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 38px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 7px; background: #edf3ef; color: var(--muted); font-weight: 700; white-space: nowrap; }
+.order-workspace__folder:hover { border-color: var(--teal); color: var(--teal-deep); }
+.order-workspace__folder[aria-current="page"] { background: var(--teal-deep); border-color: var(--teal-deep); color: #f4faf5; box-shadow: 0 3px 9px rgba(7,82,79,.15); }
+.order-workspace__count { min-width: 22px; padding: 1px 5px; border-radius: 4px; background: rgba(13,46,43,.08); font: 600 11px "IBM Plex Mono", monospace; direction: ltr; }
+.order-workspace__folder[aria-current="page"] .order-workspace__count { background: rgba(255,255,255,.15); }
+.order-workspace__note { margin: 0 0 12px; padding-inline-start: 10px; border-inline-start: 3px solid var(--yellow); color: var(--muted); font-size: 12px; }
+.order-workspace__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: #f2f6f2; }
+.order-workspace__selection { display: flex; align-items: center; gap: 8px; margin-inline-end: auto; font-weight: 700; }
+.order-workspace__selection-count { min-width: 25px; padding: 2px 6px; border-radius: 4px; background: var(--aqua); color: var(--teal-deep); text-align: center; font: 600 12px "IBM Plex Mono", monospace; direction: ltr; }
+.order-workspace__toolbar select { min-height: 34px; max-width: 175px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); }
+.order-workspace__toolbar .btn { min-height: 34px; }
+.order-workspace__toolbar > .order-row-menu { min-width: min(200px, 100%); }
+.order-workspace__toolbar .order-row-menu > summary { width: 100%; }
+.order-workspace__toolbar .order-row-menu__items { inset-inline: 0; min-width: 0; }
+.order-row-select { width: 38px; text-align: center; }
+.order-row-select input, .order-workspace__selection input { width: 16px; height: 16px; accent-color: var(--teal); vertical-align: middle; cursor: pointer; }
+.order-row-menu { position: relative; display: inline-block; }
+.order-row-menu summary { list-style: none; cursor: pointer; }
+.order-row-menu summary::-webkit-details-marker { display: none; }
+.order-row-menu__items { position: absolute; z-index: 20; inset-inline-end: 0; top: calc(100% + 5px); min-width: 185px; display: grid; gap: 3px; padding: 5px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); box-shadow: var(--shadow); }
+.order-row-menu__items button { border: 0; border-radius: 4px; padding: 8px 10px; background: transparent; color: var(--ink); text-align: start; }
+.order-row-menu__items button:hover:not(:disabled) { background: #edf3ef; }
+.order-row-menu__items button:disabled { cursor: not-allowed; opacity: .42; }
+.order-row-menu__items .danger-action { color: var(--danger); }
+.order-workspace__error { margin: 8px 0; }
+@media (max-width: 767px) {
+  .order-workspace__search { flex: 1 1 100%; }
+  .order-workspace__folders { margin-inline: -2px; }
+  .order-workspace__folder { min-height: 36px; padding: 6px 10px; font-size: 12px; }
+  .order-workspace__toolbar { align-items: stretch; }
+  .order-workspace__selection { flex: 1 0 100%; }
+  .order-workspace__toolbar select { flex: 1 1 140px; max-width: none; }
+  .order-workspace__toolbar .btn { flex: 1 1 auto; }
+  .order-workspace__toolbar > .order-row-menu { flex: 1 1 100%; min-width: 0; }
+  .order-workspace__toolbar .order-row-menu__items button { min-height: 44px; }
+  .order-row-select { width: 32px; }
+}

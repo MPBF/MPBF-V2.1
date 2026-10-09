@@ -1,0 +1,58 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "zSIxatfzCOvQffuV2c1r1"
+uri = "file://attached_assets/MOBILE_APP_API_GUIDE.md"
+type = "text"
+title = "دليل API لتطبيق الموبايل"
+logical_id = "8ef3cd08-0f28-4a93-990f-3533ae38c65f"
+
+[[outputs]]
+id = "yV2DI1RIHMYUUtWbHew9s"
+uri = "file://performance-analysis-report.md"
+type = "text"
+title = "تقرير تحليل أداء التطبيق الشامل"
+logical_id = "6684f785-dae7-45bc-bbcc-01c706e1cdf9"
+
+[[outputs]]
+id = "1jRgGyVwzUTxQZ8g1KQfL"
+uri = "file://MOBILE_APP_REFERENCE.md"
+type = "text"
+title = "دليل مرجعي شامل لتطوير تطبيق الجوال - MPBF"
+logical_id = "1138dfc0-48ae-4582-b634-d45260ec0b87"
+
+[[outputs]]
+id = "dh3bqSVJhg2q0C_p59SHj"
+uri = "file://attached_assets/project-deploy.zip"
+type = "unspecified"
+title = "Project Deploy Package (4.04 MB)"
+logical_id = "54de84c5-cee2-4fe4-8119-0bd7f1e20f87"
+
+[[outputs]]
+id = "B2SfXzOZSMegxXYWEwPSv"
+uri = "file://exports/debt_notice_test.pdf"
+type = "pdf"
+title = "إشعار مديونية - اختبار العربية بعد الإصلاح"
+logical_id = "9b822981-6bf6-4c2f-aaf2-ffe0774c1a0c"
+
+[[outputs]]
+id = "Lfe5ohHrmTef8N2FTF_eb"
+uri = "file://DEVELOPER_GUIDE.md"
+type = "text"
+title = "MPBF Developer Guide"
+logical_id = "adb25793-a600-4378-b4ed-369f600c66ff"
+
+[[outputs]]
+id = "IrkH8fu_bx7rtknI3DeQV"
+uri = "file://reports/code-performance-review-2026-10-06.html"
+type = "html"
+title = "تقرير مراجعة الكود والأداء"
+description = "النتائج المؤكدة، ملفاتها، قياسات البناء وقاعدة التطوير، والكود غير المستخدم وترتيب الإصلاحات."
+logical_id = "e2e09243-ef17-499b-9ea9-3a42388e15ce"
+content_hash = "sha256:87a8f362605e59e5e80251675e8fe8ba7968f40c9109fe97f099e83a1a6861d5"
+size = 18841
+mtime_ms = 1791309429000
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/e2e09243-ef17-499b-9ea9-3a42388e15ce/468751cf-866b-4af0-967d-622a89898e5b"
+storage_version_token = "1791309504875216"
+content_type = "text/html"

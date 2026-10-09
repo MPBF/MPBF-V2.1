@@ -1,0 +1,11 @@
+.master-batch-swatch {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.master-batch-swatch.cp-color-dot,
+.master-batch-swatch.opp-color-swatch,
+.master-batch-swatch.odm-color-chip,
+.master-batch-swatch.color-preview { border: 0; background: none; }

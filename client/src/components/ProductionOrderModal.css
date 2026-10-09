@@ -1,0 +1,94 @@
+.production-order-modal-backdrop { padding: 18px; }
+.production-order-modal {
+  width: min(700px, 100%);
+  border: 1px solid rgba(11, 119, 112, .16);
+  animation: production-order-enter .18s ease-out both;
+}
+.production-order-modal-head {
+  align-items: flex-start !important;
+  padding: 21px 24px !important;
+  background: linear-gradient(110deg, #f1f7f4, #fbfcf9);
+}
+.production-order-modal-heading { min-width: 0; }
+.production-order-modal-head h3 { margin: 2px 0 3px !important; font-size: 21px; color: var(--teal-deep); }
+.production-order-modal-kicker {
+  color: var(--teal);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.production-order-modal-close { min-width: 38px; min-height: 38px; padding: 8px !important; }
+.production-order-context { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; margin: 8px 0 0; color: var(--muted); font-size: 11px; }
+.production-order-context strong { color: var(--teal-deep); font: 600 12px "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
+.production-order-details {
+  margin: 0;
+  padding: 19px 24px 22px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+.production-order-detail {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #fff;
+}
+.production-order-detail dt { margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.production-order-detail dd { margin: 0; color: var(--ink); font-size: 13px; font-weight: 700; overflow-wrap: anywhere; word-break: break-word; }
+.production-order-detail:first-child dd { color: var(--teal-deep); direction: ltr; text-align: start; unicode-bidi: plaintext; }
+.production-order-modal-footer {
+  border-top: 1px solid var(--line);
+  padding: 14px 24px;
+  display: flex;
+  justify-content: flex-start;
+  gap: 9px;
+  background: #fbfcfa;
+}
+.production-order-form-body { padding: 22px 24px 9px; }
+.production-order-quantity-field { max-width: 440px; }
+.production-order-quantity-field .field label,
+.production-order-quantity-field label { color: var(--teal-deep); }
+.production-order-input-wrap { position: relative; }
+.production-order-input-wrap input { padding-inline-end: 58px; min-height: 47px; text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 16px; }
+.production-order-input-wrap > span {
+  position: absolute;
+  inset-inline-end: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 11px;
+  pointer-events: none;
+}
+.production-order-quantity-field small { color: var(--muted); font-size: 10px; }
+.production-order-protection {
+  margin: 16px 24px 0;
+  padding: 12px 14px;
+  border: 1px solid #ead9b7;
+  background: #fbf5e9;
+  color: #6f5b34;
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+.production-order-protection strong { color: #6c5222; font-size: 13px; }
+.production-order-error { margin: 15px 24px 0; line-height: 1.8; overflow-wrap: anywhere; }
+.production-order-submit { min-width: 140px; }
+.production-order-spinner { animation: production-order-spin .8s linear infinite; }
+@keyframes production-order-enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes production-order-spin { to { transform: rotate(360deg); } }
+@media (max-width: 700px) {
+  .production-order-modal-backdrop { padding: 10px; }
+  .production-order-modal { max-height: 94dvh; }
+  .production-order-modal-head { padding: 16px !important; }
+  .production-order-modal-head h3 { font-size: 19px; }
+  .production-order-details { grid-template-columns: 1fr; padding: 13px 16px 17px; }
+  .production-order-detail { padding: 10px 12px; }
+  .production-order-form-body { padding: 18px 16px 5px; }
+  .production-order-protection { margin: 14px 16px 0; }
+  .production-order-error { margin: 14px 16px 0; }
+  .production-order-modal-footer { padding: 13px 16px; }
+  .production-order-submit { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .production-order-modal, .production-order-spinner { animation-duration: .01ms; }
+}

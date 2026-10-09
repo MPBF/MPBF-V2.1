@@ -1,0 +1,15 @@
+{
+  "baseline": {
+    "jsBytes": 493210,
+    "jsGzipBytes": 151410,
+    "cssBytes": 33550,
+    "cssGzipBytes": 8000
+  },
+  "limits": {
+    "jsBytes": 510000,
+    "jsGzipBytes": 156000,
+    "cssBytes": 35000,
+    "cssGzipBytes": 8400,
+    "totalGzipBytes": 164400
+  }
+}

@@ -1,0 +1,1066 @@
+هذا **قسم واجهة نموذج إضافة/تعديل منتج عميل**، دون الباك إند.
+
+**الملف:** `client/src/pages/settings/definitions.tsx`  
+**الموقع:** تقريبًا الأسطر **5374–6352**.
+
+الكود أدناه يحافظ على منطق النموذج الحالي، مع تقليل المسافات لتسهيل قراءته. يعتمد على المتغيرات والدوال المعرّفة أعلى الملف، مثل `customerProductForm` و`categories` و`computedBagMetrics`؛ لذلك ليس مكوّنًا مستقلاً.
+
+```tsx
+{/* نموذج إضافة / تعديل منتج عميل */}
+{selectedTab === "customer-products" && (
+  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+    <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto w-full mx-4">
+      <DialogHeader>
+        <DialogTitle className="text-lg sm:text-xl">
+          {editingItem
+            ? t("definitions.customerProducts.edit")
+            : t("definitions.customerProducts.addNew")}
+        </DialogTitle>
+
+        <DialogDescription className="text-sm sm:text-base">
+          {editingItem
+            ? t("definitions.customerProducts.editDescription")
+            : t("definitions.customerProducts.addDescription")}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="grid gap-6 py-4 px-2 sm:px-0">
+
+        {/* 1. العميل والفئة والصنف */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <Label htmlFor="customer_id">
+              {t("definitions.customerProducts.customer")} *
+            </Label>
+
+            <div className="space-y-2 mt-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+
+                <Input
+                  placeholder={t("definitions.form.searchByName")}
+                  value={customerSearchTermInProducts}
+                  onChange={(e) =>
+                    setCustomerSearchTermInProducts(e.target.value)
+                  }
+                  className="pl-10"
+                  data-testid="input-search-customers-in-products"
+                />
+              </div>
+
+              <Select
+                value={customerProductForm.customer_id}
+                onValueChange={(value) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    customer_id: value,
+                  })
+                }
+              >
+                <SelectTrigger data-testid="select-customer-in-products">
+                  <SelectValue
+                    placeholder={t("definitions.form.selectCustomer")}
+                  />
+                </SelectTrigger>
+
+                <SelectContent>
+                  <SelectItem value="none">
+                    {t("definitions.form.selectCustomer")}
+                  </SelectItem>
+
+                  {filteredCustomersInProducts.length > 0 ? (
+                    filteredCustomersInProducts
+                      .filter(
+                        (customer) =>
+                          customer.id &&
+                          customer.id !== "" &&
+                          customer.id !== null &&
+                          customer.id !== undefined,
+                      )
+                      .map((customer: any) => (
+                        <SelectItem
+                          key={customer.id}
+                          value={customer.id.toString()}
+                        >
+                          {customer.name_ar || customer.name}
+                          {customer.name && customer.name_ar
+                            ? ` - ${customer.name}`
+                            : ""}
+                        </SelectItem>
+                      ))
+                  ) : (
+                    <div className="p-2 text-sm text-gray-500 text-center">
+                      {customerSearchTermInProducts
+                        ? t("definitions.form.noSearchResults")
+                        : t("definitions.form.loadingCustomers")}
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+
+              <div className="text-xs text-gray-500 mt-1">
+                {filteredCustomersInProducts.length > 0 && (
+                  <span>
+                    {filteredCustomersInProducts.length}{" "}
+                    {t("definitions.form.customersAvailable")}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="category_id">
+              {t("definitions.items.category")}
+            </Label>
+
+            <Select
+              value={customerProductForm.category_id}
+              onValueChange={(value) => {
+                setCustomerProductForm({
+                  ...customerProductForm,
+                  category_id: value,
+                  item_id: "",
+                });
+              }}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue
+                  placeholder={t("definitions.form.selectCategory")}
+                />
+              </SelectTrigger>
+
+              <SelectContent>
+                <SelectItem value="none">
+                  {t("definitions.form.selectCategory")}
+                </SelectItem>
+
+                {Array.isArray(categories) &&
+                  categories
+                    .filter(
+                      (cat) =>
+                        cat.id &&
+                        cat.id !== "" &&
+                        cat.id !== null &&
+                        cat.id !== undefined,
+                    )
+                    .map((cat: any) => (
+                      <SelectItem
+                        key={cat.id}
+                        value={cat.id.toString()}
+                      >
+                        {cat.name_ar || cat.name} ({cat.id})
+                      </SelectItem>
+                    ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="item_id">
+              {t("definitions.customerProducts.item")}
+            </Label>
+
+            <Select
+              value={customerProductForm.item_id}
+              onValueChange={(value) =>
+                setCustomerProductForm({
+                  ...customerProductForm,
+                  item_id: value,
+                })
+              }
+              disabled={
+                !customerProductForm.category_id ||
+                customerProductForm.category_id === "none"
+              }
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !customerProductForm.category_id ||
+                    customerProductForm.category_id === "none"
+                      ? t("definitions.form.selectCategoryFirst")
+                      : t("definitions.form.selectItem")
+                  }
+                />
+              </SelectTrigger>
+
+              <SelectContent>
+                <SelectItem value="none">
+                  {t("definitions.form.selectItem")}
+                </SelectItem>
+
+                {Array.isArray(items) &&
+                  items
+                    .filter(
+                      (item: any) =>
+                        customerProductForm.category_id &&
+                        customerProductForm.category_id !== "none" &&
+                        item.category_id === customerProductForm.category_id,
+                    )
+                    .filter(
+                      (item) =>
+                        item.id &&
+                        item.id !== "" &&
+                        item.id !== null &&
+                        item.id !== undefined,
+                    )
+                    .map((item: any) => (
+                      <SelectItem
+                        key={item.id}
+                        value={item.id.toString()}
+                      >
+                        {item.name_ar || item.name} ({item.code})
+                      </SelectItem>
+                    ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* 2. مواصفات المنتج والتخريم */}
+        <div className="space-y-4">
+          <h4 className="text-lg sm:text-xl font-medium border-b border-gray-200 pb-2">
+            {t("definitions.form.productSpecs")}
+          </h4>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="size_caption">
+                {t("definitions.form.productSizeAuto")}
+              </Label>
+
+              <Input
+                id="size_caption"
+                value={customerProductForm.size_caption}
+                placeholder={t("definitions.form.autoGeneratedSize")}
+                className="mt-1 bg-muted text-foreground"
+                readOnly
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="punching">التخريم</Label>
+
+              <Select
+                value={customerProductForm.punching || "بدون"}
+                onValueChange={(value) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    punching: value,
+                  })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue
+                    placeholder={t("definitions.form.selectPunchType")}
+                  />
+                </SelectTrigger>
+
+                <SelectContent>
+                  {(() => {
+                    const selectedCategory = Array.isArray(categories)
+                      ? (categories as any[]).find(
+                          (c: any) =>
+                            c.id === customerProductForm.category_id,
+                        )
+                      : null;
+
+                    const catName = selectedCategory?.name_ar || "";
+                    const currentPunching =
+                      customerProductForm.punching || "بدون";
+
+                    const halaqi = ["علاقي", "علاقي هوك"];
+                    const banana = ["بنانة", "بنانة 6سم"];
+
+                    const categoriesLoaded =
+                      Array.isArray(categories) && categories.length > 0;
+
+                    const valueNotInCategory =
+                      (halaqi.includes(currentPunching) &&
+                        catName !== "أكياس علاقي") ||
+                      (banana.includes(currentPunching) &&
+                        catName !== "أكياس بنانة");
+
+                    const showAll =
+                      editingItem &&
+                      (!categoriesLoaded || valueNotInCategory);
+
+                    if (showAll || catName === "أكياس علاقي") {
+                      if (
+                        showAll &&
+                        catName !== "أكياس علاقي" &&
+                        catName !== "أكياس بنانة"
+                      ) {
+                        return (
+                          <>
+                            <SelectItem value="بدون">بدون</SelectItem>
+                            <SelectItem value="علاقي">علاقي</SelectItem>
+                            <SelectItem value="علاقي هوك">
+                              علاقي هوك
+                            </SelectItem>
+                            <SelectItem value="بنانة">بنانة</SelectItem>
+                            <SelectItem value="بنانة 6سم">
+                              بنانة 6سم
+                            </SelectItem>
+                          </>
+                        );
+                      }
+
+                      return (
+                        <>
+                          <SelectItem value="علاقي">علاقي</SelectItem>
+                          <SelectItem value="علاقي هوك">
+                            علاقي هوك
+                          </SelectItem>
+                        </>
+                      );
+                    } else if (catName === "أكياس بنانة") {
+                      return (
+                        <>
+                          <SelectItem value="بنانة">بنانة</SelectItem>
+                          <SelectItem value="بنانة 6سم">
+                            بنانة 6سم
+                          </SelectItem>
+                        </>
+                      );
+                    } else {
+                      return <SelectItem value="بدون">بدون</SelectItem>;
+                    }
+                  })()}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. الأبعاد والقياسات */}
+        <div className="space-y-4">
+          <h4 className="text-lg sm:text-xl font-medium border-b border-gray-200 pb-2">
+            {t("definitions.form.dimensionsMeasurements")}
+          </h4>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div>
+              <Label htmlFor="right_facing">
+                {t("definitions.form.rightSide")}
+              </Label>
+              <Input
+                id="right_facing"
+                type="number"
+                step="0.01"
+                value={customerProductForm.right_facing}
+                onChange={(e) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    right_facing: e.target.value,
+                  })
+                }
+                placeholder="0.00"
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="width">
+                {t("definitions.form.width")}
+              </Label>
+              <Input
+                id="width"
+                type="number"
+                step="0.01"
+                value={customerProductForm.width}
+                onChange={(e) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    width: e.target.value,
+                  })
+                }
+                placeholder="0.00"
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="left_facing">
+                {t("definitions.form.leftSide")}
+              </Label>
+              <Input
+                id="left_facing"
+                type="number"
+                step="0.01"
+                value={customerProductForm.left_facing}
+                onChange={(e) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    left_facing: e.target.value,
+                  })
+                }
+                placeholder="0.00"
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="thickness">
+                {t("definitions.form.thickness")}
+              </Label>
+              <Input
+                id="thickness"
+                type="number"
+                step="0.001"
+                value={customerProductForm.thickness}
+                onChange={(e) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    thickness: e.target.value,
+                  })
+                }
+                placeholder="0.00"
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="density">
+                {t("definitions.form.density")}
+              </Label>
+              <Input
+                id="density"
+                type="number"
+                step="0.001"
+                value={customerProductForm.density}
+                onChange={(e) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    density: e.target.value,
+                  })
+                }
+                placeholder="0.95"
+                className="mt-1"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+            <div>
+              <Label htmlFor="bag_weight_grams">
+                {t("definitions.form.bagWeightGrams")}
+              </Label>
+              <Input
+                id="bag_weight_grams"
+                readOnly
+                tabIndex={-1}
+                value={computedBagMetrics.bagWeightGrams || "—"}
+                className="mt-1 bg-muted text-foreground"
+                dir="ltr"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="bags_per_kilo">
+                {t("definitions.form.bagsPerKilo")}
+              </Label>
+              <Input
+                id="bags_per_kilo"
+                readOnly
+                tabIndex={-1}
+                value={computedBagMetrics.bagsPerKilo || "—"}
+                className="mt-1 bg-muted text-foreground"
+                dir="ltr"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 4. الطباعة والقطع */}
+        <div className="space-y-4">
+          <h4 className="text-lg sm:text-xl font-medium border-b border-gray-200 pb-2">
+            {t("definitions.form.printingCuttingSpecs")}
+          </h4>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <Label htmlFor="printing_cylinder">
+                {t("definitions.form.printingCylinder")}
+              </Label>
+
+              <Select
+                value={customerProductForm.printing_cylinder}
+                onValueChange={(value) => {
+                  legacyMapRef.current = false;
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    printing_cylinder: value,
+                  });
+                }}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue
+                    placeholder={t("definitions.form.selectCylinder")}
+                  />
+                </SelectTrigger>
+
+                <SelectContent>
+                  {printingCylinderOptions
+                    .filter(
+                      (option) =>
+                        option.value &&
+                        option.value !== "" &&
+                        option.value !== null &&
+                        option.value !== undefined,
+                    )
+                    .map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={option.value.toString()}
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="cutting_length_cm">
+                {t("definitions.form.cuttingLength")}
+              </Label>
+
+              {(() => {
+                const selectedCat = Array.isArray(categories)
+                  ? (categories as any[]).find(
+                      (c: any) =>
+                        c.id === customerProductForm.category_id,
+                    )
+                  : null;
+
+                const catNameAr = selectedCat?.name_ar || "";
+                const isSufra =
+                  catNameAr === "سفرة بلاستيكية" ||
+                  catNameAr === "سفرة بلاستيكية مطوية";
+
+                const isNoPrinting =
+                  customerProductForm.printing_cylinder === "بدون طباعة";
+
+                const isManualInput = isSufra || isNoPrinting;
+
+                return (
+                  <Input
+                    id="cutting_length_cm"
+                    type="number"
+                    value={customerProductForm.cutting_length_cm}
+                    onChange={(e) => {
+                      legacyMapRef.current = false;
+                      setCustomerProductForm({
+                        ...customerProductForm,
+                        cutting_length_cm: e.target.value,
+                      });
+                    }}
+                    placeholder={
+                      isManualInput
+                        ? t("definitions.form.enterCuttingLength")
+                        : t("definitions.form.autoCalculated")
+                    }
+                    className="mt-1"
+                    disabled={!isManualInput}
+                  />
+                );
+              })()}
+            </div>
+
+            <div className="flex items-center gap-3 mt-6 p-3 bg-gray-50 rounded-md">
+              <input
+                type="checkbox"
+                id="is_printed"
+                checked={customerProductForm.is_printed}
+                className="rounded w-4 h-4"
+                disabled
+              />
+              <Label
+                htmlFor="is_printed"
+                className="text-gray-600 text-sm"
+              >
+                {t("definitions.form.printedProduct")}
+              </Label>
+            </div>
+
+            <div>
+              <Label htmlFor="cutting_unit">
+                {t("definitions.form.cuttingUnit")}
+              </Label>
+
+              <Select
+                value={customerProductForm.cutting_unit || "none"}
+                onValueChange={(value) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    cutting_unit: value === "none" ? "" : value,
+                  })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue
+                    placeholder={t("definitions.form.selectUnit")}
+                  />
+                </SelectTrigger>
+
+                <SelectContent>
+                  <SelectItem value="none">
+                    {t("definitions.form.selectUnit")}
+                  </SelectItem>
+                  <SelectItem value="كيلو">كيلو / Kg</SelectItem>
+                  <SelectItem value="باكت">باكت / PKT</SelectItem>
+                  <SelectItem value="كيس">كيس / Pecs</SelectItem>
+                  <SelectItem value="رول">رول / Roll</SelectItem>
+                  <SelectItem value="كرتون">كرتون / Box</SelectItem>
+                  <SelectItem value="بندل">بندل / Bundle</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* 5. المواد والخامات */}
+        <div className="space-y-4">
+          <h4 className="text-lg sm:text-xl font-medium border-b border-gray-200 pb-2">
+            {t("definitions.form.materialsRaw")}
+          </h4>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="raw_material">
+                {t("definitions.form.rawMaterial")}
+              </Label>
+
+              <Select
+                value={customerProductForm.raw_material}
+                onValueChange={(value) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    raw_material: value,
+                  })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue
+                    placeholder={t("definitions.form.selectRawMaterial")}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="HDPE">HDPE</SelectItem>
+                  <SelectItem value="LDPE">LDPE</SelectItem>
+                  <SelectItem value="Regrind">Regrind</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="master_batch_id">
+                {t("definitions.form.masterBatchColor")}
+              </Label>
+
+              <Select
+                value={customerProductForm.master_batch_id}
+                onValueChange={(value) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    master_batch_id: value,
+                  })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue
+                    placeholder={t("definitions.form.selectColor")}
+                  />
+                </SelectTrigger>
+
+                <SelectContent>
+                  <SelectItem value="none">
+                    {t("definitions.form.noColor")}
+                  </SelectItem>
+
+                  {masterBatchColors
+                    .filter(
+                      (color) =>
+                        color.id &&
+                        color.id !== "" &&
+                        color.id !== null &&
+                        color.id !== undefined &&
+                        color.is_active !== false,
+                    )
+                    .map((color) => (
+                      <SelectItem
+                        key={color.id}
+                        value={color.id.toString()}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center"
+                            style={{
+                              backgroundColor: color.color,
+                              border:
+                                color.id === "transparent"
+                                  ? "2px dashed #ccc"
+                                  : `2px solid ${color.color}`,
+                            }}
+                          >
+                            {color.id === "transparent" && (
+                              <span className="text-xs text-gray-400">
+                                ⊘
+                              </span>
+                            )}
+                          </div>
+
+                          <span className="font-medium">
+                            {color.name_ar}
+                          </span>
+
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                            {color.id}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* 6. الأوزان والكميات */}
+        <div className="space-y-4">
+          <h4 className="text-lg sm:text-xl font-medium border-b border-gray-200 pb-2">
+            {t("definitions.form.weightsQuantities")}
+          </h4>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="unit_weight_kg">
+                {t("definitions.form.unitWeight")}
+              </Label>
+              <Input
+                id="unit_weight_kg"
+                type="number"
+                step="0.001"
+                value={customerProductForm.unit_weight_kg}
+                onChange={(e) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    unit_weight_kg: e.target.value,
+                  })
+                }
+                placeholder="0.00"
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="unit_quantity">
+                {t("definitions.form.packaging")}
+              </Label>
+              <Input
+                id="unit_quantity"
+                type="number"
+                value={customerProductForm.unit_quantity}
+                onChange={(e) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    unit_quantity: e.target.value,
+                  })
+                }
+                placeholder="0"
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="package_weight_kg">
+                {t("definitions.form.packageWeightAuto")}
+              </Label>
+              <Input
+                id="package_weight_kg"
+                type="number"
+                step="0.01"
+                value={customerProductForm.package_weight_kg}
+                placeholder={t("definitions.form.unitWeightTimesQty")}
+                className="mt-1 bg-muted text-foreground"
+                readOnly
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 7. الكليشيهات والتصاميم */}
+        <div className="space-y-4">
+          <h4 className="text-lg sm:text-xl font-medium border-b border-gray-200 pb-2">
+            {t("definitions.form.clichesDesigns")}
+          </h4>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="cliche_front_design">
+                {t("definitions.form.frontDesign")}
+              </Label>
+
+              <div className="space-y-2">
+                <Input
+                  id="cliche_front_design"
+                  type="file"
+                  accept="image/*,.jpeg,.jpg,.png,.gif,.bmp,.webp,.svg"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+
+                    if (file) {
+                      if (file.size > 5 * 1024 * 1024) {
+                        toast({
+                          title: t("definitions.form.fileTooLarge"),
+                          description: t("definitions.form.imageSizeLimit"),
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+
+                      const reader = new FileReader();
+
+                      reader.onload = (e) => {
+                        const result = e.target?.result as string;
+                        setCustomerProductForm({
+                          ...customerProductForm,
+                          cliche_front_design: result,
+                          front_design_filename: file.name,
+                        });
+                      };
+
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="mt-1"
+                />
+
+                {customerProductForm.cliche_front_design && (
+                  <div className="relative">
+                    <img
+                      src={customerProductForm.cliche_front_design}
+                      alt={t("definitions.form.frontDesign")}
+                      className="max-w-full max-h-32 object-contain border rounded-md bg-gray-50"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="absolute top-1 right-1 h-6 w-6 p-0"
+                      onClick={() =>
+                        setCustomerProductForm({
+                          ...customerProductForm,
+                          cliche_front_design: "",
+                          front_design_filename: "",
+                        })
+                      }
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <PrintColorSquares
+                label={t("definitions.form.frontPrintColors")}
+                pickLabel={t("definitions.form.pickColor")}
+                clearLabel={t("definitions.form.clearColor")}
+                colors={customerProductForm.front_print_colors}
+                onChange={(colors) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    front_print_colors: colors,
+                  })
+                }
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="cliche_back_design">
+                {t("definitions.form.backDesign")}
+              </Label>
+
+              <div className="space-y-2">
+                <Input
+                  id="cliche_back_design"
+                  type="file"
+                  accept="image/*,.jpeg,.jpg,.png,.gif,.bmp,.webp,.svg"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+
+                    if (file) {
+                      if (file.size > 5 * 1024 * 1024) {
+                        toast({
+                          title: t("definitions.form.fileTooLarge"),
+                          description: t("definitions.form.imageSizeLimit"),
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+
+                      const reader = new FileReader();
+
+                      reader.onload = (e) => {
+                        const result = e.target?.result as string;
+                        setCustomerProductForm({
+                          ...customerProductForm,
+                          cliche_back_design: result,
+                          back_design_filename: file.name,
+                        });
+                      };
+
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="mt-1"
+                />
+
+                {customerProductForm.cliche_back_design && (
+                  <div className="relative">
+                    <img
+                      src={customerProductForm.cliche_back_design}
+                      alt={t("definitions.form.backDesign")}
+                      className="max-w-full max-h-32 object-contain border rounded-md bg-gray-50"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="absolute top-1 right-1 h-6 w-6 p-0"
+                      onClick={() =>
+                        setCustomerProductForm({
+                          ...customerProductForm,
+                          cliche_back_design: "",
+                          back_design_filename: "",
+                        })
+                      }
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <PrintColorSquares
+                label={t("definitions.form.backPrintColors")}
+                pickLabel={t("definitions.form.pickColor")}
+                clearLabel={t("definitions.form.clearColor")}
+                colors={customerProductForm.back_print_colors}
+                onChange={(colors) =>
+                  setCustomerProductForm({
+                    ...customerProductForm,
+                    back_print_colors: colors,
+                  })
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 8. الملاحظات */}
+        <div>
+          <Label htmlFor="notes" className="text-base">
+            {t("definitions.form.notes")}
+          </Label>
+
+          <textarea
+            id="notes"
+            value={customerProductForm.notes}
+            onChange={(e) =>
+              setCustomerProductForm({
+                ...customerProductForm,
+                notes: e.target.value,
+              })
+            }
+            placeholder={t("definitions.form.notesPlaceholder")}
+            className="mt-2 w-full p-3 border border-input bg-background text-foreground rounded-md resize-none text-right"
+            rows={4}
+            dir="rtl"
+          />
+        </div>
+      </div>
+
+      {/* 9. أزرار الإلغاء والحفظ */}
+      <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0">
+        <Button
+          variant="outline"
+          onClick={() => setIsDialogOpen(false)}
+          className="w-full sm:w-auto order-2 sm:order-1"
+        >
+          {t("common.cancel")}
+        </Button>
+
+        <Button
+          onClick={() => {
+            const processedData = {
+              ...customerProductForm,
+              cutting_length_cm: customerProductForm.cutting_length_cm
+                ? parseInt(customerProductForm.cutting_length_cm)
+                : undefined,
+              unit_quantity: customerProductForm.unit_quantity
+                ? parseInt(customerProductForm.unit_quantity)
+                : undefined,
+              width: customerProductForm.width
+                ? parseFloat(customerProductForm.width)
+                : undefined,
+              left_facing: customerProductForm.left_facing
+                ? parseFloat(customerProductForm.left_facing)
+                : undefined,
+              right_facing: customerProductForm.right_facing
+                ? parseFloat(customerProductForm.right_facing)
+                : undefined,
+              thickness: customerProductForm.thickness
+                ? parseFloat(customerProductForm.thickness)
+                : undefined,
+              density: customerProductForm.density
+                ? parseFloat(customerProductForm.density)
+                : 0.95,
+              unit_weight_kg: customerProductForm.unit_weight_kg
+                ? parseFloat(customerProductForm.unit_weight_kg)
+                : undefined,
+              package_weight_kg: customerProductForm.package_weight_kg
+                ? parseFloat(customerProductForm.package_weight_kg)
+                : undefined,
+            };
+
+            if (editingItem) {
+              updateCustomerProductMutation.mutate({
+                id: editingItem.id,
+                data: processedData,
+              });
+            } else {
+              createCustomerProductMutation.mutate(processedData);
+            }
+          }}
+          disabled={
+            createCustomerProductMutation.isPending ||
+            updateCustomerProductMutation.isPending
+          }
+          className="w-full sm:w-auto order-1 sm:order-2"
+        >
+          {createCustomerProductMutation.isPending ||
+          updateCustomerProductMutation.isPending ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+              {editingItem
+                ? t("definitions.updating")
+                : t("definitions.saving")}
+            </>
+          ) : editingItem ? (
+            t("definitions.update")
+          ) : (
+            t("common.save")
+          )}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+)}
+```
+
+لم أغيّر أي ملف؛ هذا عرض لقسم الواجهة الموجود في المشروع.
