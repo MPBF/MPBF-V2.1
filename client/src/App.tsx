@@ -24,6 +24,8 @@ import i18n, { applyLanguage, localizedName, normalizeLanguage, translate, trans
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const HumanResources = lazy(() => import("./pages/HumanResources"));
 const ProductionPage = lazy(() => import("./pages/production/ProductionPage"));
+const RawMixingPage = lazy(() => import("./pages/production/RawMixingPage"));
+const RawInventoryPage = lazy(() => import("./pages/warehouse/RawInventoryPage"));
 const WarehousePage = lazy(() => import("./pages/warehouse/WarehousePage"));
 const OrderCreateModal = lazy(() => import("./components/OrderCreateModal"));
 const CustomerProductModal = lazy(() => import("./components/CustomerProductModal"));
@@ -210,8 +212,8 @@ const localizeConfig = (config: Config): Config => ({
 const nav = [
   ["/", "لوحة الإدارة", Gauge, ["admin"]], ["/my-dashboard", "لوحة المستخدم", Users, []], ["/customers", "العملاء", Users, configs.customers.read],
   ["/orders", "الطلبات", FileText, [...configs.orders.read, ...configs.production.read]],
-  ["/production", "الإنتاج والتشغيل", Factory, ["admin", ...productionPermissions]],
-  ["/warehouse", "المستودع", Boxes, ["view_production_hall", "view_finished_inventory", "receive_production", "manage_finished_warehouse"]],
+  ["/production", "الإنتاج والتشغيل", Factory, ["admin", ...productionPermissions, "view_mixing", "manage_mixing"]],
+  ["/warehouse", "المستودع", Boxes, ["view_production_hall", "view_finished_inventory", "receive_production", "manage_finished_warehouse", "view_raw_inventory", "manage_raw_materials"]],
   ["/hr", "الموارد البشرية", UsersRound, ["manage_hr", "manage_attendance", "admin"]],
   ["/admin", "الإدارة", Shield, ["manage_users", "manage_roles", "manage_sections", "manage_settings", "manage_machines", "manage_maintenance", "manage_categories", "manage_items", "manage_master_batch", "manage_definitions", "view_orders", "manage_customers", "manage_orders", "admin"]],
 ] as const;
@@ -763,7 +765,7 @@ const permissionGroups = [
   { label: "الصيانة والآلات", items: [["manage_machines","إدارة الماكينات"],["manage_maintenance","إدارة الصيانة"],["manage_maintenance_actions","إجراءات الصيانة"],["create_maintenance_requests","إنشاء طلبات الصيانة"],["view_maintenance","عرض الصيانة"],["view_maintenance_reports","تقارير الصيانة"],["view_maintenance_requests","طلبات الصيانة"],["view_maintenance_stats_reports","إحصاءات الصيانة"]] },
   { label: "الإنتاج والتشغيل", items: [["manage_production","إدارة الإنتاج"],["operate_film","تشغيل الفيلم"],["operate_printing","تشغيل الطباعة"],["operate_cutting","تشغيل القص"],["view_production_hall","عرض صالة الإنتاج"],["delete_production","حذف سجلات الإنتاج"],["manage_production_hall","إدارة صالة الإنتاج"],["view_production","عرض الإنتاج"],["view_production_monitoring","مراقبة الإنتاج"],["view_production_reports","تقارير الإنتاج"],["view_today_production","إنتاج اليوم"],["view_cutting_dashboard","لوحة القص"],["view_film_dashboard","لوحة الفيلم"],["view_printing_dashboard","لوحة الطباعة"],["manage_mixing","إدارة الخلط"],["view_mixing","عرض الخلط"]] },
   finishedGoodsPermissionGroup,
-  { label: "المخزون والمستودع", items: [["manage_inventory","إدارة المخزون"],["view_inventory","عرض المخزون"],["manage_warehouse","إدارة المستودع"],["view_warehouse","عرض المستودع"],["manage_warehouse_vouchers","إدارة سندات المستودع"],["view_warehouse_vouchers","عرض سندات المستودع"],["view_warehouse_reports","تقارير المستودع"],["manage_spare_parts","قطع الغيار"],["manage_consumable_parts","المواد المستهلكة"],["manage_items","إدارة الأصناف"],["manage_categories","إدارة التصنيفات"]] },
+  { label: "المخزون والمستودع", items: [["manage_inventory","إدارة المخزون"],["view_inventory","عرض المخزون"],["manage_warehouse","إدارة المستودع"],["view_warehouse","عرض المستودع"],["view_raw_inventory","عرض مخزون المواد الخام"],["manage_raw_materials","إدارة مواد الخام"],["manage_warehouse_vouchers","إدارة سندات المستودع"],["view_warehouse_vouchers","عرض سندات المستودع"],["view_warehouse_reports","تقارير المستودع"],["manage_spare_parts","قطع الغيار"],["manage_consumable_parts","المواد المستهلكة"],["manage_items","إدارة الأصناف"],["manage_categories","إدارة التصنيفات"]] },
   { label: "الجودة والطلبات والعملاء", items: [["manage_quality","إدارة الجودة"],["manage_quality_settings","إعدادات الجودة"],["create_quality_inspections","إنشاء فحوص الجودة"],["view_quality","عرض الجودة"],["view_quality_reports","تقارير الجودة"],["view_quality_control_reports","تقارير ضبط الجودة"],["manage_orders","إدارة الطلبات"],["view_orders","عرض الطلبات"],["view_my_orders","طلباتي"],["update_order_status","تحديث حالة الطلب"],["manage_customers","إدارة العملاء"]] },
   { label: "الموارد البشرية والحضور", items: [["manage_hr","إدارة الموارد البشرية"],["view_hr","عرض الموارد البشرية"],["view_hr_reports","تقارير الموارد البشرية"],["manage_attendance","إدارة الحضور"],["view_attendance","عرض الحضور"],["view_attendance_reports","تقارير الحضور"],["manage_leaves","إدارة الإجازات"],["manage_training","إدارة التدريب"],["view_training","عرض التدريب"],["manage_negligence","إدارة الإهمال"],["manage_work_violations","إدارة مخالفات العمل"],["record_work_violations","تسجيل مخالفات العمل"],["view_work_violations","عرض مخالفات العمل"]] },
   { label: "التحليلات والعرض", items: [["view_dashboard","لوحة المتابعة"],["view_user_dashboard","لوحة المستخدم"],["view_home","الرئيسية"],["view_reports","التقارير"],["manage_analytics","التحليلات"],["view_financial_reports","التقارير المالية"],["manage_alerts","إدارة التنبيهات"],["view_alerts","عرض التنبيهات"],["view_notifications","الإشعارات"],["manage_display_screen","إدارة شاشة العرض"],["view_display_screen","عرض الشاشة"]] },
@@ -1452,6 +1454,8 @@ function App() {
     <Route path="/production/film"><ProductionPage user={productionUser} view="film" /></Route>
     <Route path="/production/printing"><ProductionPage user={productionUser} view="printing" /></Route>
     <Route path="/production/cutting"><ProductionPage user={productionUser} view="cutting" /></Route>
+    <Route path="/production/mixing"><RawMixingPage user={productionUser} /></Route>
+    <Route path="/warehouse/raw-materials"><RawInventoryPage user={productionUser} /></Route>
     <Route path="/production/hall"><Redirect to="/warehouse/hall" replace /></Route>
     <Route path="/production/warehouse"><Redirect to="/warehouse/finished-inventory" replace /></Route>
     <Route path="/warehouse/rolls/:id">{params => <WarehousePage user={productionUser} view="roll" rollId={params.id} />}</Route>

@@ -1,5 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 export * from "./production-schema";
+export * from "./raw-mixing-schema";
 import {
   boolean,
   check,

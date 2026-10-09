@@ -9,6 +9,7 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
   "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "/": "\\u002f", "\u2028": "\\u2028", "\u2029": "\\u2029",
 })[char]);
 const QRCode = require("qrcode");
+const stagePaths = stage => stage === "film" ? ["/production/film","/production/mixing"] : [`/production/${stage}`];
 
 (async () => {
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), "factory-browser-"));
@@ -21,6 +22,16 @@ const QRCode = require("qrcode");
   const operatorNavigationOnly = process.argv.includes("--operator-navigation-only");
   const compactControlsOnly = process.argv.includes("--compact-controls-only");
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
+  const rawMixingOnly = process.argv.includes("--raw-mixing-only");
+  let rejectMix = false;
+  const rawState = {
+    materials: [
+      {id:1,code:"HDPE",name:"High density resin",name_ar:"خام عالي الكثافة",quantity_kg:"1.00",is_active:true},
+      {id:2,code:"LDPE",name:"Low density resin",name_ar:"خام منخفض الكثافة",quantity_kg:"0.00",is_active:true},
+    ],
+    machines:[{id:"F1",name:"Film One",name_ar:"فيلم واحد",status:"active"}],
+    records:[],next_before:null,
+  };
   let roleMetadata = {};
   let failStart = false;
   const pending = new Map(), errors = [], writes = [], committed = new Map(), historyCalls = [], stateScopes = [];
@@ -115,6 +126,27 @@ const QRCode = require("qrcode");
             assert.deepEqual(input, previous.input, "idempotent replay must preserve its payload");
             body = previous.body;
           } else {
+            if (route === "/production/mixing") {
+              if (rejectMix) {
+                rejectMix=false; status=400;
+                body={message:"المادة غير نشطة",message_en:"The material is inactive."};
+              } else {
+                const id=99+committed.size;
+                const items=input.items.map(item=>{
+                  const material=rawState.materials.find(r=>r.id===item.material_id);
+                  material.quantity_kg=(Number(material.quantity_kg)-Number(item.quantity_kg)).toFixed(2);
+                  return {...item,code:material.code,name:material.name,name_ar:material.name_ar};
+                });
+                rawState.records.unshift({id,machine_id:input.machine_id,machine_name:"Film One",machine_name_ar:"فيلم واحد",
+                  created_by:42,actor_name:"Fixture operator",actor_name_ar:"مشغل الاختبار",created_at:"2026-10-09T19:00:00Z",
+                  notes:input.notes||null,total_kg:input.items.reduce((sum,item)=>sum+Number(item.quantity_kg),0).toFixed(2),items});
+                body={id,balances:rawState.materials.map(r=>({id:r.id,quantity_kg:r.quantity_kg}))};
+              }
+            }
+            if (route === "/production/raw-materials") {
+              body={id:99+committed.size,code:input.code,name:input.name,name_ar:input.name_ar,quantity_kg:Number(input.opening_kg).toFixed(2),is_active:true};
+              rawState.materials.push(body);
+            }
             if (filmReadyOnly && /^\/production\/orders\/\d+\/start$/.test(route)) {
               if (failStart) {
                 failStart=false; status=409;
@@ -131,7 +163,8 @@ const QRCode = require("qrcode");
               } else [first.position,second.position]=[second.position,first.position];
             }
             if(status===200){
-              body={id:99+committed.size,voucher_number:"FR-00000099",items:input.items||[]};
+              if (!["/production/mixing","/production/raw-materials"].includes(route))
+                body={id:99+committed.size,voucher_number:"FR-00000099",items:input.items||[]};
               committed.set(input.request_id,{route,input:structuredClone(input),body});
             }
           }
@@ -141,6 +174,8 @@ const QRCode = require("qrcode");
             await send("Fetch.failRequest",{requestId,errorReason:"ConnectionClosed"},event.sessionId);
             return;
           }
+         } else if (route === "/production/mixing") {
+           body=structuredClone(rawState);
          } else if (route === "/production/labels") {
            body = {records:state.rolls,next:null};
          } else if (route === "/production/state") {
@@ -190,7 +225,7 @@ const QRCode = require("qrcode");
       if (result.exceptionDetails) throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
       return result.result.value;
     };
-    const wait = async expression => { for (let i = 0; i < 100; i++) { if (await evaluate(expression)) return; await new Promise(r => setTimeout(r, 100)); } throw Error(`Timed out: ${expression}`); };
+    const wait = async expression => { for (let i = 0; i < 100; i++) { if (await evaluate(`Boolean(${expression})`)) return; await new Promise(r => setTimeout(r, 100)); } throw Error(`Timed out: ${expression}`); };
     const origin = process.env.FACTORY_BROWSER_ORIGIN || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "http://127.0.0.1:5000");
     const navigate = async route => {
       const loaded = new Promise((resolve, reject) => {
@@ -198,9 +233,9 @@ const QRCode = require("qrcode");
         onLoad = () => { clearTimeout(timer); resolve(); onLoad = undefined; };
       });
       await send("Page.navigate", { url: origin + route }); await loaded;
-      await wait("!!document.querySelector('.production-app')");
+      await wait("!!document.querySelector('.production-app,.raw-ops')");
       await wait("!document.querySelector('.prod-loading')");
-       if (operatorNavigationOnly || warehouseNavigationOnly) return;
+       if (operatorNavigationOnly || warehouseNavigationOnly || rawMixingOnly) return;
        if(["/production/film","/production/printing","/production/cutting"].includes(route)){
          check(`${language} ${route}: all orders initially collapsed`,await evaluate("document.querySelectorAll('[data-film-order-id][aria-expanded=\"true\"],[data-operator-order-id][aria-expanded=\"true\"]').length"),0);
        }
@@ -222,6 +257,83 @@ const QRCode = require("qrcode");
       await evaluate(`(()=>{const button=document.querySelector('[data-operator-order-id="${id}"]');if(!button)throw Error('Missing operator group ${id}');if(button.getAttribute('aria-expanded')!=='true')button.click()})()`);
       await wait(`document.querySelector('[data-operator-order-id="${id}"]').getAttribute('aria-expanded')==='true'`);
     };
+     if (rawMixingOnly) {
+       const submitRaw = () => evaluate("document.querySelector('.raw-ops form').requestSubmit()");
+       const waitMix = () => wait("document.querySelector('#mix-machine option[value=\"F1\"]') && document.querySelector('#mix-material-0 option[value=\"1\"]')");
+       for (const lang of ["ar","en"]) {
+         language=lang;
+         for (const width of [390,768,1440]) {
+           await send("Emulation.setDeviceMetricsOverride",{width,height:950,deviceScaleFactor:1,mobile:width<500});
+           permissions=["operate_film"];roleMetadata={production_role_binding:{mode:"operator",stages:["film"]}};
+           await navigate("/production/mixing");await waitMix();
+           check(`${lang} ${width}: film operators can record mixes`,await evaluate("!!document.querySelector('#mix-machine')"));
+           check(`${lang} ${width}: film plus mixing only`,await evaluate("[...document.querySelectorAll('.raw-ops-nav a')].map(a=>a.getAttribute('href'))"),["/production/film","/production/mixing"]);
+           check(`${lang} ${width}: no catalog management leaked`,await evaluate("!document.querySelector('#raw-code') && !document.querySelector('.sidebar .nav a[href=\"/warehouse\"]')"));
+           await setInput("#mix-machine","F1");await setInput("#mix-material-0","1");await setInput("#mix-quantity-0","3.25");
+           await wait("!!document.querySelector('.raw-ops-banner.warning')");
+           check(`${lang} ${width}: negative stock does not block save`,await evaluate("!document.querySelector('.raw-ops form button[type=\"submit\"]').disabled"));
+           const count=rawState.records.length;
+           await submitRaw();await wait("!!document.querySelector('.raw-ops-banner.success')");
+           check(`${lang} ${width}: one actual mix committed`,rawState.records.length,count+1);
+           check(`${lang} ${width}: submitted draft cleared`,await evaluate("document.querySelector('#mix-quantity-0').value"),"");
+           check(`${lang} ${width}: trace names and weights are shown`,await evaluate(`document.querySelector('.raw-ops').innerText.includes(${jsLiteral(lang==="ar"?"مشغل الاختبار":"Fixture operator")}) && document.querySelector('.raw-ops').innerText.includes('3.25')`));
+           check(`${lang} ${width}: no viewport overflow`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           if(lang==="ar"&&[390,1440].includes(width)){
+             const shot=await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});
+             await fs.writeFile(`/tmp/raw-mixing-${width}.png`,Buffer.from(shot.data,"base64"));
+           }
+           permissions=["view_mixing"];roleMetadata={};
+           await navigate("/production/mixing");
+           await wait("document.querySelector('.raw-ops').innerText.includes("+jsLiteral(lang==="ar"?"عرض فقط":"Read only")+")");
+           check(`${lang} ${width}: mixing readers cannot record`,await evaluate("!document.querySelector('#mix-machine')"));
+           permissions=["operate_printing"];roleMetadata={production_role_binding:{mode:"operator",stages:["printing"]}};
+           await navigate("/production/mixing");
+           check(`${lang} ${width}: unrelated stage denied`,await evaluate("!!document.querySelector('.raw-ops-banner.error') && !document.querySelector('#mix-machine')"));
+           permissions=["view_raw_inventory"];roleMetadata={};
+           await navigate("/warehouse/raw-materials");
+           await wait("!!document.querySelector('.raw-ops-table tbody tr')");
+           check(`${lang} ${width}: inventory shows signed balance`,await evaluate("!!document.querySelector('.raw-ops-balance.negative')"));
+           check(`${lang} ${width}: inventory readers have no create form`,await evaluate("!document.querySelector('#raw-code')"));
+           check(`${lang} ${width}: raw-only navigation is scoped`,await evaluate("[...document.querySelectorAll('.raw-ops-nav a')].map(a=>a.getAttribute('href'))"),["/warehouse/raw-materials"]);
+           check(`${lang} ${width}: raw inventory fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+         }
+       }
+       language="en";permissions=["operate_film"];roleMetadata={};
+       await navigate("/production/mixing");await waitMix();
+       await setInput("#mix-machine","F1");await setInput("#mix-material-0","1");await setInput("#mix-quantity-0","0");
+       const beforeInvalid=writes.length;
+       await submitRaw();await wait("!!document.querySelector('.raw-ops-banner.error')");
+       check("invalid zero rejected before API",writes.length,beforeInvalid);
+       await setInput("#mix-quantity-0","1.234");await submitRaw();
+       check("excess precision rejected before API",writes.length,beforeInvalid);
+       await setInput("#mix-quantity-0","1.25");
+       rejectMix=true;await submitRaw();await wait("!!document.querySelector('.raw-ops-banner.error')");
+       check("confirmed server rejection remains editable",await evaluate("!document.querySelector('#mix-quantity-0').disabled"));
+       await setInput("#mix-quantity-0","2.50");
+       const beforeLost=rawState.records.length;
+       failWrite=true;await submitRaw();await wait("document.querySelector('#mix-quantity-0').disabled");
+       const original=writes.at(-1);
+       check("lost response still committed once",rawState.records.length,beforeLost+1);
+       await navigate("/production/mixing");await waitMix();
+       await wait("document.querySelector('#mix-quantity-0').disabled");
+       check("uncertain operation survives reload",await evaluate("document.querySelector('#mix-quantity-0').value"),"2.50");
+       await evaluate("[...document.querySelectorAll('.raw-ops-banner.error button')][0].click()");
+       await wait("!!document.querySelector('.raw-ops-banner.success')");
+       check("retry preserves original exact payload",writes.at(-1).input,original.input);
+       check("retry commits no second mix",rawState.records.length,beforeLost+1);
+       check("retry unlocks and clears original submitted draft",await evaluate("document.querySelector('#mix-quantity-0').value===''&&!document.querySelector('#mix-quantity-0').disabled"));
+       permissions=["admin"];roleMetadata={};
+       await navigate("/warehouse/raw-materials");
+       await wait("!!document.querySelector('#raw-code')");
+       await setInput("#raw-code","REGRIND");await setInput("#raw-name","Regrind");await setInput("#raw-name-ar","خام معاد");await setInput("#raw-opening","1500.25");
+       await submitRaw();await wait("!!document.querySelector('.raw-ops-banner.success')");
+       check("catalog create records real opening amount",rawState.materials.at(-1).quantity_kg,"1500.25");
+       check("stock display groups thousands",await evaluate("document.querySelector('.raw-ops-table').innerText.includes('1,500.25')"));
+       check("mixes never use voucher APIs",writes.every(write=>["/production/mixing","/production/raw-materials"].includes(write.route)));
+       check("browser has no unhandled errors",errors,[]);
+       console.log(`Raw mixing browser verification passed: ${passed} assertions.`);
+       return;
+     }
      if (warehouseNavigationOnly) {
        for (const lang of ["ar", "en"]) {
          language = lang;
@@ -231,12 +343,12 @@ const QRCode = require("qrcode");
            permissions = ["admin"];
            await navigate("/production");
            check(`${lang} ${width}: production contains manufacturing tabs only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"),
-             ["/production", "/production/film", "/production/printing", "/production/cutting"]);
+             ["/production", "/production/film", "/production/printing", "/production/cutting", "/production/mixing"]);
            check(`${lang} ${width}: warehouse is a separate sidebar entry`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/warehouse\"]').innerText"), lang === "ar" ? "المستودع" : "Warehouse");
            for (const [oldPath, newPath] of [["/production/hall", "/warehouse/hall"], ["/production/warehouse", "/warehouse/finished-inventory"]]) {
              await navigate(oldPath);
              check(`${lang} ${width}: ${oldPath} keeps existing bookmarks working`, await evaluate("location.pathname"), newPath);
-             check(`${lang} ${width}: warehouse module has two tabs`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), ["/warehouse/hall", "/warehouse/finished-inventory"]);
+             check(`${lang} ${width}: warehouse includes raw inventory`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), ["/warehouse/hall", "/warehouse/finished-inventory", "/warehouse/raw-materials"]);
              check(`${lang} ${width}: warehouse title is localized`, await evaluate("document.querySelector('.prod-heading h2').innerText"), lang === "ar" ? "المستودع" : "Warehouse");
              check(`${lang} ${width}: main title and selected section match warehouse`, await evaluate("document.querySelector('.topbar h1').innerText"), lang === "ar" ? "المستودع" : "Warehouse");
              check(`${lang} ${width}: current warehouse remains in mobile navigation`, await evaluate("!!document.querySelector('.mobile-nav a[href=\"/warehouse\"].active')"));
@@ -266,7 +378,7 @@ const QRCode = require("qrcode");
              permissions = [`operate_${stage}`, "view_production"];
              roleMetadata = { production_role_binding: { mode: "operator", stages: [stage] } };
              await navigate(`/production/${stage}`);
-             check(`${lang} ${width}: ${stage} retains one stage tab`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), [`/production/${stage}`]);
+             check(`${lang} ${width}: ${stage} retains its stage and associated tools`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), stagePaths(stage));
              check(`${lang} ${width}: ${stage} does not gain warehouse entry`, await evaluate("!document.querySelector('.sidebar .nav a[href=\"/warehouse\"]')"));
              const before = stateScopes.length;
              await navigate("/warehouse/hall");
@@ -309,7 +421,7 @@ const QRCode = require("qrcode");
              check(`${label}: top controls fit viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
              check(`${label}: touch controls are usable`, await evaluate("[...document.querySelectorAll('.prod-heading button')].every(node=>node.getBoundingClientRect().height>=43.99)"));
              check(`${label}: actual operator is not read-only`, await evaluate("!document.querySelector('.production-app').innerText.includes('Read-only')&&!document.querySelector('.production-app').innerText.includes('عرض فقط')"));
-             check(`${label}: operator still has only one tab`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), 1);
+             check(`${label}: operator has only its stage and associated tools`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), stage === "film" ? 2 : 1);
              if (stage === "film") {
                await setInput('[data-production-order-id="2"] .film-weight-field input', "12.5");
                check(`${label}: roll recording is enabled`, await evaluate("!document.querySelector('[data-production-order-id=\"2\"] .film-roll-entry button').disabled"));
@@ -359,7 +471,7 @@ const QRCode = require("qrcode");
              const label = `${lang} ${width} actual ${fixture.stage} role`;
              await navigate("/production");
              check(`${label}: opens the actual role's board`, await evaluate("location.pathname"), `/production/${fixture.stage}`);
-             check(`${label}: one matching tab only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), [`/production/${fixture.stage}`]);
+             check(`${label}: matching stage and associated tools only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), stagePaths(fixture.stage));
              check(`${label}: production entry is visible in sidebar`, await evaluate("!!document.querySelector('.sidebar a[href=\"/production\"]')"));
              check(`${label}: has no management shortcut`, await evaluate("document.querySelectorAll('.prod-actions a').length"), 0);
              check(`${label}: page fits viewport`, await evaluate("document.documentElement.scrollWidth <= innerWidth + 1"));
@@ -381,7 +493,7 @@ const QRCode = require("qrcode");
              await navigate("/production");
              await wait(`location.pathname === '/production/${stage}'`);
              check(`${label}: opens own board automatically`, await evaluate("location.pathname"), `/production/${stage}`);
-             check(`${label}: own stage is the only tab`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), [`/production/${stage}`]);
+             check(`${label}: own stage and associated tools only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), stagePaths(stage));
              check(`${label}: no general management shortcut`, await evaluate("document.querySelectorAll('.prod-actions a').length"), 0);
              check(`${label}: current tab is selected`, await evaluate("document.querySelector('.prod-view-nav a').getAttribute('aria-current')"), "page");
              check(`${label}: navigation fits viewport`, await evaluate("document.documentElement.scrollWidth <= innerWidth + 1"));
@@ -402,7 +514,7 @@ const QRCode = require("qrcode");
              permissions = grants;
              await navigate("/production");
              check(`${lang} ${width}: management navigation unchanged for ${grants}`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"),
-               ["/production", "/production/film", "/production/printing", "/production/cutting"]);
+               ["/production", "/production/film", "/production/printing", "/production/cutting", "/production/mixing"]);
            }
          }
        }
