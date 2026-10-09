@@ -49,7 +49,7 @@ describe("production operator tab boundaries", () => {
       permissions: ["view_home", "view_user_dashboard", "view_printing_dashboard"] },
     { stage: "cutting", role_name: "Cutting Operator", role_name_ar: "مشغل تقطيع",
       permissions: ["view_home", "view_user_dashboard", "view_cutting_dashboard"] },
-  ] as const)("uses the actual $stage role's dashboard grants, not imaginary operate grants", fixture => {
+  ] as const)("keeps legacy $stage read-only operator roles stage-specific", fixture => {
     const account: ProductionUser = { ...fixture, id: 7, permissions: [...fixture.permissions] };
     expect(tabs(account)).toEqual([fixture.stage]);
     expect(initialProductionPath(account)).toBe(`/production/${fixture.stage}`);

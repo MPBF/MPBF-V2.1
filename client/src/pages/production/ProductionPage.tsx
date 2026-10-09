@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, ChevronRight, Factory, Plus, RefreshCw, Settings2, X } from "lucide-react";
 import { Link } from "wouter";
@@ -85,9 +86,15 @@ function useProductionState(allowed: boolean, view: ProductionView) {
   return { state: allowed && snapshot?.view === view ? snapshot.state : null, loading, error, reload: load };
 }
 
-function Header({ view, language }: { view: ProductionView; language: string }) {
-  return <header className="prod-heading">
-    <div><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{text(view, language)}</h2><p>{view === "management" ? text("intro", language) : text("title", language)}</p></div>
+function Header({ view, language, refreshing, onRefresh, machineSlotRef, children }: { view: ProductionView; language: string; refreshing: boolean; onRefresh: () => void; machineSlotRef: (node: HTMLDivElement | null) => void; children?: ReactNode }) {
+  const isOperatorView = view === "film" || view === "printing" || view === "cutting";
+  return <header className={`prod-heading${isOperatorView ? " operator-header" : ""}`}>
+    <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{text(view, language)}</h2><p>{view === "management" ? text("intro", language) : text("title", language)}</p></div>
+    <div className="prod-heading-controls">
+      <button className="prod-btn quiet prod-header-refresh" data-production-header-refresh onClick={onRefresh} disabled={refreshing}><RefreshCw />{text("reload", language)}</button>
+      {children}
+      <div className="prod-header-machine-slot" data-production-machine-slot ref={machineSlotRef} />
+    </div>
     <div className="prod-mark"><i aria-hidden="true" /><span>ROLL<br />TRACE / 01</span></div>
   </header>;
 }
@@ -280,7 +287,7 @@ function MachinePicker({ userId, stage, machines, language, selected, onSelect }
   return <div className="prod-field"><label htmlFor={`machine-${stage}`}>{text("chooseMachine",language)}</label><select id={`machine-${stage}`} value={selected} onChange={event=>select(event.target.value)}>{machines.map(machine=><option key={machine.id} value={machine.id}>{machineName(machine,language)} · {machine.id}</option>)}</select></div>;
 }
 
-function OperatorBoard({ state,user,stage,language,reload }: {state:ProductionState;user:ProductionUser;stage:ProductionStage;language:string;reload:()=>Promise<void>}) {
+function OperatorBoard({ state,user,stage,language,reload,machineSlot }: {state:ProductionState;user:ProductionUser;stage:ProductionStage;language:string;reload:()=>Promise<void>;machineSlot:HTMLDivElement|null}) {
   const permission = stage === "film" ? "operate_film" : stage === "printing" ? "operate_printing" : "operate_cutting";
   const canOperate = hasProductionPermission(user,permission);
   const write=useWrite(reload,language);
@@ -339,7 +346,7 @@ function OperatorBoard({ state,user,stage,language,reload }: {state:ProductionSt
   const machinePicker=<MachinePicker userId={user.id} stage={stage} machines={machines} language={language} selected={selectedMachine} onSelect={setSelectedMachine}/>;
   return <>
     {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
-    <Card title={text("machine",language)}>{machinePicker}</Card>
+    {machineSlot&&createPortal(machinePicker,machineSlot)}
     {!canOperate&&<div className="prod-callout" style={{marginTop:14}}>{text("readonly",language)}</div>}
     {stage==="film" ? <FilmOperatorOrders
       orders={[...orders,...readyFilmOrders].sort((a,b)=>priority(a.id)-priority(b.id)||a.id-b.id)}
@@ -500,26 +507,25 @@ function RollDetail({rollId,user,language,state}:{rollId:string;user:ProductionU
 export default function ProductionPage({user,view,rollId}:ProductionPageProps) {
   const {i18n}=useTranslation();
   const language=i18n.language==="en"?"en":"ar";
+  const [machineSlot,setMachineSlot]=useState<HTMLDivElement|null>(null);
   const allowed = canOpenProductionView(user, view);
   const visibleViews = availableProductionViews(user);
   const data=useProductionState(allowed,view);
   const state=data.state;
   return <section className="production production-app">
-    <Header view={view} language={language}/>
+    <Header view={view} language={language} refreshing={data.loading} onRefresh={()=>void data.reload()} machineSlotRef={setMachineSlot}>
+      {view!=="management"&&canOpenProductionView(user,"management")&&<Link className="prod-btn secondary" href="/production"><ChevronRight/>{text("goManagement",language)}</Link>}
+    </Header>
     <nav className="prod-view-nav" aria-label={text("title",language)}>
       {visibleViews.map(({view: destination,href})=>
         <Link key={destination} href={href} className={`prod-btn ${view===destination?"":"secondary"}`} aria-current={view===destination?"page":undefined}>{text(destination,language)}</Link>
       )}
     </nav>
-    <div className="prod-actions" style={{marginBottom:15}}>
-      <button className="prod-btn quiet" onClick={()=>void data.reload()} disabled={data.loading}><RefreshCw/>{text("reload",language)}</button>
-      {view!=="management"&&canOpenProductionView(user,"management")&&<Link className="prod-btn secondary" href="/production"><ChevronRight/>{text("goManagement",language)}</Link>}
-    </div>
       {!allowed?<Empty title={text("permission",language)}/>:view==="roll"?<>{data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}<RollDetail rollId={rollId??""} user={user} language={language} state={state}/></>:data.loading&&!state?<Loading language={language}/>:data.error&&!state?<ErrorBanner message={data.error||text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:!state?<ErrorBanner message={text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:
       <>
         {data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}
         {view==="management"&&<Management state={state} user={user} language={language} reload={data.reload}/>}
-        {(view==="film"||view==="printing"||view==="cutting")&&<OperatorBoard state={state} user={user} stage={view} language={language} reload={data.reload}/>}
+        {(view==="film"||view==="printing"||view==="cutting")&&<OperatorBoard state={state} user={user} stage={view} language={language} reload={data.reload} machineSlot={machineSlot}/>}
         {view==="hall"&&<HallView state={state} user={user} language={language} reload={data.reload}/>}
         {view==="warehouse"&&<Warehouse state={state} user={user} language={language} reload={data.reload}/>}
         <RollLabelControls refresh={state} language={language} />

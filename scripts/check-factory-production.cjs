@@ -19,6 +19,7 @@ const QRCode = require("qrcode");
   const filmReadyOnly = process.argv.includes("--film-ready-only");
    const operatorLayoutOnly = process.argv.includes("--operator-layout-only");
   const operatorNavigationOnly = process.argv.includes("--operator-navigation-only");
+  const compactControlsOnly = process.argv.includes("--compact-controls-only");
   let roleMetadata = {};
   let failStart = false;
   const pending = new Map(), errors = [], writes = [], committed = new Map(), historyCalls = [], stateScopes = [];
@@ -220,15 +221,73 @@ const QRCode = require("qrcode");
       await evaluate(`(()=>{const button=document.querySelector('[data-operator-order-id="${id}"]');if(!button)throw Error('Missing operator group ${id}');if(button.getAttribute('aria-expanded')!=='true')button.click()})()`);
       await wait(`document.querySelector('[data-operator-order-id="${id}"]').getAttribute('aria-expanded')==='true'`);
     };
+     if (compactControlsOnly) {
+       await navigate("/production/film");
+       for (const lang of ["ar", "en"]) {
+         language = lang;
+         for (const width of [320, 390, 430, 768, 1440]) {
+           await send("Emulation.setDeviceMetricsOverride", { width, height: 950, deviceScaleFactor: 1, mobile: width < 500 });
+           for (const stage of ["film", "printing", "cutting"]) {
+             permissions = stage === "film"
+               ? ["view_home", "view_user_dashboard", "view_film_dashboard", "view_mixing", "view_production", "operate_film"]
+               : ["view_home", "view_user_dashboard", `view_${stage}_dashboard`, `operate_${stage}`];
+             roleMetadata = { role_name: stage === "film" ? "Extruder Operator" : stage === "printing" ? "Printing Operator" : "Cutting Operator" };
+             const label = `${lang} ${width} ${stage}`;
+             await evaluate(`localStorage.removeItem('mpbf-production-machine:42:${stage}')`);
+             await navigate(`/production/${stage}`);
+             await wait("!!document.querySelector('[data-production-machine-slot] .prod-chip')");
+             check(`${label}: one refresh in header`, await evaluate("document.querySelectorAll('[data-production-header-refresh]').length"), 1);
+             check(`${label}: refresh is beside title`, await evaluate("(()=>{const a=document.querySelector('.prod-heading h2').getBoundingClientRect(),b=document.querySelector('[data-production-header-refresh]').getBoundingClientRect();return Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>0})()"));
+             check(`${label}: one top machine control`, await evaluate("document.querySelectorAll('[data-production-machine-slot] .prod-inline').length"), 1);
+             check(`${label}: machine card removed`, await evaluate("![...document.querySelectorAll('.prod-card h3')].some(node=>node.innerText==='Machine'||node.innerText==='الماكينة')"));
+             check(`${label}: machine choice is above tabs/orders`, await evaluate("document.querySelector('[data-production-machine-slot]').getBoundingClientRect().bottom<=document.querySelector('.prod-view-nav').getBoundingClientRect().top+1"));
+             check(`${label}: top controls fit viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+             check(`${label}: touch controls are usable`, await evaluate("[...document.querySelectorAll('.prod-heading button')].every(node=>node.getBoundingClientRect().height>=43.99)"));
+             check(`${label}: actual operator is not read-only`, await evaluate("!document.querySelector('.production-app').innerText.includes('Read-only')&&!document.querySelector('.production-app').innerText.includes('عرض فقط')"));
+             check(`${label}: operator still has only one tab`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), 1);
+             if (stage === "film") {
+               await setInput('[data-production-order-id="2"] .film-weight-field input', "12.5");
+               check(`${label}: roll recording is enabled`, await evaluate("!document.querySelector('[data-production-order-id=\"2\"] .film-roll-entry button').disabled"));
+             }
+             const before = stateScopes.length;
+             await evaluate("document.querySelector('[data-production-header-refresh]').click()");
+             for (let attempt = 0; attempt < 100 && stateScopes.length === before; attempt++) await new Promise(resolve => setTimeout(resolve, 25));
+             await wait("!document.querySelector('[data-production-header-refresh]').disabled");
+             check(`${label}: refresh requests fresh stage data`, stateScopes.length, before + 1);
+             if (stage === "film") check(`${label}: refreshing preserves draft weight`, await evaluate("document.querySelector('[data-production-order-id=\"2\"] .film-weight-field input').value"), "12.5");
+             await evaluate("document.querySelector('[data-production-machine-slot] button').click()");
+             await wait(`!!document.querySelector('#machine-${stage}')`);
+             check(`${label}: only one editable machine select`, await evaluate(`document.querySelectorAll('#machine-${stage}').length`), 1);
+             check(`${label}: machine editor also fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+             const selection = stage === "film" ? "F2" : stage === "printing" ? "P1" : "C1";
+             await setInput(`#machine-${stage}`, selection);
+             await wait(`!document.querySelector('#machine-${stage}')`);
+             check(`${label}: selection saves immediately`, await evaluate(`localStorage.getItem('mpbf-production-machine:42:${stage}')`), selection);
+             check(`${label}: change remains available at top`, await evaluate("!!document.querySelector('[data-production-machine-slot] button')"));
+             await navigate(`/production/${stage}`);
+             await wait("!!document.querySelector('[data-production-machine-slot] .prod-chip')");
+             check(`${label}: selected machine persists after reload`, await evaluate("document.querySelector('[data-production-machine-slot] .prod-chip').innerText.includes(" + jsLiteral(selection) + ")"));
+             if (lang === "ar" && [390, 1440].includes(width) && stage === "film") {
+               const image = await send("Page.captureScreenshot", { format: "png" });
+               await fs.writeFile(`/tmp/production-compact-${width}.png`, Buffer.from(image.data, "base64"));
+             }
+           }
+         }
+       }
+       check("compact controls never write actual business data", writes, []);
+       check("compact controls have no runtime exceptions", errors, []);
+       console.log(`Verified ${passed} compact-control browser assertions with isolated API fixtures.`);
+       return;
+     }
      if (operatorNavigationOnly) {
        for (const lang of ["ar", "en"]) {
          language = lang;
          for (const width of [390, 768, 1440]) {
            await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
            for (const fixture of [
-             { stage: "film", role_name: "Extruder Operator", role_name_ar: "مشغل فيلم", permissions: ["view_home", "view_user_dashboard", "view_film_dashboard", "view_mixing", "view_production"] },
-             { stage: "printing", role_name: "Printing Operator", role_name_ar: "مشغل طباعة", permissions: ["view_home", "view_user_dashboard", "view_printing_dashboard"] },
-             { stage: "cutting", role_name: "Cutting Operator", role_name_ar: "مشغل تقطيع", permissions: ["view_home", "view_user_dashboard", "view_cutting_dashboard"] },
+             { stage: "film", role_name: "Extruder Operator", role_name_ar: "مشغل فيلم", permissions: ["view_home", "view_user_dashboard", "view_film_dashboard", "view_mixing", "view_production", "operate_film"] },
+             { stage: "printing", role_name: "Printing Operator", role_name_ar: "مشغل طباعة", permissions: ["view_home", "view_user_dashboard", "view_printing_dashboard", "operate_printing"] },
+             { stage: "cutting", role_name: "Cutting Operator", role_name_ar: "مشغل تقطيع", permissions: ["view_home", "view_user_dashboard", "view_cutting_dashboard", "operate_cutting"] },
            ]) {
              roleMetadata = { role_name: fixture.role_name, role_name_ar: fixture.role_name_ar };
              permissions = fixture.permissions;
