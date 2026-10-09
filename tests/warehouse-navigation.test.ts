@@ -6,9 +6,9 @@ const user = (...permissions: string[]): ProductionUser => ({ id: 7, permissions
 const tabs = (account: ProductionUser) => availableWarehouseViews(account).map(tab => tab.view);
 
 describe("separate warehouse navigation with existing access boundaries", () => {
-  it("gives administrators four production tabs and two warehouse tabs", () => {
-    expect(availableProductionViews(user("admin")).map(tab => tab.view)).toEqual(["management", "film", "printing", "cutting"]);
-    expect(tabs(user("admin"))).toEqual(["hall", "warehouse"]);
+  it("gives administrators production/mixing and finished/raw warehouse tabs", () => {
+    expect(availableProductionViews(user("admin")).map(tab => tab.view)).toEqual(["management", "film", "printing", "cutting", "mixing"]);
+    expect(tabs(user("admin"))).toEqual(["hall", "warehouse", "raw"]);
     expect(initialWarehousePath(user("admin"))).toBe("/warehouse/hall");
   });
   it.each([
@@ -41,7 +41,7 @@ describe("separate warehouse navigation with existing access boundaries", () => 
   it("does not suppress explicitly granted warehouse access for stage-bound operators", () => {
     const account = { ...user("view_production", "view_film_dashboard", "operate_film", "receive_production"),
       production_role_binding: { mode: "operator", stages: ["film"] } } as ProductionUser;
-    expect(availableProductionViews(account).map(tab => tab.view)).toEqual(["film"]);
+    expect(availableProductionViews(account).map(tab => tab.view)).toEqual(["film", "mixing"]);
     expect(tabs(account)).toEqual(["hall", "warehouse"]);
   });
   it("shows neither module to an unrelated role", () => {

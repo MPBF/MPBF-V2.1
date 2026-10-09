@@ -8,6 +8,7 @@ import { ProductionError, type ConnectionPool } from "./core";
 import { ProductionExecutionService } from "./execution";
 import { ProductionWarehouseService } from "./warehouse";
 import { ProductionReadService } from "./read";
+import { RawMixingService } from "./mixing";
 
 const request = z.object({ request_id: z.string().uuid() }).strict();
 const id = z.coerce.number().int().positive().max(2147483647);
@@ -45,6 +46,28 @@ router.use(requireAuth);
 const execution = new ProductionExecutionService(connectionPool);
 const warehouse = new ProductionWarehouseService(connectionPool);
 const read = new ProductionReadService(connectionPool);
+const mixing = new RawMixingService(connectionPool);
+router.get("/mixing", handler(async (req, res) => {
+  const { before } = z.object({ before: id.optional() }).strict().parse(req.query);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await mixing.state(req.user!, before));
+}));
+router.post("/mixing", handler(async (req, res) => {
+  const input = request.extend({
+    machine_id: machine, notes: safeText(2000).optional(),
+    items: z.array(z.object({ material_id: id, quantity_kg: weight }).strict()).min(1).max(100)
+      .refine(items => new Set(items.map(i => i.material_id)).size === items.length),
+  }).parse(req.body);
+  res.json(await mixing.record(req.user!, input));
+}));
+router.post("/raw-materials", handler(async (req, res) => {
+  const nonempty = (max: number) => safeText(max).refine(v => v.length > 0);
+  const input = request.extend({
+    code: nonempty(40), name: nonempty(120), name_ar: nonempty(120),
+    opening_kg: z.string().regex(weightPattern).refine(v => weightPattern.test(v) && kgHundredths(v) >= 0n),
+  }).parse(req.body);
+  res.json(await mixing.createMaterial(req.user!, input));
+}));
 router.get("/state", handler(async (req, res) => {
   const scope = z.enum(["management", "film", "printing", "cutting", "hall", "warehouse", "roll"]).default("management").parse(req.query.scope);
   res.setHeader("Cache-Control", "private, no-store");

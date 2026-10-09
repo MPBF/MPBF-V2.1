@@ -5,6 +5,12 @@ export type ProductionRollLabel = {
   roll: ProductionRollRecord;
   qr: { url: string; image: string };
 };
+export class ProductionRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+/** These responses confirm that the transaction was rejected, not uncertain. */
+export const confirmedProductionRejection = (cause: unknown) =>
+  cause instanceof ProductionRequestError && [400,403,404,409,422].includes(cause.status);
 
 export async function productionRequest<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
   let response: Response;
@@ -17,7 +23,7 @@ export async function productionRequest<T>(path: string, body?: unknown, method 
     throw new Error(i18n.language === "en" ? "Connection interrupted. Retry the same operation; do not enter it again." : "انقطع الاتصال. أعد محاولة العملية نفسها؛ لا تسجلها من جديد.");
   }
   const data = await response.json();
-  if (!response.ok) throw new Error(i18n.language === "en" ? data.message_en || "The operation could not be completed." : data.message || "تعذر إكمال العملية.");
+  if (!response.ok) throw new ProductionRequestError(i18n.language === "en" ? data.message_en || "The operation could not be completed." : data.message || "تعذر إكمال العملية.", response.status);
   return data;
 }
 export const productionApi = {

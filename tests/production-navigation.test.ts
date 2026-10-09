@@ -47,7 +47,7 @@ describe("production operator tab boundaries", () =>
     const account = user(`operate_${stage}`, "view_production", "view_production_hall", "receive_production", "view_finished_inventory")
 ;
 
-    expect(tabs(account)).toEqual([stage])
+    expect(tabs(account)).toEqual(stage === "film" ? ["film", "mixing"] : [stage])
 ;
 
     expect(initialProductionPath(account)).toBe(`/production/${stage}`)
@@ -76,7 +76,7 @@ describe("production operator tab boundaries", () =>
     const account = user(`operate_${stage}`)
 ;
 
-    expect(tabs(account)).toEqual([stage])
+    expect(tabs(account)).toEqual(stage === "film" ? ["film", "mixing"] : [stage])
 ;
 
     expect(initialProductionPath(account)).toBe(`/production/${stage}`)
@@ -113,7 +113,7 @@ describe("production operator tab boundaries", () =>
     const account = user("admin", "operate_film")
 ;
 
-    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting"])
+    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting", "mixing"])
 ;
 
     expect(initialProductionPath(account)).toBe("/production")
@@ -130,7 +130,7 @@ describe("production operator tab boundaries", () =>
     const account = user("manage_production", "operate_film")
 ;
 
-    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting"])
+    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting", "mixing"])
 ;
 
     expect(initialProductionPath(account)).toBe("/production")
@@ -194,7 +194,7 @@ describe("production operator tab boundaries", () =>
 }
 ;
 
-    expect(tabs(account)).toEqual([fixture.stage])
+    expect(tabs(account)).toEqual(fixture.stage === "film" ? ["film", "mixing"] : [fixture.stage])
 ;
 
     expect(initialProductionPath(account)).toBe(`/production/${fixture.stage}`)

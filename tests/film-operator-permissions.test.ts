@@ -10,9 +10,9 @@ const filmOperator: ProductionUser = {
 const request = { request_id: "e67471a0-b01c-4d05-8f23-50814d850032" };
 
 describe("full film operator authority without other stage grants", () => {
-  it("enables film operation and only the film tab", () => {
+  it("enables film operation and its actual-material mixing tab", () => {
     expect(hasProductionPermission(filmOperator, "operate_film")).toBe(true);
-    expect(availableProductionViews(filmOperator).map(tab => tab.view)).toEqual(["film"]);
+    expect(availableProductionViews(filmOperator).map(tab => tab.view)).toEqual(["film", "mixing"]);
     for (const key of ["admin", "manage_production", "operate_printing", "operate_cutting", "receive_production"]) {
       expect(hasProductionPermission(filmOperator, key)).toBe(false);
     }
