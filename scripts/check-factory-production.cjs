@@ -23,6 +23,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const compactControlsOnly = process.argv.includes("--compact-controls-only");
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
   const rawMixingOnly = process.argv.includes("--raw-mixing-only");
+  const receiptVoucherOnly = process.argv.includes("--receipt-voucher-only");
   let rejectMix = false;
   const rawState = {
     materials: [
@@ -178,7 +179,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             }
             if(status===200){
               if (!["/production/mixing","/production/raw-materials/movements"].includes(route))
-                body={id:99+committed.size,voucher_number:"FR-00000099",items:input.items||[]};
+                body={id:99+committed.size,voucher_number:"FR-00000099",created_at:"2026-10-10T08:30:00Z",created_by:42,items:input.items||[]};
               committed.set(input.request_id,{route,input:structuredClone(input),body});
             }
           }
@@ -271,6 +272,77 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       await evaluate(`(()=>{const button=document.querySelector('[data-operator-order-id="${id}"]');if(!button)throw Error('Missing operator group ${id}');if(button.getAttribute('aria-expanded')!=='true')button.click()})()`);
       await wait(`document.querySelector('[data-operator-order-id="${id}"]').getAttribute('aria-expanded')==='true'`);
     };
+    if (receiptVoucherOnly) {
+      permissions=["receive_production"];
+      const openReceipt=async()=>{
+        await evaluate("document.querySelector('[data-receipt-launcher]').focus();document.querySelector('[data-receipt-launcher]').click()");
+        await wait("!!document.querySelector('[data-receipt-voucher]')");
+      };
+      for (const lang of ["ar","en"]) {
+        language=lang;
+        for (const width of [390,768,1440]) {
+          await send("Emulation.setDeviceMetricsOverride",{width,height:844,deviceScaleFactor:1,mobile:width===390});
+          await navigate("/warehouse/hall");
+          check(`${lang} ${width} receipt initially collapsed`,await evaluate("!document.querySelector('[data-receipt-voucher]')"));
+          await openReceipt();
+          check(`${lang} ${width} accessible voucher`,await evaluate("document.querySelector('[data-receipt-voucher]').getAttribute('aria-modal')"),"true");
+          check(`${lang} ${width} receipt fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1 && document.querySelector('[data-receipt-voucher]').getBoundingClientRect().width<=innerWidth"));
+          check(`${lang} ${width} correct language direction`,await evaluate("document.querySelector('[data-receipt-voucher]').dir"),lang==="ar"?"rtl":"ltr");
+          check(`${lang} ${width} source and destination`,await evaluate(`document.querySelector('[data-receipt-voucher]').innerText.includes(${jsLiteral(lang==="ar"?"صالة الإنتاج":"Production hall")})&&document.querySelector('[data-receipt-voucher]').innerText.includes(${jsLiteral(lang==="ar"?"المواد التامة":"Finished goods")})`));
+          await setInput("#receipt-order-0","4");
+          await setInput("#receipt-location-0","1");
+          await setInput("#receipt-quantity-0","2.50");
+          await setInput("#receipt-notes","Retained voucher draft");
+          check(`${lang} ${width} correct voucher total`,await evaluate("Number(document.querySelector('[data-receipt-total]').dataset.receiptTotal)"),2.5);
+          check(`${lang} ${width} selected predefined product and customer`,await evaluate("document.querySelector('#receipt-order-0').selectedOptions[0].textContent.includes('PO-4')"));
+          await evaluate("document.querySelector('.receipt-voucher-close').focus()");
+          await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Tab",code:"Tab",windowsVirtualKeyCode:9,modifiers:8});
+          await send("Input.dispatchKeyEvent",{type:"keyUp",key:"Tab",code:"Tab",windowsVirtualKeyCode:9,modifiers:8});
+          check(`${lang} ${width} focus stays inside voucher`,await evaluate("document.querySelector('[data-receipt-voucher]').contains(document.activeElement)"));
+          await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Escape",code:"Escape",windowsVirtualKeyCode:27});
+          await wait("!document.querySelector('[data-receipt-voucher]')");
+          check(`${lang} ${width} closing restores launcher focus`,await evaluate("document.activeElement.matches('[data-receipt-launcher]')"));
+          await openReceipt();
+          check(`${lang} ${width} closing preserves unsaved draft`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-notes').value]"),["2.50","Retained voucher draft"]);
+          if(lang==="ar"&&width===390){
+            const shot=await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});
+            await fs.writeFile("/tmp/receipt-voucher-phone.png",Buffer.from(shot.data,"base64"));
+          }
+        }
+      }
+      language="en";await navigate("/warehouse/hall");await openReceipt();
+      await setInput("#receipt-order-0","4");await setInput("#receipt-location-0","1");
+      await setInput("#receipt-quantity-0","7.01");
+      check("over-available quantity invalid",await evaluate("!document.querySelector('#receipt-quantity-0').validity.valid"));
+      await setInput("#receipt-quantity-0","4.00");
+      await clickText("Add order line");
+      const beforeInvalid=writes.length;
+      await clickText("Save receipt voucher");
+      check("incomplete line is not silently dropped",writes.length,beforeInvalid);
+      await setInput("#receipt-order-1","4");await setInput("#receipt-location-1","1");await setInput("#receipt-quantity-1","4.00");
+      await clickText("Save receipt voucher");
+      await wait("!!document.querySelector('.receipt-voucher-error')");
+      check("aggregate same-order over-receipt is blocked",writes.length,beforeInvalid);
+      await evaluate("document.querySelector('[aria-label=\"Remove line 2\"]').click()");
+      await setInput("#receipt-quantity-0","0.10");await setInput("#receipt-notes","Fixture voucher retry");
+      failWrite=true;await clickText("Save receipt voucher");
+      await wait("!!document.querySelector('.receipt-voucher-error')");
+      check("lost response preserves receipt draft",await evaluate("document.querySelector('#receipt-quantity-0').value"),"0.10");
+      await clickText("Retry same operation");
+      await wait("!!document.querySelector('[data-receipt-saved]')");
+      const receiptWrites=writes.filter(write=>write.route==="/production/receipts");
+      check("retry uses identical receipt request",receiptWrites[0].input,receiptWrites[1].input);
+      check("retry commits only one voucher",[...committed.values()].filter(write=>write.route==="/production/receipts").length,1);
+      check("saved voucher number comes from server",await evaluate("document.querySelector('[data-receipt-voucher-number]').textContent"),"FR-00000099");
+      check("saved voucher timestamp comes from server",await evaluate("document.querySelector('[data-receipt-created-at]').dataset.receiptCreatedAt"),"2026-10-10T08:30:00Z");
+      check("success clears submitted draft",await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-notes').value]"),["","",""]);
+      await setInput("#receipt-notes","New unsaved voucher");
+      check("new draft does not inherit previous voucher identity",await evaluate("!document.querySelector('[data-receipt-saved]')"));
+      permissions=["view_production_hall"];await navigate("/warehouse/hall");
+      check("read-only hall cannot open receipt",await evaluate("!document.querySelector('[data-receipt-launcher]')&&!document.querySelector('[data-receipt-voucher]')"));
+      check("no receipt runtime exceptions",errors,[]);
+      console.log(`Verified ${passed} receipt-voucher browser assertions with isolated API fixtures.`);return;
+    }
      if (rawMixingOnly) {
        const submitRaw = () => evaluate("document.querySelector('.raw-ops form').requestSubmit()");
        const waitMix = () => wait("document.querySelector('#mix-machine option[value=\"F1\"]') && document.querySelector('#mix-material-0 option[value=\"1\"]')");
@@ -931,10 +1003,12 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     await navigate("/production");
     await wait("location.pathname==='/warehouse/hall'");
     check("receiver-only navigation opens hall", await evaluate("location.pathname"), "/warehouse/hall");
+    await evaluate("document.querySelector('[data-receipt-launcher]').click()");
+    await wait("!!document.querySelector('[data-receipt-voucher]')");
     await setInput("#receipt-order-0","4"); await setInput("#receipt-location-0","1"); await setInput("#receipt-quantity-0","0.10");
     check("exact remaining 0.10 kg is accepted without floating subtraction", await evaluate("document.querySelector('#receipt-quantity-0').validity.valid"));
     await setInput("#receipt-notes","Fixture recovery note");failWrite=true;
-    await clickText("Save receipt");await wait("!!document.querySelector('.prod-error')");
+    await clickText("Save receipt voucher");await wait("!!document.querySelector('.prod-error')");
     const receiptKey=writes.at(-1).input.request_id;
     check("uncertain receipt retains its quantity",await evaluate("document.querySelector('#receipt-quantity-0').value"),"0.10");
     await clickText("Retry"); await wait("!!document.querySelector('.prod-success')");
@@ -942,11 +1016,11 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     check("receipt retry reuses its operation UUID",writes.at(-1).input.request_id,receiptKey);
     check("receipt recovery clears submitted items and notes",await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-notes').value]"),["","",""]);
     check("lost receipt response creates one partial receipt", [...committed.values()].filter(v=>v.route==="/production/receipts").length,1);
-    const beforeEmptyReceipt=writes.length;await clickText("Save receipt");
+    const beforeEmptyReceipt=writes.length;await clickText("Save receipt voucher");
     check("empty recovered receipt cannot submit again",writes.length,beforeEmptyReceipt);
     permissions = ["view_production_hall"];
     await navigate("/production/hall");
-    check("hall viewer cannot save receipt", await evaluate("![...document.querySelectorAll('.production-app button')].some(b=>b.textContent.trim()==='Save receipt')"));
+    check("hall viewer cannot save receipt", await evaluate("!document.querySelector('[data-receipt-launcher]')"));
     permissions = ["view_production"];
     failure = true;
     await navigate("/production"); await wait("!!document.querySelector('.prod-error')");

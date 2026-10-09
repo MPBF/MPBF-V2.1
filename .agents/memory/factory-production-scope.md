@@ -106,6 +106,14 @@ immediately, including incomplete production orders. The raw hall has separate
 Industrial hardware integration, automatic scheduling and public roll
 sharing still require separate approval.
 
+The production-hall receipt form should open as a formal finished-goods
+receipt voucher through a button, rather than remaining expanded in the hall.
+
+**Why:** the user selected «زر يفتح سند الاستلام في نافذة (موصى به)».
+
+**How to apply:** preserve partial receiving and existing stock safeguards;
+closing the window must not itself submit or discard the draft.
+
 Order release is a focused transition to ready for production, not a general
 status editor or automatic manufacturing start.
 
