@@ -81,6 +81,14 @@ raw balances so stock constraints do not prevent recording mixes.
 
 **How to apply:** do not block mixing for insufficient raw stock; do not
 infer that finished-goods or delivery balances may also become negative.
+Mixing directly deducts raw inventory without creating a raw issue voucher
+or a corresponding production-hall receipt voucher.
+
+**Why:** the user explicitly corrected the design: «لا يحتاج ربط الخلطة
+بسند صرف خام وسند إدخال مقابل».
+
+**How to apply:** retain the mixing record as the traceable source of its
+stock deduction; keep independent hall vouchers separate from mixing.
 Industrial hardware integration, automatic scheduling and public roll
 sharing still require separate approval.
 
