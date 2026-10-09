@@ -19,6 +19,7 @@ const QRCode = require("qrcode");
   const filmReadyOnly = process.argv.includes("--film-ready-only");
    const operatorLayoutOnly = process.argv.includes("--operator-layout-only");
   const operatorNavigationOnly = process.argv.includes("--operator-navigation-only");
+  let roleMetadata = {};
   let failStart = false;
   const pending = new Map(), errors = [], writes = [], committed = new Map(), historyCalls = [], stateScopes = [];
   const check = (name, actual, expected = true) => { assert.deepEqual(actual, expected, name); console.log(`PASS ${name}`); passed++; };
@@ -102,7 +103,7 @@ const QRCode = require("qrcode");
         const { request, requestId } = event.params;
         const route = new URL(request.url).pathname.replace(/^\/api/, "");
         let body = [], status = 200;
-        if (route === "/me") body = { user: { id: 42, username: "fixture", display_name: "Fixture user", display_name_ar: "مستخدم الاختبار", permissions, preferred_language: language } };
+        if (route === "/me") body = { user: { id: 42, username: "fixture", display_name: "Fixture user", display_name_ar: "مستخدم الاختبار", permissions, preferred_language: language, ...roleMetadata } };
         else if (route === "/public-branding") body = { companyNameEn: "MPBF Factory", companyNameAr: "مصنع MPBF", logoSrc: null };
         else if (request.method !== "GET") {
           const input = JSON.parse(request.postData || "{}");
@@ -224,6 +225,32 @@ const QRCode = require("qrcode");
          language = lang;
          for (const width of [390, 768, 1440]) {
            await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+           for (const fixture of [
+             { stage: "film", role_name: "Extruder Operator", role_name_ar: "مشغل فيلم", permissions: ["view_home", "view_user_dashboard", "view_film_dashboard", "view_mixing", "view_production"] },
+             { stage: "printing", role_name: "Printing Operator", role_name_ar: "مشغل طباعة", permissions: ["view_home", "view_user_dashboard", "view_printing_dashboard"] },
+             { stage: "cutting", role_name: "Cutting Operator", role_name_ar: "مشغل تقطيع", permissions: ["view_home", "view_user_dashboard", "view_cutting_dashboard"] },
+           ]) {
+             roleMetadata = { role_name: fixture.role_name, role_name_ar: fixture.role_name_ar };
+             permissions = fixture.permissions;
+             const label = `${lang} ${width} actual ${fixture.stage} role`;
+             await navigate("/production");
+             check(`${label}: opens the actual role's board`, await evaluate("location.pathname"), `/production/${fixture.stage}`);
+             check(`${label}: one matching tab only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"), [`/production/${fixture.stage}`]);
+             check(`${label}: production entry is visible in sidebar`, await evaluate("!!document.querySelector('.sidebar a[href=\"/production\"]')"));
+             check(`${label}: has no management shortcut`, await evaluate("document.querySelectorAll('.prod-actions a').length"), 0);
+             check(`${label}: page fits viewport`, await evaluate("document.documentElement.scrollWidth <= innerWidth + 1"));
+             for (const forbidden of ["film", "printing", "cutting"].filter(stage => stage !== fixture.stage)) {
+               const before = stateScopes.length;
+               await navigate(`/production/${forbidden}`);
+               check(`${label}: direct ${forbidden} is denied`, await evaluate(`document.querySelector('.production-app').innerText.includes(${jsLiteral(lang === "ar" ? "لا تتوفر صلاحية لهذا العرض." : "You do not have permission to view this page.")})`));
+               check(`${label}: denied page fetches no production data`, stateScopes.length, before);
+             }
+           }
+           roleMetadata = { role_name: "Sales Representative", role_name_ar: "مندوب مبيعات" };
+           permissions = ["view_production", "view_film_dashboard"];
+           await navigate("/production");
+           check(`${lang} ${width}: Sales read grants are not misclassified as an operator`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), 4);
+           roleMetadata = {};
            for (const stage of ["film", "printing", "cutting"]) {
              permissions = [`operate_${stage}`, "view_production", "view_production_hall", "receive_production", "view_finished_inventory"];
              const label = `${lang} ${width} ${stage}`;

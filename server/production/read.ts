@@ -1,13 +1,18 @@
 import { one, permission, rows, ProductionError, type ConnectionPool, type Connection } from "./core";
 
 // Execution snapshots are frozen at start. Unstarted plans use current product data.
-import { hasProductionPermission, isPlasticRoll, productionPermissions, type ProductionState, type ProductionStateScope, type ProductionUser, type ProductionRollRecord, type ProductionRollDetail, type ProductionOrderRecord, type ProductionHistoryKind, type ProductionHistoryFilter, type ProductionHistoryPage } from "../../shared/production";
+import { hasProductionPermission, isPlasticRoll, productionPermissions, productionStageReadPermissions, type ProductionState, type ProductionStateScope, type ProductionUser, type ProductionRollRecord, type ProductionRollDetail, type ProductionOrderRecord, type ProductionHistoryKind, type ProductionHistoryFilter, type ProductionHistoryPage } from "../../shared/production";
 import { orderSelect, rollSelect, filmMachineGroups, filmDurationJSON, productionActorJSON } from "./read-queries";
 import { historyPage } from "./history";
 export class ProductionReadService {
   constructor(readonly pool: ConnectionPool) {}
   async state(actor: ProductionUser, scope: ProductionStateScope = "management"): Promise<ProductionState> {
     permission(actor, ...productionPermissions);
+    if (scope === "film" || scope === "printing" || scope === "cutting") {
+      permission(actor, "view_production", "manage_production", ...productionStageReadPermissions[scope]);
+    } else if (scope === "management") {
+      permission(actor, ...generalProductionKeys, "view_production_hall", "receive_production", "view_finished_inventory", "manage_finished_warehouse");
+    }
     const canProduction = hasProductionPermission(actor, ...productionKeys);
     const production = canProduction && !["hall", "warehouse", "roll"].includes(scope);
     const hall = ["management", "hall"].includes(scope) && hasProductionPermission(actor, "view_production_hall", "receive_production");
@@ -109,7 +114,8 @@ export class ProductionReadService {
   }
 }
 
-const productionKeys = ["view_production", "manage_production", "operate_film", "operate_printing", "operate_cutting"];
+const generalProductionKeys = ["view_production", "manage_production", "operate_film", "operate_printing", "operate_cutting"];
+const productionKeys = [...generalProductionKeys, "view_film_dashboard", "view_printing_dashboard", "view_cutting_dashboard"];
 
 export function identifyRollProducts(orders: ProductionOrderRecord[]) {
   orders.forEach(order => { if (!order.started_at) order.is_roll_product = isPlasticRoll(order.product?.name ?? null, order.product?.name_ar ?? null); });

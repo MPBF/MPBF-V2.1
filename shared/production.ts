@@ -2,9 +2,18 @@ export type ProductionStage = "film" | "printing" | "cutting";
 export type ProductionStateScope = "management" | ProductionStage | "hall" | "warehouse" | "roll";
 export const productionPermissions = [
   "view_production", "manage_production", "operate_film", "operate_printing", "operate_cutting",
+  "view_film_dashboard", "view_printing_dashboard", "view_cutting_dashboard",
   "view_production_hall", "receive_production", "view_finished_inventory", "manage_finished_warehouse",
 ] as const;
-export type ProductionUser = { id: number; permissions: string[] };
+export const productionStageReadPermissions = {
+  film: ["operate_film", "view_film_dashboard"],
+  printing: ["operate_printing", "view_printing_dashboard"],
+  cutting: ["operate_cutting", "view_cutting_dashboard"],
+} as const;
+export type ProductionUser = {
+  id: number; permissions: string[];
+  role_name?: string | null; role_name_ar?: string | null;
+};
 export const hasProductionPermission = (user: ProductionUser, ...keys: string[]) =>
   user.permissions.includes("admin") || keys.some(key => user.permissions.includes(key));
 export type ProductSnapshot = {

@@ -308,7 +308,7 @@ function Layout({ children, user, setUser, branding }: { children: ReactNode; us
   const displayName = localizedName(user.display_name_ar, user.display_name, user.username || "—");
   const roleSwitcherUser = { role_id: user.role_id ?? null, role_name: user.role_name ?? null,
     role_name_ar: user.role_name_ar ?? null, role_preview: user.role_preview };
-  const [loc, setLoc] = useLocation(); const visibleNav = nav.filter(([href, , , permissions]) => href === "/production" ? !!initialProductionPath({ id: user.id, permissions: user.permissions ?? [] }) : !permissions.length || can(user, permissions)); const adminNav = visibleNav.find(([href]) => href === "/admin"); const mobileNav = visibleNav.length <= 5 ? visibleNav : [...visibleNav.slice(0, 4), adminNav || visibleNav[4]]; const title = loc === "/" && !can(user, ["admin"]) ? "لوحة المستخدم" : nav.find(([href]) => href === loc)?.[1] || "الإدارة التشغيلية";
+  const [loc, setLoc] = useLocation(); const visibleNav = nav.filter(([href, , , permissions]) => href === "/production" ? !!initialProductionPath({ id: user.id, permissions: user.permissions ?? [], role_name: user.role_name, role_name_ar: user.role_name_ar }) : !permissions.length || can(user, permissions)); const adminNav = visibleNav.find(([href]) => href === "/admin"); const mobileNav = visibleNav.length <= 5 ? visibleNav : [...visibleNav.slice(0, 4), adminNav || visibleNav[4]]; const title = loc === "/" && !can(user, ["admin"]) ? "لوحة المستخدم" : nav.find(([href]) => href === loc)?.[1] || "الإدارة التشغيلية";
   const logout = async () => { try { await api("/logout", { method: "POST" }); } finally { setUser(null); setLoc("/"); } };
   return <div className="shell">
     <aside className="sidebar">
@@ -340,7 +340,7 @@ function Dashboard({ user }: { user: Row }) {
   const load = () => { setRefreshing(true); setError(""); api("/dashboard").then(setData).catch((e) => setError(e.message)).finally(() => setRefreshing(false)); };
   useEffect(load, []);
   const cards = [["customers", "العملاء", "عملاء مسجلون"], ["orders", "الطلبات", "إجمالي الطلبات"], ["production_orders", "أوامر الإنتاج", "قيد المتابعة"], ["machines", "الماكينات", "أصول المصنع"], ["users", "المستخدمون", "حسابات النظام"]];
-  const shortcuts = nav.filter(([href, , , permissions]) => !["/", "/my-dashboard", "/admin"].includes(href) && (href === "/production" ? !!initialProductionPath({ id: user.id, permissions: user.permissions ?? [] }) : can(user, permissions)));
+  const shortcuts = nav.filter(([href, , , permissions]) => !["/", "/my-dashboard", "/admin"].includes(href) && (href === "/production" ? !!initialProductionPath({ id: user.id, permissions: user.permissions ?? [], role_name: user.role_name, role_name_ar: user.role_name_ar }) : can(user, permissions)));
   return <><PageHero kicker="نظرة تشغيلية · اليوم" title={translate("لوحة الإدارة")} description="ملخص مباشر لأداء المصنع ومحطات العمل." onRefresh={load} refreshing={refreshing} actions={<span className="tag">{translate("اتصال مباشر بالبيانات")}</span>} />{error && <div className="error">{error}</div>}<div className="stats">{cards.map(([key, label, sub]) => <div className="stat" key={key}><label>{translate(label)}</label><strong>{data ? data[key] ?? 0 : <span className="skeleton" style={{ display: "inline-block", width: 55 }} />}</strong><small>{translate(sub)}</small></div>)}</div><div className="panel"><div className="panel-head"><h3>{translate("محطات العمل")}</h3><span className="eyebrow">{translate("اختصارات سريعة")}</span></div><div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>{shortcuts.map(([href, label, Icon]) => <Link className="btn btn-muted" href={href} key={href}><Icon size={17} />{translate(label)}</Link>)}</div></div></>;
 }
 
@@ -1378,7 +1378,8 @@ function App() {
       : <div className="empty" role="alert"><strong>{translate("لا تملك صلاحية عرض أو طباعة الطلب")}</strong><Link className="btn btn-muted" href="/">{translate("العودة للرئيسية")}</Link></div>;
   }
   const isAdmin = can(auth.user, ["admin"]);
-  const productionUser = { id: Number(auth.user.id), permissions: auth.user.permissions ?? [] };
+  const productionUser = { id: Number(auth.user.id), permissions: auth.user.permissions ?? [],
+    role_name: auth.user.role_name ?? null, role_name_ar: auth.user.role_name_ar ?? null };
   const productionHome = initialProductionPath(productionUser);
   return <Layout user={auth.user} setUser={auth.setUser} branding={branding}><DeferredContent><Switch>
     <Route path="/">{isAdmin ? <Dashboard user={auth.user} /> : <UserDashboard user={auth.user} />}</Route>

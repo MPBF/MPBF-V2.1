@@ -42,7 +42,36 @@ describe("production operator tab boundaries", () => {
     expect(tabs(user("receive_production"))).toEqual(["hall", "warehouse"]);
     expect(tabs(user("view_finished_inventory"))).toEqual(["warehouse"]);
   });
-  it.each([[], ["*"], ["view_film_dashboard"], ["view_printing_dashboard"], ["view_cutting_dashboard"]].map(permissions => ({ permissions })))(
+  it.each([
+    { stage: "film", role_name: "Extruder Operator", role_name_ar: "مشغل فيلم",
+      permissions: ["view_home", "view_user_dashboard", "view_film_dashboard", "view_mixing", "view_production"] },
+    { stage: "printing", role_name: "Printing Operator", role_name_ar: "مشغل طباعة",
+      permissions: ["view_home", "view_user_dashboard", "view_printing_dashboard"] },
+    { stage: "cutting", role_name: "Cutting Operator", role_name_ar: "مشغل تقطيع",
+      permissions: ["view_home", "view_user_dashboard", "view_cutting_dashboard"] },
+  ] as const)("uses the actual $stage role's dashboard grants, not imaginary operate grants", fixture => {
+    const account: ProductionUser = { ...fixture, id: 7, permissions: [...fixture.permissions] };
+    expect(tabs(account)).toEqual([fixture.stage]);
+    expect(initialProductionPath(account)).toBe(`/production/${fixture.stage}`);
+    for (const other of ["film", "printing", "cutting"] as const) {
+      expect(canOpenProductionView(account, other)).toBe(other === fixture.stage);
+    }
+    expect(canOpenProductionView(account, "management")).toBe(false);
+    expect(canOpenProductionView(account, "roll")).toBe(true);
+  });
+  it("does not mistake Sales' film dashboard visibility for an operator role", () => {
+    const account = { ...user("view_production", "view_film_dashboard"), role_name: "Sales Representative", role_name_ar: "مندوب مبيعات" };
+    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting"]);
+    expect(initialProductionPath(account)).toBe("/production");
+  });
+  it("does not invent access from an operator role name without grants", () => {
+    expect(tabs({ ...user(), role_name: "Extruder Operator" })).toEqual([]);
+    expect(tabs({ ...user("*"), role_name_ar: "مشغل الفيلم" })).toEqual([]);
+  });
+  it("supports an Arabic operator role name when the English name is absent", () => {
+    expect(tabs({ ...user("view_production", "view_film_dashboard"), role_name_ar: "مشغل الفيلم" })).toEqual(["film"]);
+  });
+  it.each([[], ["*"], ["view_reports"]].map(permissions => ({ permissions })))(
     "does not invent production grants from $permissions", ({ permissions }) => {
       expect(tabs(user(...permissions))).toEqual([]);
       expect(initialProductionPath(user(...permissions))).toBeNull();
