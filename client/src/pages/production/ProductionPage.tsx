@@ -10,7 +10,7 @@ import "./roll-labels.css";
 import {
   canStartFilmProductionOrder, eligibleForCutting, hasProductionPermission, machineStage,
   type FilmInput, type ProductionMachine, type ProductionOrderRecord, type ProductionRollDetail, type ProductionRollRecord,
-  type ProductionStage, type ProductionState, type ProductionUser, type ProductionReceipt, type ReceiptInput, type StorageLocation,
+  type ProductionStage, type ProductionState, type ProductionUser, type ProductionReceipt, type ReceiptInput,
 } from "../../../../shared/production";
 import { confirmedProductionRejection, productionApi } from "../../lib/production-api";
 import { availableProductionViews, canOpenProductionView } from "../../lib/production-navigation";
@@ -401,7 +401,7 @@ function OperatorBoard({ state,user,stage,language,reload,machineSlot }: {state:
   </>;
 }
 
-const emptyDraft = (orderId=""):ReceiptDraft=>({orderId,locationId:"",quantity:"",unit:"kg",count:"",method:"unit_weight",unitWeight:"1",pieces:"",pieceWeight:""});
+const emptyDraft = (orderId=""):ReceiptDraft=>({orderId,quantity:"",unit:"kg",count:"",method:"unit_weight",unitWeight:"1",pieces:"",pieceWeight:""});
 const kgHundredths=(value:string|number|null|undefined):bigint=>{
   const raw=latinDigits(String(value??""));
   if(!/^\d+(?:\.\d{1,2})?$/.test(raw))return 0n;
@@ -430,7 +430,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
         return {packing,result:calculatePacking(packing)};
       } catch { return null; }
     });
-    const invalidLine=normalized.findIndex((row,index)=>!row.orderId||!row.locationId||!calculated[index]);
+    const invalidLine=normalized.findIndex((row,index)=>!row.orderId||!calculated[index]);
     if(invalidLine>=0){setFormError(language==="en"?`Complete every field in line ${invalidLine+1} before saving.`:`أكمل جميع حقول السطر ${invalidLine+1} قبل الحفظ.`);return;}
     const totalsByOrder=new Map<string,bigint>();
     normalized.forEach((row,index)=>totalsByOrder.set(row.orderId,(totalsByOrder.get(row.orderId)??0n)+kgHundredths(calculated[index]!.result.quantity_kg)));
@@ -438,7 +438,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
     if(exceeded){const order=eligible.find(item=>String(item.id)===exceeded[0]);setFormError(language==="en"?`Receipt quantity exceeds the available ${order?.production_order_number??"order"} balance.`:`كمية الاستلام تتجاوز المتاح للأمر ${order?.production_order_number??""}.`);return;}
     setFormError("");
     const items=normalized.map((row,index)=>({
-      production_order_id:Number(row.orderId),location_id:Number(row.locationId),
+      production_order_id:Number(row.orderId),
       quantity_kg:calculated[index]!.result.quantity_kg,packing:calculated[index]!.packing,
     }));
     const input:ReceiptInput={request_id:"",notes:notes.trim()||undefined,items};
@@ -452,13 +452,12 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
     });
   };
   const setRow=(index:number,key:keyof ReceiptDraft,value:string)=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value,...(key==="unit"&&value==="kg"?{method:"unit_weight",unitWeight:"1",pieces:"",pieceWeight:""}:{}),...(key==="unit"&&value!=="kg"&&row.unit==="kg"?{unitWeight:""}:{})}:row));};
-  const locationOptions=state.locations.filter(location=>location.is_active);
   const readyOrders=eligible.filter(order=>Number(order.ready_kg)>0||Number(order.received_kg)>0);
   const lockReceipt=write.uncertain;
   const receiveSelected=()=>{
     const ids=selected.filter(id=>eligible.some(order=>order.id===id));
     if(!ids.length)return;
-    const dirty=drafts.some(row=>row.orderId||row.locationId||row.count)||Boolean(notes);
+    const dirty=drafts.some(row=>row.orderId||row.count||row.unit!=="kg"||row.method!=="unit_weight"||row.unitWeight!=="1"||row.pieces||row.pieceWeight)||Boolean(notes);
     const draftIds=new Set(drafts.map(row=>Number(row.orderId)).filter(Boolean));
     if(dirty&&ids.length===draftIds.size&&ids.every(id=>draftIds.has(id))){setReceiptOpen(true);return;}
     if(dirty&&!window.confirm(language==="en"?"Replace the unsaved receipt draft with the selected orders?":"استبدال مسودة سند الاستلام غير المحفوظة بالأوامر المحددة؟"))return;
@@ -467,7 +466,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
   const setSelectedOrder=(id:number,checked:boolean)=>setSelected(items=>checked?[...new Set([...items,id])]:items.filter(value=>value!==id));
   return <>
     {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
-    <div className="prod-grid"><Metric label={text("eligibleWeight",language)} value={`${number(eligible.reduce((total,order)=>total+Number(order.remaining_kg),0),language)} kg`}/><Metric label={text("order",language)} value={number(eligible.length,language,0)} unit={text("ordersUnit",language)}/><Metric label={text("locations",language)} value={number(locationOptions.length,language,0)} unit={text("activeLocations",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
+    <div className="prod-grid"><Metric label={text("eligibleWeight",language)} value={`${number(eligible.reduce((total,order)=>total+Number(order.remaining_kg),0),language)} kg`}/><Metric label={text("order",language)} value={number(eligible.length,language,0)} unit={text("ordersUnit",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
     <section className="warehouse-hall-section">
       <div className="warehouse-section-heading"><div><span className="warehouse-section-kicker">CUTTING → RECEIVING</span><h3>{text("readyOrders",language)}</h3></div><span>{number(readyOrders.length,language,0)} {text("ordersUnit",language)}</span></div>
       {readyOrders.length ? <div className="warehouse-hall-grid">
@@ -486,13 +485,12 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
         })}
       </div> : <Empty title={text("noEligible",language)}/>}
     </section>
-     <Card title={text("receiveBatch",language)} action={canReceive?<div className="warehouse-receipt-actions"><button data-receipt-launcher className="prod-btn" type="button" disabled={!locationOptions.length||write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;setFormError("");setReceiptOpen(true);}}>{language==="en"?"New receipt voucher":"سند استلام مواد تامة"}</button><button className="prod-btn secondary" data-hall-receive-selected type="button" disabled={!selected.length||!locationOptions.length||write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;receiveSelected();}}>{language==="en"?`Receive selected (${selected.length})`:`استلام المحدد (${selected.length})`}</button><button className="prod-btn quiet" type="button" disabled={!selected.length||write.saving||lockReceipt} onClick={()=>setSelected([])}>{language==="en"?"Clear selection":"مسح التحديد"}</button></div>:undefined}>
-      {canReceive ? <>{!locationOptions.length&&<div className="prod-callout">{text("noLocations",language)}</div>}{eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}</>:<div className="prod-muted">{text("readonly",language)}</div>}
+     <Card title={text("receiveBatch",language)} action={canReceive?<div className="warehouse-receipt-actions"><button data-receipt-launcher className="prod-btn" type="button" disabled={write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;setFormError("");setReceiptOpen(true);}}>{language==="en"?"New receipt voucher":"سند استلام مواد تامة"}</button><button className="prod-btn secondary" data-hall-receive-selected type="button" disabled={!selected.length||write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;receiveSelected();}}>{language==="en"?`Receive selected (${selected.length})`:`استلام المحدد (${selected.length})`}</button><button className="prod-btn quiet" type="button" disabled={!selected.length||write.saving||lockReceipt} onClick={()=>setSelected([])}>{language==="en"?"Clear selection":"مسح التحديد"}</button></div>:undefined}>
+      {canReceive ? <>{eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}</>:<div className="prod-muted">{text("readonly",language)}</div>}
     </Card>
     {canReceive&&receiptOpen&&<ReceiptVoucherModal
       language={language}
       eligible={eligible}
-      locations={locationOptions}
       drafts={drafts}
       notes={notes}
       saving={write.saving}
@@ -509,38 +507,16 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
       onClose={closeReceipt}
       orderLabel={order=>orderProduct(order,language)}
       customerLabel={order=>customerName(order,language)}
-      locationLabel={location=>localized(location.name_ar,location.name,language)}
       number={number}
     />}
   </>;
 }
 
-function Warehouse({state,user,language,reload}:{state:ProductionState;user:ProductionUser;language:string;reload:()=>Promise<void>}) {
-  const canWrite=hasProductionPermission(user,"manage_finished_warehouse"),write=useWrite(reload,language);
-  const [editing,setEditing]=useState<number|null>(null),[name,setName]=useState(""),[nameAr,setNameAr]=useState(""),[active,setActive]=useState(true);
-  const locationDraft=useRef("");
-  locationDraft.current=JSON.stringify({editing,name,nameAr,active});
+function Warehouse({state,language}:{state:ProductionState;language:string}) {
   const locations=state.locations;
-  const saveLocation=(event:FormEvent)=>{
-    event.preventDefault();const payload={name,name_ar:nameAr,is_active:active},submittedDraft=locationDraft.current;
-    void write.perform({op:"location",id:editing,...payload},requestId=>productionApi.location({...payload,request_id:requestId},editing??undefined),"locationCreated",()=>{
-      if(locationDraft.current===submittedDraft){setEditing(null);setName("");setNameAr("");setActive(true);}
-    });
-  };
-  const edit=(location:StorageLocation)=>{setEditing(location.id);setName(location.name);setNameAr(location.name_ar);setActive(location.is_active);};
   return <>
-    {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
-    <div className="prod-grid"><Metric label={text("balances",language)} value={number(state.totals?.inventory??0,language,0)} unit={text("balanceUnits",language)}/><Metric label={text("movements",language)} value={number(state.totals?.movements??0,language,0)} unit={text("movementUnits",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/><Metric label={text("locations",language)} value={number(locations.length,language,0)} unit={text("locations",language)}/></div>
+    <div className="prod-grid"><Metric label={text("balances",language)} value={number(state.totals?.inventory??0,language,0)} unit={text("balanceUnits",language)}/><Metric label={text("movements",language)} value={number(state.totals?.movements??0,language,0)} unit={text("movementUnits",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
     <Metric label={language==="en"?"Total inventory weight":"إجمالي وزن المخزون"} value={`${number(state.totals?.inventory_kg??0,language)} kg`}/>
-    <Card title={text("locations",language)}>
-      {canWrite&&<form className="prod-form-grid" onSubmit={saveLocation} style={{marginBottom:14}}>
-        <div className="prod-field"><label htmlFor="location-name">{text("locationEn",language)}</label><input id="location-name" value={name} onChange={event=>setName(event.target.value)} required/></div>
-        <div className="prod-field"><label htmlFor="location-name-ar">{text("locationAr",language)}</label><input id="location-name-ar" value={nameAr} onChange={event=>setNameAr(event.target.value)} required/></div>
-        {editing!==null&&<label className="prod-label-inline"><input type="checkbox" checked={active} onChange={event=>setActive(event.target.checked)}/>{active?text("active",language):text("inactive",language)}</label>}
-        <div className="prod-savebar"><button className="prod-btn" disabled={write.saving}>{text("saveLocation",language)}</button>{editing!==null&&<button className="prod-btn quiet" type="button" onClick={()=>{setEditing(null);setName("");setNameAr("");setActive(true);}}><X/>{text("cancel",language)}</button>}</div>
-      </form>}
-      {locations.length?locations.map(location=><div className="prod-location-row" key={location.id}><div><strong>{localized(location.name_ar,location.name,language)}</strong><small className="prod-muted">{location.name} · {location.name_ar}</small></div><span className={`prod-chip ${location.is_active?"":"muted"}`}>{location.is_active?text("active",language):text("inactive",language)}</span>{canWrite&&<button className="prod-btn secondary" onClick={()=>edit(location)}><Settings2/>{text("edit",language)}</button>}</div>):<Empty title={text("noLocations",language)}/>}
-    </Card>
      <section className="warehouse-finished-view">
        <ProductionHistory kind="inventory" title={text("balances",language)} language={language} locations={locations} refresh={state} defaultOpen presentation="cards"/>
      </section>
@@ -626,7 +602,7 @@ export default function ProductionPage({user,view,rollId,moduleContext="producti
         {view==="management"&&<Management state={state} user={user} language={language} reload={data.reload}/>}
         {(view==="film"||view==="printing"||view==="cutting")&&<OperatorBoard state={state} user={user} stage={view} language={language} reload={data.reload} machineSlot={machineSlot}/>}
         {view==="hall"&&<HallView state={state} user={user} language={language} reload={data.reload}/>}
-        {view==="warehouse"&&<Warehouse state={state} user={user} language={language} reload={data.reload}/>}
+        {view==="warehouse"&&<Warehouse state={state} language={language}/>}
         <RollLabelControls refresh={state} language={language} />
       </>}
   </section>;

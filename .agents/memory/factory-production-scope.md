@@ -239,3 +239,13 @@ changing the film board; do not expand all requests by default.
 **How to apply:** do not require creating or selecting an internal storage
 location in the production hall. Keep this rule scoped to the production hall;
 do not infer multiple sublocations there from the existing warehouse data model.
+
+Receipt source is fixed «صالة الإنتاج» and destination is fixed «صالة المواد
+التامة», without choosing sublocations.
+
+**Why:** the user explicitly approved these fixed source/destination halls when
+correcting the unnecessary storage-location prerequisite.
+
+**How to apply:** receipt creation must work without manually creating any
+location. Keep existing historical stock and vouchers; do not reinterpret old
+locations or consolidate their balances as part of this correction.

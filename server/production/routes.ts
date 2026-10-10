@@ -169,7 +169,7 @@ router.post("/receipts", handler(async (req, res) => {
     piece_weight_grams: z.string().regex(/^\d{1,8}(?:\.\d{1,4})?$/).optional(),
   }).strict();
   const input = request.extend({ notes: safeText(2000).optional(), items: z.array(z.object({
-    production_order_id: id, location_id: id, quantity_kg: weight.optional(), packaging: packaging.optional(), packing: packing.optional(),
+    production_order_id: id, location_id: id.optional(), quantity_kg: weight.optional(), packaging: packaging.optional(), packing: packing.optional(),
   }).strict().refine(item => Boolean(item.packing || item.quantity_kg), "Receipt packing or weight is required")
     .refine(item => !(item.packing && item.packaging), "Do not mix packing formats")).min(1).max(100) }).parse(req.body);
   res.json(await warehouse.receive(req.user!, input));

@@ -115,7 +115,7 @@
 .production .receipt-voucher-line .prod-field > small { color: #85948a; font-size: 9px; }
 .production .receipt-voucher-line input[readonly] { background: #edf3eb; color: #2c6650; font: 700 13px "IBM Plex Mono", monospace; }
 .production .receipt-voucher-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid #dce6dd; }
-.production .receipt-voucher-table { width: 100%; min-width: 900px; border-collapse: collapse; table-layout: fixed; }
+.production .receipt-voucher-table { width: 100%; min-width: 760px; border-collapse: collapse; table-layout: fixed; }
 .production .receipt-voucher-table th {
   padding: 9px 8px;
   background: #edf3eb;
@@ -132,7 +132,6 @@
 .production .receipt-voucher-table th:nth-child(4) { width: 90px; }
 .production .receipt-voucher-table th:nth-child(5) { width: 230px; }
 .production .receipt-voucher-table th:nth-child(6) { width: 100px; }
-.production .receipt-voucher-table th:nth-child(7) { width: 150px; }
 .production .receipt-voucher-table td { padding: 8px; border-top: 1px solid #e1e8df; vertical-align: top; }
 .production .receipt-voucher-table .receipt-voucher-line { background: #fffefa; }
 .production .receipt-voucher-table .prod-field { display: grid; gap: 5px; min-width: 0; }

@@ -2,39 +2,36 @@ import { Plus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, type ChangeEvent, type FormEvent, type MutableRefObject } from "react";
 import { createPortal } from "react-dom";
 
-import type { ProductionOrderRecord, ProductionReceipt, StorageLocation } from "../../../../shared/production";
+import type { ProductionOrderRecord, ProductionReceipt } from "../../../../shared/production";
 import { calculatePacking, receiptUnitLabel, type ReceiptUnit } from "../../../../shared/production-packing";
 import "./receipt-voucher.css";
 
 export type ReceiptDraft = {
-  orderId: string; locationId: string; quantity: string;
+  orderId: string; quantity: string;
   unit: ReceiptUnit; count: string; method: "unit_weight" | "piece_weight";
   unitWeight: string; pieces: string; pieceWeight: string;
 };
 type Props = {
-  language: string; eligible: ProductionOrderRecord[]; locations: StorageLocation[];
+  language: string; eligible: ProductionOrderRecord[];
   drafts: ReceiptDraft[]; notes: string; saving: boolean; locked?: boolean; error: string;
   savedReceipt: ProductionReceipt | null; openerRef: MutableRefObject<HTMLButtonElement | null>;
   onDraftChange: (index: number, key: keyof ReceiptDraft, value: string) => void;
   onAddLine: () => void; onRemoveLine: (index: number) => void; onNotesChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void; onRetry?: () => void; onClose: () => void;
   orderLabel: (order: ProductionOrderRecord) => string; customerLabel: (order: ProductionOrderRecord) => string;
-  locationLabel: (location: StorageLocation) => string;
   number: (value: string | number | null | undefined, language: string, digits?: number) => string;
 };
 const copy = (language: string) => {
   const en = language === "en";
   return {
     title: en ? "Finished goods receipt voucher" : "سند استلام مواد تامة",
-    subtitle: en ? "Record finished production into a warehouse location." : "تسجيل الإنتاج التام في موقع تخزين.",
+    subtitle: en ? "Transfer between the halls." : "نقل بين الصالتين.",
     source: en ? "Source · production hall" : "المصدر · صالة الإنتاج",
     destination: en ? "Destination · finished-goods hall" : "الوجهة · صالة المواد التامة",
     order: en ? "Production order · product · customer" : "أمر الإنتاج · المنتج · العميل",
     line: en ? "Line" : "السطر",
     productCustomer: en ? "Product · customer" : "المنتج · العميل",
     choose: en ? "Choose an order" : "اختر أمراً",
-    location: en ? "Finished-goods location" : "موقع المواد التامة",
-    chooseLocation: en ? "Choose a location" : "اختر موقعاً",
     quantity: en ? "Calculated weight (kg)" : "الوزن المحسوب (كجم)",
     available: en ? "Available" : "المتاح",
     unit: en ? "Packing unit" : "وحدة التعبئة",
@@ -54,7 +51,6 @@ const copy = (language: string) => {
     saved: en ? "Voucher saved" : "تم حفظ السند",
     voucher: en ? "Voucher number" : "رقم السند",
     time: en ? "Recorded at" : "وقت التسجيل",
-    noLocations: en ? "No active finished-goods locations are available." : "لا توجد مواقع نشطة للمواد التامة.",
     units: ["kg", "packet", "roll", "piece"] as ReceiptUnit[],
     modeUnit: en ? "Count × unit weight" : "العدد × وزن الوحدة",
     modePiece: en ? "Count × pieces × piece weight" : "العدد × القطع × وزن القطعة",
@@ -63,9 +59,9 @@ const copy = (language: string) => {
 const latinDigits=(value:string)=>value.replace(/[٠-٩]/g,digit=>String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/[۰-۹]/g,digit=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit))).replace(/٫/g,".").replace(/٬/g,",");
 export function ReceiptVoucherModal(props: Props) {
   const {
-    language, eligible, locations, drafts, notes, saving, locked = false, error, savedReceipt, openerRef,
+    language, eligible, drafts, notes, saving, locked = false, error, savedReceipt, openerRef,
     onDraftChange, onAddLine, onRemoveLine, onNotesChange, onSubmit, onRetry, onClose,
-    orderLabel, customerLabel, locationLabel, number,
+    orderLabel, customerLabel, number,
   } = props;
   const t = copy(language), dialogRef = useRef<HTMLElement | null>(null), editable = !saving && !locked;
   useEffect(() => {
@@ -102,7 +98,7 @@ export function ReceiptVoucherModal(props: Props) {
     const [whole, fraction = ""] = weight.split(".");
     return BigInt(whole || "0") * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
   };
-  const clearDraft = drafts.length === 1 && !drafts[0].orderId && !drafts[0].count && !drafts[0].locationId;
+  const clearDraft = drafts.length === 1 && !drafts[0].orderId && !drafts[0].count;
   const centsTotal = clearDraft && savedReceipt
     ? savedReceipt.items.reduce((sum, item) => sum + cents(item.quantity_kg), 0n)
     : packed.reduce((sum, result) => sum + (result ? cents(result.quantity_kg) : 0n), 0n);
@@ -114,10 +110,9 @@ export function ReceiptVoucherModal(props: Props) {
       <div className="receipt-voucher-route" aria-label={`${t.source} → ${t.destination}`}><div><small>{t.source}</small><strong>{language === "en" ? "Production hall" : "صالة الإنتاج"}</strong></div><span aria-hidden="true">→</span><div><small>{t.destination}</small><strong>{language === "en" ? "Finished goods" : "المواد التامة"}</strong></div></div>
       {savedReceipt && <section className="receipt-voucher-saved" role="status" aria-live="polite" data-receipt-saved={JSON.stringify({voucher_number:savedReceipt.voucher_number,created_at:savedReceipt.created_at})}><div><strong>{t.saved}</strong><small>{t.voucher}</small><bdi data-receipt-voucher-number>{savedReceipt.voucher_number}</bdi></div><div><small>{t.time}</small><bdi data-receipt-created-at={savedReceipt.created_at}>{dateTime}</bdi></div></section>}
       <form onSubmit={onSubmit}>
-        {!locations.length && <div className="receipt-voucher-alert">{t.noLocations}</div>}
         <div className="receipt-voucher-table-wrap">
           <table className="receipt-voucher-table" aria-label={t.title}>
-            <thead><tr><th scope="col">{t.line}</th><th scope="col">{t.order}</th><th scope="col">{t.available} (kg)</th><th scope="col">{t.unit}</th><th scope="col">{t.count} · {t.method}</th><th scope="col">{t.quantity}</th><th scope="col">{t.location}</th></tr></thead>
+             <thead><tr><th scope="col">{t.line}</th><th scope="col">{t.order}</th><th scope="col">{t.available} (kg)</th><th scope="col">{t.unit}</th><th scope="col">{t.count} · {t.method}</th><th scope="col">{t.quantity}</th></tr></thead>
             <tbody>{drafts.map((row,index)=>{
               const order=eligible.find(item=>String(item.id)===row.orderId), result=packed[index];
               const update=(field:keyof ReceiptDraft)=>(event:ChangeEvent<HTMLInputElement|HTMLSelectElement>)=>onDraftChange(index,field,event.target.value);
@@ -135,7 +130,6 @@ export function ReceiptVoucherModal(props: Props) {
                   </>}
                 </div></td>
                 <td data-label={t.quantity}><input className="receipt-voucher-calculated" id={`receipt-quantity-${index}`} data-receipt-quantity={index} readOnly value={result?.quantity_kg??""} aria-label={t.quantity}/></td>
-                <td data-label={t.location}><div className="prod-field"><select id={`receipt-location-${index}`} value={row.locationId} required disabled={!editable} aria-label={t.location} onChange={update("locationId")}><option value="">{t.chooseLocation}</option>{locations.map(location=><option key={location.id} value={location.id}>{locationLabel(location)}</option>)}</select></div></td>
               </tr>;
             })}</tbody>
           </table>
@@ -144,7 +138,7 @@ export function ReceiptVoucherModal(props: Props) {
         <div className="prod-field receipt-voucher-notes"><label htmlFor="receipt-notes">{t.notes}</label><textarea id="receipt-notes" value={notes} maxLength={2000} disabled={!editable} onChange={event=>onNotesChange(event.target.value)}/></div>
         <div className="receipt-voucher-total" data-receipt-total={total}><span>{t.total}</span><strong><bdi data-receipt-total-value>{number(total,language)} kg</bdi></strong></div>
         {error&&<div className="prod-error receipt-voucher-error" role="alert"><span>{error}</span>{!saving&&onRetry&&<button className="prod-btn quiet" type="button" onClick={onRetry}>{t.retry}</button>}</div>}
-        <footer className="receipt-voucher-footer"><button className="prod-btn quiet" type="button" disabled={saving} onClick={onClose}>{language==="en"?"Close":"إغلاق"}</button><button className="prod-btn" data-receipt-submit type="submit" disabled={saving||locked||!locations.length||!eligible.length}>{saving?t.saving:t.save}</button></footer>
+        <footer className="receipt-voucher-footer"><button className="prod-btn quiet" type="button" disabled={saving} onClick={onClose}>{language==="en"?"Close":"إغلاق"}</button><button className="prod-btn" data-receipt-submit type="submit" disabled={saving||locked||!eligible.length}>{saving?t.saving:t.save}</button></footer>
       </form>
     </section>
   </div>,document.body);
