@@ -1,6 +1,7 @@
 // Run against an isolated local PostgreSQL instance, never factory records.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { RawMixingService } from "../server/production/mixing";
@@ -35,19 +36,22 @@ try {
   const tx=await scoped.connect();
   try {
     await tx.query(`CREATE TABLE users(id int PRIMARY KEY,username text,full_name text,display_name text,display_name_ar text);
-      CREATE TABLE machines(id varchar(20) PRIMARY KEY,name text,name_ar text,type text,status text);
+      CREATE TABLE machines(id varchar(20) PRIMARY KEY,name text,name_ar text,type text,status text,screw_type text);
       CREATE TABLE categories(id varchar(20) PRIMARY KEY,name text,name_ar text);
       CREATE TABLE items(id varchar(20) PRIMARY KEY,category_id varchar(20),code text,name text,name_ar text,status text);
       CREATE TABLE factory_operations(actor_id int,request_id uuid,operation text,fingerprint text,result jsonb,PRIMARY KEY(actor_id,request_id));
       CREATE TABLE factory_receipts(id serial PRIMARY KEY);
       INSERT INTO users VALUES(1,'admin','المدير','Admin','مدير'),(2,'operator','المشغل','Film operator','مشغل الفيلم');
-      INSERT INTO machines VALUES('F1','Film One','فيلم واحد','extruder','active'),
-        ('F2','Film Two','فيلم اثنان','Extruder','active'),('P1','Printer','طابعة','Printer','active'),
-        ('STOP','Stopped','متوقفة','extruder','inactive');
+      INSERT INTO machines VALUES('F1','Film One','فيلم واحد','extruder','active','A'),
+        ('F2','Film Two','فيلم اثنان','Extruder','active','ABA'),('P1','Printer','طابعة','Printer','active',NULL),
+        ('STOP','Stopped','متوقفة','extruder','inactive',NULL),
+        ('DEFAULT','Default screw','لولب افتراضي','extruder','active',NULL);
       INSERT INTO categories VALUES('RAW','Raw Materials','المواد الخام'),('BAG','Bags','أكياس');
       INSERT INTO items VALUES('ITM001','RAW','HDPE','HDPE','بولي إيثيلين','active'),
         ('ITM002','RAW','LDPE','LDPE','خام منخفض','active'),('ITM003','BAG','BAG','Bag','كيس','active');`);
     await tx.query(readFileSync("migrations/0014_raw_material_mixing.sql","utf8"));
+    await tx.query(readFileSync("migrations/0017_raw_mixing_screws.sql","utf8"));
+    await tx.query(readFileSync("migrations/0017_raw_mixing_screws.sql","utf8"));
     await tx.query(readFileSync("migrations/0015_raw_catalogue_movements.sql","utf8"));
     await tx.query(readFileSync("migrations/0015_raw_catalogue_movements.sql","utf8"));
     await tx.query(readFileSync("migrations/0014_raw_material_mixing.sql","utf8"));
@@ -64,12 +68,28 @@ try {
   check("refresh never resets balances",(await query("SELECT quantity_kg::text FROM factory_raw_materials WHERE id=$1",[hdpe.id]))[0].quantity_kg,"10.00");
   const input={...key(),machine_id:"F1",notes:"actual mix",items:[{material_id:hdpe.id,quantity_kg:"12.25"},{material_id:ldpe.id,quantity_kg:"0.01"}]};
   const mix=await service.record(film,input);
+  check("single screw legacy input defaults to A",(await query("SELECT screw FROM factory_mixes WHERE id=$1",[mix.id]))[0].screw,"A");
+  await rejected("ABA requires explicit screw",()=>service.record(film,{...input,...key(),machine_id:"F2"}),400);
+  await rejected("single screw rejects B",()=>service.record(film,{...input,...key(),screw:"B"}),400);
+  await rejected("invalid screw rejected at service",()=>service.record(film,{...input,...key(),screw:"C" as "A"}),400);
+  const defaultMix=await service.record(film,{...input,...key(),machine_id:"DEFAULT"});
+  check("null machine configuration is single A",(await query("SELECT screw FROM factory_mixes WHERE id=$1",[defaultMix.id]))[0].screw,"A");
   check("insufficient raw stock accepted at exact weight",mix.balances,[{id:hdpe.id,quantity_kg:"-2.25"},{id:ldpe.id,quantity_kg:"-0.01"}]);
   check("mix actor and actual total", [mix.created_by,mix.total_kg],[film.id,"12.26"]);
   check("no receipt vouchers generated",(await query("SELECT count(*)::int n FROM factory_receipts"))[0].n,0);
   const retried=await service.record(film,input);
   check("lost-response replay returns one mix",retried.id,mix.id);
-  check("replay never deducts again",(await query("SELECT quantity_kg::text FROM factory_raw_materials WHERE id=$1",[hdpe.id]))[0].quantity_kg,"-2.25");
+  check("replay never deducts again",(await query("SELECT quantity_kg::text FROM factory_raw_materials WHERE id=$1",[hdpe.id]))[0].quantity_kg,"-14.50");
+  await rejected("screw participates in committed request conflict",()=>service.record(film,{...input,screw:"A"}),409);
+  // Seed the exact pre-upgrade request fingerprint/result. Replay must precede
+  // screw validation, even when a historical machine is now ABA or stopped.
+  const legacy={...key(),machine_id:"F2",items:[{material_id:hdpe.id,quantity_kg:"2"}]};
+  const canonical=(v: any): string => Array.isArray(v) ? `[${v.map(canonical).join(",")}]`
+    : v && typeof v==="object" ? `{${Object.entries(v).filter(([k])=>k!=="request_id").sort(([a],[b])=>a.localeCompare(b)).map(([k,val])=>`${JSON.stringify(k)}:${canonical(val)}`).join(",")}}`
+    : JSON.stringify(v) ?? "null";
+  const legacyResult={id:876,total_kg:"2.00",balances:[]};
+  await query("INSERT INTO factory_operations VALUES($1,$2,'raw-mixing',$3,$4)",[film.id,legacy.request_id,createHash("sha256").update(canonical(legacy)).digest("hex"),JSON.stringify(legacyResult)]);
+  check("committed unlabeled legacy replay remains exact",await service.record(film,legacy),legacyResult);
   await rejected("changed request payload cannot reuse committed key",()=>service.record(film,{...input,notes:"different"}),409);
   const duplicate={...key(),machine_id:"F1",items:[{material_id:hdpe.id,quantity_kg:"1"},{material_id:hdpe.id,quantity_kg:"1"}]};
   await rejected("duplicate material rejected",()=>service.record(film,duplicate),400);
@@ -87,11 +107,11 @@ try {
   await rejected("film operator cannot issue or receive raw stock",()=>service.movement(film,{...key(),kind:"receipt",items:[{material_id:hdpe.id,quantity_kg:"1"}]}),403);
   await rejected("unrelated read denied",()=>service.state({...film,permissions:["operate_printing"]}),403);
   const view=await service.state(film);
-  check("history actor, machine, material details", [view.records[0].actor_name_ar,view.records[0].machine_name,view.records[0].items.length],["مشغل الفيلم","Film One",2]);
+  check("history actor, machine, material details", [view.records.find(r=>r.id===mix.id)!.actor_name_ar,view.records.find(r=>r.id===mix.id)!.machine_name,view.records.find(r=>r.id===mix.id)!.items.length],["مشغل الفيلم","Film One",2]);
   const rawOnly=await service.state({...film,permissions:["view_raw_inventory"]});
-  check("raw readers get stock, not mixes or machine lists",[rawOnly.materials.length,rawOnly.records.length,rawOnly.machines.length],[2,0,0]);
+  check("raw readers get stock, not mixes or machine lists",[rawOnly.materials.length,rawOnly.records.length,rawOnly.machines.length,rawOnly.latest_mixes.length],[2,0,0,0]);
   const before=(await query("SELECT quantity_kg::text FROM factory_raw_materials WHERE id=$1",[hdpe.id]))[0].quantity_kg;
-  const concurrent=Array.from({length:12},(_,i)=>service.record(film,{...key(),machine_id:i%2?"F1":"F2",items:[
+  const concurrent=Array.from({length:12},(_,i)=>service.record(film,{...key(),machine_id:i%2?"F1":"F2",screw:i%2?"A":"B",items:[
     {material_id:hdpe.id,quantity_kg:"0.01"},{material_id:ldpe.id,quantity_kg:"0.02"},
   ].reverse().slice().sort((a,b)=>i%2?a.material_id-b.material_id:b.material_id-a.material_id)}));
   await Promise.all(concurrent);
@@ -112,11 +132,29 @@ try {
   await query("DROP TRIGGER fail_audit ON factory_raw_movements");
   await service.record(film,recover);
   check("same request can recover after rollback",(await totals()).mixes,previous.mixes+1);
-  await query("INSERT INTO factory_mixes(machine_id,created_by,total_kg) SELECT 'F1',2,1 FROM generate_series(1,60)");
+  const savedA=await service.record(film,{...key(),machine_id:"F2",screw:"A",items:[{material_id:hdpe.id,quantity_kg:"9"},{material_id:ldpe.id,quantity_kg:"1"}]});
+  const savedB=await service.record(film,{...key(),machine_id:"F2",screw:"B",items:[{material_id:hdpe.id,quantity_kg:"2"},{material_id:ldpe.id,quantity_kg:"18"}]});
+  // Highest ID wins even if timestamp is older, and null identities do not win.
+  await query("UPDATE factory_mixes SET created_at='2000-01-01' WHERE id=$1",[savedA.id]);
+  await query("INSERT INTO factory_mixes(machine_id,created_by,total_kg) SELECT 'F2',2,1 FROM generate_series(1,60)");
   const page1=await service.state(admin);
   const page2=await service.state(admin,page1.next_before!);
   check("bounded history first page",page1.records.length,50);
   check("next page has no duplicate IDs",page2.records.every(r=>!page1.records.some(p=>p.id===r.id)),true);
+  const latest=page1.latest_mixes.filter(r=>r.machine_id==="F2");
+  check("latest per screw is independent of 50-row history",latest.map(r=>[r.screw,r.id]),[["A",savedA.id],["B",savedB.id]]);
+  check("older history does not redefine latest",page2.latest_mixes,page1.latest_mixes);
+  check("legacy history stays unidentified",page1.records.every(r=>r.screw===null));
+  check("latest carries precise weights",latest.map(r=>r.items.map(i=>i.quantity_kg)),[["9.00","1.00"],["2.00","18.00"]]);
+  await query("UPDATE machines SET screw_type='A' WHERE id='F2'");
+  check("configuration change never rewrites historical B",(await service.state(film)).latest_mixes.some(r=>r.id===savedB.id&&r.screw==="B"));
+  check("committed B replay survives configuration change",(await service.record(film,{request_id:(await query("SELECT request_id FROM factory_operations WHERE result->>'id'=$1",[String(savedB.id)]))[0].request_id,machine_id:"F2",screw:"B",items:[{material_id:hdpe.id,quantity_kg:"2"},{material_id:ldpe.id,quantity_kg:"18"}]})).id,savedB.id);
+  await query("UPDATE machines SET screw_type='ABA' WHERE id='F2'");
+  await query("UPDATE items SET name='',name_ar=NULL WHERE id='ITM002'");
+  const unnamed=await service.state(film);
+  check("mixing catalog never replaces missing names with IDs",[unnamed.materials.find(r=>r.id===ldpe.id)!.name,unnamed.materials.find(r=>r.id===ldpe.id)!.name_ar],["",""]);
+  check("history missing names stay blank",unnamed.latest_mixes.find(r=>r.id===savedB.id)!.items.find(r=>r.material_id===ldpe.id)!.name,"");
+  await query("UPDATE items SET name='LDPE',name_ar='خام منخفض' WHERE id='ITM002'");
   check("stock audit matches current signed balances",await query(`SELECT r.id FROM factory_raw_materials r
     WHERE r.quantity_kg <> COALESCE((SELECT sum(quantity_kg) FROM factory_raw_movements m WHERE m.material_id=r.id),0)`),[]);
   const beforeIssue=(await query("SELECT quantity_kg::text FROM factory_raw_materials WHERE id=$1",[hdpe.id]))[0].quantity_kg;

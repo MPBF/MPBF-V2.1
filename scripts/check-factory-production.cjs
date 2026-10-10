@@ -18,6 +18,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     { stdio: ["ignore", "ignore", "pipe"] });
   let ws, session, onLoad, serial = 0, language = "en", permissions = ["admin"], failure = false, failWrite = false, historyFailure = false, passed = 0;
   const filmReadyOnly = process.argv.includes("--film-ready-only");
+  const monitoringWarningOnly = process.argv.includes("--monitoring-warning-only");
    const operatorLayoutOnly = process.argv.includes("--operator-layout-only");
   const operatorNavigationOnly = process.argv.includes("--operator-navigation-only");
   const compactControlsOnly = process.argv.includes("--compact-controls-only");
@@ -220,6 +221,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             if(status===200){
               if (!["/production/mixing","/production/raw-materials/movements","/production/receipts"].includes(route))
                 body={id:99+committed.size,voucher_number:"FR-00000099",created_at:"2026-10-10T08:30:00Z",created_by:42,items:input.items||[]};
+              if(monitoringWarningOnly && /^\/production\/orders\/\d+\/rolls$/.test(route))
+                body.mix_tracking={consumed_kg:"0.00",uncovered_kg:input.weight_kg};
               committed.set(input.request_id,{route,input:structuredClone(input),body});
             }
           }
@@ -768,7 +771,29 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
        console.log(`Verified ${passed} label disclosure browser checks with isolated API fixtures.`);
        return;
      }
-     if (filmReadyOnly) {
+    if (monitoringWarningOnly) {
+      for(const lang of ["ar","en"]){
+        language=lang;permissions=["operate_film"];
+        await navigate("/production/film");
+        await wait("!!document.querySelector('#weight-2')");
+        await clickText(lang==="en"?"Change machine":"تغيير الماكينة");
+        await setInput("#machine-film","F2");
+        await setInput("#weight-2","2.50");failWrite=true;
+        await evaluate("document.querySelector('#weight-2').closest('article').querySelector('button.prod-btn:not(.quiet)').click()");
+        await wait("!!document.querySelector('.prod-error')");
+        check(`${lang} failed transport shows no shortage outcome yet`,await evaluate("!document.querySelector('.prod-callout[role=status]')"));
+        const key=writes.at(-1).input.request_id;
+        await setInput("#weight-2","4.50");await clickText(lang==="en"?"Retry":"إعادة المحاولة");
+        await wait("!!document.querySelector('.prod-success')&&!!document.querySelector('.prod-callout[role=status]')");
+        check(`${lang} successful replay warns without treating save as failure`,await evaluate(`document.querySelector('.prod-callout[role=status]').innerText.includes('2.5')&&document.querySelector('.prod-callout[role=status]').innerText.includes(${jsLiteral(lang==="en"?"mix":"خلط")})&&!document.querySelector('.prod-error')`));
+        check(`${lang} warning never clears newer draft`,await evaluate("document.querySelector('#weight-2').value"),"4.50");
+        check(`${lang} warning replay uses original key`,writes.at(-1).input.request_id,key);
+        check(`${lang} warning preserves original outcome`,writes.at(-1).input.weight_kg,"2.50");
+      }
+      check("warning UI has no runtime errors",errors,[]);
+      console.log(`Verified ${passed} shortage-warning checks with synthetic API fixtures.`);return;
+    }
+    if (filmReadyOnly) {
       const ready = state.orders[0];
       const reset = () => Object.assign(ready, {status:"pending",order_status:"for_production",previous_status:null,
         batch_number:null,started_at:null,film_closed_at:null,completed_at:null,stage:null,produced_kg:"0.00",roll_count:0});

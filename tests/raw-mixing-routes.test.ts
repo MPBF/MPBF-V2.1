@@ -65,6 +65,14 @@ describe("raw mixing HTTP validation and authorization", () => {
     expect((await post(valid())).status).toBe(500);
     expect(connect).toHaveBeenCalledTimes(1);
   });
+  it.each(["C","ABA","a","",null,1])("rejects invalid screw %s before storage",async screw=>{
+    expect((await post({...valid(),screw})).status).toBe(400);
+    expect(connect).not.toHaveBeenCalled();
+  });
+  it.each(["A","B"])("accepts explicit screw %s at route boundary",async screw=>{
+    expect((await post({...valid(),screw})).status).toBe(500);
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
   it("retires free-form creation even for administrators",async()=>{
     expect((await post({request_id:randomUUID(),code:"HDPE",name:"HDPE",name_ar:"خام",opening_kg:"0"},"admin","/raw-materials")).status).toBe(410);
     expect(connect).not.toHaveBeenCalled();

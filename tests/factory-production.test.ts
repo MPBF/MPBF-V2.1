@@ -51,8 +51,9 @@ describe("factory production exact quantities and routing", () => {
   });
   it("routes operator/warehouse-only users to their permitted surface", () => {
     expect(initialProductionPath({ id: 1, permissions: ["operate_film"] })).toBe("/production/film");
-    expect(initialProductionPath({ id: 1, permissions: ["receive_production"] })).toBe("/production/hall");
-    expect(initialProductionPath({ id: 1, permissions: ["view_finished_inventory"] })).toBe("/production/warehouse");
+    // Warehouse views now belong to their own module, not production tabs.
+    expect(initialProductionPath({ id: 1, permissions: ["receive_production"] })).toBeNull();
+    expect(initialProductionPath({ id: 1, permissions: ["view_finished_inventory"] })).toBeNull();
     expect(initialProductionPath({ id: 1, permissions: ["*"] })).toBeNull();
   });
   it("allows ±2% and 0.01 kg, but not excessive or zero packaging", () => {

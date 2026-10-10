@@ -48,6 +48,7 @@ const idempotencyKey = () => {
 };
 
 const messages: Record<string, [string, string]> = {
+  monitoring: ["مراقبة الإنتاج", "Production monitoring"],
   mixing: ["خلط مواد الخام", "Raw material mixing"],
   raw: ["صالة الخام", "Raw materials hall"],
   title: ["تشغيل الإنتاج", "Production operations"], intro: ["كل رول يسير في مساره؛ والدفعات تصل للمخزون عند استلامها.", "Each roll moves on its own; batches enter stock when received."],
@@ -132,18 +133,26 @@ function Metric({ label, value, unit = "kg" }: { label: string; value: string; u
 
 function useWrite(reload: () => Promise<void>, language: string) {
   const [saving, setSaving] = useState(false), [error, setError] = useState(""), [success, setSuccess] = useState(""), [uncertain, setUncertain] = useState(false);
+  const [warning, setWarning] = useState("");
   const savedOperation = useRef<{ fingerprint: string; requestId: string; action: (requestId: string) => Promise<unknown>; feedback: string; onSuccess?: () => void } | null>(null);
   const savingRef = useRef(false);
   const run = useCallback(async (operation: NonNullable<typeof savedOperation.current>) => {
     if (savingRef.current) return false;
     savingRef.current = true;
-    setSaving(true); setError(""); setSuccess(""); setUncertain(false);
+    setSaving(true); setError(""); setSuccess(""); setWarning(""); setUncertain(false);
     try {
       if (!operation.requestId) {
         try { operation.requestId = idempotencyKey(); }
         catch { throw new Error(text("secureUnavailable", language)); }
       }
-      await operation.action(operation.requestId);
+      const result = await operation.action(operation.requestId);
+      const uncovered = (result as {mix_tracking?: {uncovered_kg?: string}} | null)?.mix_tracking?.uncovered_kg;
+      if (uncovered && Number(uncovered)>0) {
+        setWarning(language==="en"
+          ? `Roll saved. ${number(uncovered,language)} kg is not covered by recorded mixes. Production is allowed; review mixing records.`
+          : `تم حفظ الرول. ${number(uncovered,language)} كجم غير مغطاة بخلطات مسجلة. الإنتاج مسموح؛ راجع سجل الخلط.`);
+      }
+      window.dispatchEvent(new Event("production-data-changed"));
       operation.onSuccess?.();
       setSuccess(text(operation.feedback, language));
       await reload();
@@ -171,7 +180,7 @@ function useWrite(reload: () => Promise<void>, language: string) {
     return run(operation);
   }, [run]);
   const fail = (message: string) => { setError(message); setSuccess(""); setUncertain(false); };
-  return { saving, error, success, perform, retry, fail, uncertain };
+  return { saving, error, success, warning, perform, retry, fail, uncertain };
 }
 
 function OrderSummary({ order, language, showFilmDuration = true }: { order: ProductionOrderRecord; language: string; showFilmDuration?: boolean }) {
@@ -362,6 +371,7 @@ function OperatorBoard({ state,user,stage,language,reload,machineSlot }: {state:
   const machinePicker=<MachinePicker userId={user.id} stage={stage} machines={machines} language={language} selected={selectedMachine} onSelect={setSelectedMachine}/>;
   return <>
     {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
+    {write.warning && <div className="prod-callout" role="status">{write.warning}</div>}
     {machineSlot&&createPortal(machinePicker,machineSlot)}
     {!canOperate&&<div className="prod-callout" style={{marginTop:14}}>{text("readonly",language)}</div>}
     {stage==="film" ? <FilmOperatorOrders

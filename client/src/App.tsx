@@ -25,6 +25,7 @@ const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const HumanResources = lazy(() => import("./pages/HumanResources"));
 const ProductionPage = lazy(() => import("./pages/production/ProductionPage"));
 const RawMixingPage = lazy(() => import("./pages/production/RawMixingPage"));
+const ProductionMonitoringPage = lazy(() => import("./pages/production/ProductionMonitoringPage"));
 const RawInventoryPage = lazy(() => import("./pages/warehouse/RawInventoryPage"));
 const WarehousePage = lazy(() => import("./pages/warehouse/WarehousePage"));
 const OrderCreateModal = lazy(() => import("./components/OrderCreateModal"));
@@ -1455,6 +1456,7 @@ function App() {
     <Route path="/production/printing"><ProductionPage user={productionUser} view="printing" /></Route>
     <Route path="/production/cutting"><ProductionPage user={productionUser} view="cutting" /></Route>
     <Route path="/production/mixing"><RawMixingPage user={productionUser} /></Route>
+    <Route path="/production/monitoring"><ProductionMonitoringPage user={productionUser} /></Route>
     <Route path="/warehouse/raw-materials"><RawInventoryPage user={productionUser} /></Route>
     <Route path="/production/hall"><Redirect to="/warehouse/hall" replace /></Route>
     <Route path="/production/warehouse"><Redirect to="/warehouse/finished-inventory" replace /></Route>
