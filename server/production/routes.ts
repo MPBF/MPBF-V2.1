@@ -54,7 +54,7 @@ router.get("/mixing", handler(async (req, res) => {
 }));
 router.post("/mixing", handler(async (req, res) => {
   const input = request.extend({
-    machine_id: machine, notes: safeText(2000).optional(),
+    machine_id: machine, screw: z.enum(["A","B"]).optional(), notes: safeText(2000).optional(),
     items: z.array(z.object({ material_id: id, quantity_kg: weight }).strict()).min(1).max(100)
       .refine(items => new Set(items.map(i => i.material_id)).size === items.length),
   }).parse(req.body);

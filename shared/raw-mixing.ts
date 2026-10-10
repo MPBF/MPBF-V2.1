@@ -15,18 +15,19 @@ export type RawMaterial = {
   id: number; item_id: string; code: string; name: string; name_ar: string; quantity_kg: string; is_active: boolean;
 };
 export type MixingInput = {
-  request_id: string; machine_id: string; notes?: string;
+  request_id: string; machine_id: string; screw?: "A" | "B"; notes?: string;
   items: { material_id: number; quantity_kg: string }[];
 };
 export type MixingRecord = {
-  id: number; machine_id: string; machine_name: string | null; machine_name_ar: string | null;
+  id: number; machine_id: string; screw: "A" | "B" | null; machine_name: string | null; machine_name_ar: string | null;
   created_by: number; actor_name: string | null; actor_name_ar: string | null;
   created_at: string; notes: string | null; total_kg: string;
   items: { material_id: number; code: string; name: string; name_ar: string; quantity_kg: string }[];
 };
 export type MixingState = {
   materials: RawMaterial[];
-  machines: { id: string; name: string | null; name_ar: string | null; status: string }[];
+  machines: { id: string; name: string | null; name_ar: string | null; status: string; screw_type: string | null }[];
+  latest_mixes: MixingRecord[];
   records: MixingRecord[]; next_before: number | null;
   raw_vouchers?: RawVoucher[];
 };

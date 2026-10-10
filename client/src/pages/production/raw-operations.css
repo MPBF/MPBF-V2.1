@@ -84,6 +84,33 @@
 .raw-ops-material-chip { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding: 6px 8px; border: 1px solid #dce7df; background: #f2f7f2; font-size: 11px; }
 .raw-ops-material-chip strong { color: var(--raw-deep); font: 700 10px "IBM Plex Mono", monospace; }
 .raw-ops-record-notes { margin: 9px 0 0; color: var(--raw-muted); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.raw-mix-single-screw { min-height: 43px; display: flex; align-items: center; padding: 9px 10px; border: 1px solid #c8d8cf; background: #edf4ee; color: var(--raw-deep); font-size: 13px; font-weight: 750; }
+.raw-mix-note-area { display: grid; gap: 7px; }
+.raw-mix-note-area > .raw-btn { justify-self: start; }
+.raw-mix-note-area textarea { width: 100%; min-height: 72px; padding: 9px 10px; border: 1px solid #c8d8cf; border-radius: 3px; background: #fff; color: var(--raw-ink); font: inherit; resize: vertical; }
+.raw-mix-note-area textarea:focus { outline: 2px solid rgba(188,104,71,.28); border-color: var(--raw-copper); }
+.raw-mix-note-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.raw-mix-note-head label { color: var(--raw-muted); font-size: 11px; font-weight: 750; }
+.raw-mix-note-head .raw-btn { min-height: 34px; padding: 5px 8px; }
+.raw-mix-live-preview { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border: 1px dashed #b88466; background: #fff7ef; }
+.raw-mix-preview-label { color: #81452f; font-size: 11px; font-weight: 800; }
+.raw-mix-summary-card .raw-ops-card-body { display: grid; gap: 13px; }
+.raw-mix-reader-machine { max-width: 420px; }
+.raw-mix-saved-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.raw-mix-composition { min-width: 0; border: 1px solid #dce7df; background: #f8fbf7; }
+.raw-mix-composition-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border-bottom: 1px solid #dce7df; color: var(--raw-deep); font-size: 12px; }
+.raw-mix-composition-head b { font: 700 11px "IBM Plex Mono", monospace; white-space: nowrap; }
+.raw-mix-partial { display: inline-flex; margin-inline-start: 7px; padding: 2px 5px; border: 1px solid #e7d5a9; color: #705b2b; background: #fbf5e4; font-size: 9px; font-weight: 700; }
+.raw-mix-composition-lines { display: grid; }
+.raw-mix-composition-line { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: baseline; gap: 10px; padding: 7px 10px; border-bottom: 1px solid #e8eee9; font-size: 11px; }
+.raw-mix-composition-line:last-child { border-bottom: 0; }
+.raw-mix-composition-line > span { min-width: 0; overflow-wrap: anywhere; }
+.raw-mix-composition-line b, .raw-mix-composition-line small { white-space: nowrap; font: 700 10px "IBM Plex Mono", monospace; }
+.raw-mix-composition-line small { color: var(--raw-copper); }
+.raw-mix-composition > .raw-ops-helper { margin: 8px 10px; }
+.raw-mix-missing { display: grid; align-content: center; min-height: 74px; gap: 5px; padding: 10px; border: 1px dashed #c4d2c7; color: var(--raw-muted); background: #fafcf8; font-size: 11px; }
+.raw-mix-missing strong { color: var(--raw-ink); font-size: 12px; }
+.raw-mix-summary-card .raw-mix-composition { background: #f8fbf7; }
 .raw-ops-empty { padding: 30px 16px; border: 1px dashed #b9cec2; background: #f8fbf7; text-align: center; }
 .raw-ops-empty strong { display: block; margin-bottom: 4px; font-size: 13px; }
 .raw-ops-empty span { color: var(--raw-muted); font-size: 11px; }
@@ -108,6 +135,10 @@
   .raw-ops-record-head { flex-direction: column; }
   .raw-ops-record-total { white-space: normal; }
   .raw-ops .raw-btn { min-height: 44px; }
+  .raw-mix-saved-grid { grid-template-columns: minmax(0,1fr); }
+  .raw-mix-composition-line { grid-template-columns: minmax(0,1fr) auto; }
+  .raw-mix-composition-line small { grid-column: 2; justify-self: end; }
+  .raw-mix-note-head .raw-btn { min-height: 38px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .raw-ops *, .raw-ops *::before, .raw-ops *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

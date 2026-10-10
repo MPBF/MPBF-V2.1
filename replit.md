@@ -114,4 +114,7 @@ If a credential still can't be decrypted (e.g. the previous secret was lost), co
 - Manufacturing completion and partial warehouse receipt are independent. QR records remain authenticated and permission-checked.
 - `npx tsx scripts/test-factory-production.ts` verifies transactions in a disposable development schema. Never run it against production.
 - `node scripts/check-factory-production.cjs` checks responsive views and permissions using browser-only API fixtures, without real sign-in or business writes.
+- Raw mixing uses actual kilograms, not recipes or physical ABA layer ratios. Composition is based on the highest saved mix ID for each identified machine/screw; unlabeled historical mixes are never assigned a screw.
+- Apply `migrations/0017_raw_mixing_screws.sql` additively in development only (also included in `scripts/apply-raw-mixing-migration.ts`). Do not backfill screw identities or apply published database changes without separate approval.
+- `npx tsx scripts/test-raw-mixing.ts` requires a disposable local PostgreSQL on port 55439; `node scripts/check-raw-mixing-screws.cjs` exercises both languages at 390/768/1280 pixels, exact lost-response replay and preservation of newer drafts using synthetic browser fixtures.
 - For the combined UI/server queue contract check, run the browser script first, then `npx tsx scripts/test-factory-production.ts --ui-requests=/tmp/factory-ui-requests.json`. The captured requests contain synthetic fixtures only.

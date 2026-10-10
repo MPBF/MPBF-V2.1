@@ -11,6 +11,11 @@ Recovered-write tests must simulate a committed operation whose response is
 lost, verify the same operation key and one committed result, and check that
 success clears the submitted draft while preserving later edits and other drafts.
 
+When upgrading session recovery, retain the identity of the originally submitted
+draft. The newer recovered editor contents are not the submitted draft. Note
+visibility is presentation state, not a material edit; reopening recovered notes
+must not prevent confirmed-request cleanup.
+
 **Why:** permissive write fixtures concealed reversed queue positions, and
 checking UUID reuse alone missed populated forms that could submit duplicates
 after a successful retry.

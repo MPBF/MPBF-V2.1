@@ -16,12 +16,15 @@ export const factory_raw_materials = pgTable("factory_raw_materials", {
 export const factory_mixes = pgTable("factory_mixes", {
   id: serial("id").primaryKey(),
   machine_id: varchar("machine_id", { length: 20 }).notNull().references(() => machines.id),
+  screw: varchar("screw", { length: 1 }),
   created_by: integer("created_by").notNull().references(() => users.id),
   created_at: timestamp("created_at", { withTimezone: true }).default(sql`clock_timestamp()`).notNull(),
   notes: text("notes"),
   total_kg: decimal("total_kg", { precision: 18, scale: 2 }).notNull(),
 }, table => [
   check("factory_mixes_total_kg_check", sql`${table.total_kg}>0`),
+  check("factory_mixes_screw_check", sql`${table.screw} IS NULL OR ${table.screw} IN ('A','B')`),
+  index("factory_mixes_machine_screw_latest_idx").on(table.machine_id,table.screw,table.id.desc()),
   index("factory_mixes_actor_idx").on(table.created_by,table.id),
 ]);
 export const factory_mix_items = pgTable("factory_mix_items", {
