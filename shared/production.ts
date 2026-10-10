@@ -133,7 +133,7 @@ export type ProductionHistoryPage<K extends ProductionHistoryKind> = {
 export type PackagingInput = { roll_weight_grams: string; rolls_per_unit: number; units: number };
 export type ReceiptInput = {
   request_id: string; notes?: string;
-  items: { production_order_id: number; location_id: number; quantity_kg?: string; packaging?: PackagingInput;
+  items: { production_order_id: number; location_id?: number; quantity_kg?: string; packaging?: PackagingInput;
     packing?: import("./production-packing").ReceiptPacking }[];
 };
 export type FilmInput = {
