@@ -470,6 +470,14 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            check(`${lang} ${width}: production contains manufacturing tabs only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"),
              ["/production", "/production/film", "/production/printing", "/production/cutting", "/production/mixing"]);
            check(`${lang} ${width}: warehouse is a separate sidebar entry`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/warehouse\"]').innerText"), lang === "ar" ? "المستودع" : "Warehouse");
+           await navigate("/warehouse/raw-materials");
+           await wait("!!document.querySelector('.raw-ops-nav')");
+           check(`${lang} ${width}: raw inventory contains only warehouse tabs even for admin`,await evaluate("[...document.querySelectorAll('.raw-ops-nav a')].map(link=>link.getAttribute('href'))"),["/warehouse/hall","/warehouse/finished-inventory","/warehouse/raw-materials"]);
+           check(`${lang} ${width}: raw inventory marks current tab`,await evaluate("document.querySelector('.raw-ops-nav [aria-current=\"page\"]').getAttribute('href')"),"/warehouse/raw-materials");
+           permissions=["view_raw_inventory","view_production","operate_film"];
+           await navigate("/warehouse/raw-materials");
+           check(`${lang} ${width}: combined raw and film grants do not mix module navigation`,await evaluate("[...document.querySelectorAll('.raw-ops-nav a')].map(link=>link.getAttribute('href'))"),["/warehouse/raw-materials"]);
+           permissions=["admin"];
            for (const [oldPath, newPath] of [["/production/hall", "/warehouse/hall"], ["/production/warehouse", "/warehouse/finished-inventory"]]) {
              await navigate(oldPath);
              check(`${lang} ${width}: ${oldPath} keeps existing bookmarks working`, await evaluate("location.pathname"), newPath);

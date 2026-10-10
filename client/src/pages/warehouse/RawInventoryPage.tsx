@@ -7,7 +7,6 @@ import { hasProductionPermission, type ProductionUser } from "../../../../shared
 import { canViewRawInventory, type MixingState, type RawMovementInput, type RawVoucher } from "../../../../shared/raw-mixing";
 import { formatNumber, formatWholeNumber } from "../../lib/format-number";
 import { confirmedProductionRejection } from "../../lib/production-api";
-import { availableProductionViews } from "../../lib/production-navigation";
 import { rawMixingApi } from "../../lib/raw-mixing-api";
 import { availableWarehouseViews } from "../../lib/warehouse-navigation";
 
@@ -80,11 +79,9 @@ const clearPending = (key: string) => { try { window.sessionStorage.removeItem(k
 const errorText = (cause: unknown, en: boolean) => cause instanceof Error && cause.message && cause.message !== "secure" ? cause.message : tx(cause instanceof Error && cause.message === "secure" ? "secure" : "saveError", en);
 
 function ModuleNav({ user, en }: { user: ProductionUser; en: boolean }) {
-  const prodLabels: Record<string, [string, string]> = { management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"], printing: ["الطباعة", "Printing"], cutting: ["القص", "Cutting"], mixing: ["خلط مواد الخام", "Raw material mixing"] };
   const warehouseLabels: Record<string, [string, string]> = { hall: ["صالة الإنتاج", "Production hall"], warehouse: ["المخزون التام", "Finished inventory"], raw: ["صالة الخام", "Raw materials"], "raw-materials": ["صالة الخام", "Raw materials"] };
-  const production = availableProductionViews(user), warehouse = availableWarehouseViews(user);
-  return <nav className="raw-ops-nav" aria-label={en ? "Production and warehouse modules" : "وحدات الإنتاج والمستودع"}>
-    {production.map(view => <Link key={view.view} href={view.href}>{prodLabels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
+  const warehouse = availableWarehouseViews(user);
+  return <nav className="raw-ops-nav" aria-label={en ? "Warehouse modules" : "أقسام المستودع"}>
     {warehouse.map(view => <Link key={view.view} href={view.href} aria-current={view.href === "/warehouse/raw-materials" ? "page" : undefined}>{view.href === "/warehouse/raw-materials" ? tx("title", en) : warehouseLabels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
   </nav>;
 }
