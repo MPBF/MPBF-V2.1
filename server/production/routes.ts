@@ -134,9 +134,17 @@ router.post("/queues/reorder", handler(async (req, res) => { res.json(await exec
 }).parse(req.body))); }));
 router.post("/receipts", handler(async (req, res) => {
   const packaging = z.object({ roll_weight_grams: z.string().regex(/^\d{1,8}(?:\.\d{1,4})?$/), rolls_per_unit: z.number().int().min(1).max(1000000), units: z.number().int().min(1).max(1000000) }).strict();
+  const packing = z.object({
+    unit: z.enum(["kg","packet","roll","piece"]), method: z.enum(["unit_weight","piece_weight"]),
+    quantity: z.string().regex(/^\d{1,12}(?:\.\d{1,2})?$/),
+    unit_weight_kg: z.string().regex(/^\d{1,8}(?:\.\d{1,6})?$/).optional(),
+    pieces_per_unit: z.number().int().min(1).max(1000000).optional(),
+    piece_weight_grams: z.string().regex(/^\d{1,8}(?:\.\d{1,4})?$/).optional(),
+  }).strict();
   const input = request.extend({ notes: safeText(2000).optional(), items: z.array(z.object({
-    production_order_id: id, location_id: id, quantity_kg: weight, packaging: packaging.optional(),
-  }).strict()).min(1).max(100) }).parse(req.body);
+    production_order_id: id, location_id: id, quantity_kg: weight.optional(), packaging: packaging.optional(), packing: packing.optional(),
+  }).strict().refine(item => Boolean(item.packing || item.quantity_kg), "Receipt packing or weight is required")
+    .refine(item => !(item.packing && item.packaging), "Do not mix packing formats")).min(1).max(100) }).parse(req.body);
   res.json(await warehouse.receive(req.user!, input));
 }));
 const locationName = safeText(100).refine(value => value.length > 0);

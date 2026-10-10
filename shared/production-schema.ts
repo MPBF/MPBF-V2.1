@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, serial, integer, varchar, text, boolean, timestamp, decimal, jsonb, unique, index, check, foreignKey, uuid } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, text, boolean, timestamp, decimal, jsonb, unique, uniqueIndex, index, check, foreignKey, uuid } from "drizzle-orm/pg-core";
 import { customer_products, production_orders, items, machines, users } from "./schema";
 import type { ProductSnapshot, PackagingInput } from "./production";
 
@@ -76,11 +76,15 @@ export const factory_receipt_items = pgTable("factory_receipt_items", {
   item_id: varchar("item_id", { length: 20 }).notNull(),
   location_id: integer("location_id").notNull().references(() => factory_locations.id, { onDelete: "restrict" }),
   quantity_kg: decimal("quantity_kg", { precision: 14, scale: 2 }).notNull(), packaging: jsonb("packaging").$type<PackagingInput>(),
+  line_number: integer("line_number"),
+  packing: jsonb("packing").$type<import("./production-packing").ReceiptPacking>(),
 }, t => [
   foreignKey({ columns: [t.production_order_id, t.customer_product_id, t.item_id], foreignColumns: [factory_execution.production_order_id, factory_execution.customer_product_id, factory_execution.item_id] }).onDelete("restrict"),
-  unique().on(t.receipt_id, t.production_order_id, t.location_id), unique().on(t.id, t.receipt_id),
+  uniqueIndex("factory_receipt_items_line_unique").on(t.receipt_id, t.line_number), unique().on(t.id, t.receipt_id),
   index("factory_receipt_items_order").on(t.production_order_id),
   check("factory_receipt_items_quantity_kg_check", sql`${t.quantity_kg} > 0`),
+  check("factory_receipt_items_line_check", sql`${t.line_number} IS NULL OR ${t.line_number}>0`),
+  check("factory_receipt_items_packing_check", sql`${t.packing} IS NULL OR (${t.packing}->>'unit' IN ('kg','packet','roll','piece') AND ${t.packing}->>'method' IN ('unit_weight','piece_weight') AND (${t.packing}->>'quantity')::numeric>0)`),
 ]);
 export const factory_inventory = pgTable("factory_inventory", {
   id: serial("id").primaryKey(), production_order_id: integer("production_order_id").notNull(),
@@ -91,6 +95,20 @@ export const factory_inventory = pgTable("factory_inventory", {
   foreignKey({ columns: [t.production_order_id, t.customer_product_id, t.item_id], foreignColumns: [factory_execution.production_order_id, factory_execution.customer_product_id, factory_execution.item_id] }).onDelete("restrict"),
   unique().on(t.customer_product_id, t.production_order_id, t.location_id),
   check("factory_inventory_quantity_kg_check", sql`${t.quantity_kg} >= 0`),
+]);
+export const factory_inventory_units = pgTable("factory_inventory_units", {
+  id: serial("id").primaryKey(),
+  inventory_id: integer("inventory_id").notNull().references(() => factory_inventory.id, {onDelete: "cascade"}),
+  packing_key: varchar("packing_key", {length: 150}).notNull(),
+  specification: jsonb("specification").$type<import("./production-packing").PackingSpecification>().notNull(),
+  unit_quantity: decimal("unit_quantity", {precision: 22, scale: 4}).notNull(),
+  quantity_kg: decimal("quantity_kg", {precision: 14, scale: 2}).notNull(),
+}, t => [
+  unique().on(t.inventory_id, t.packing_key),
+  check("factory_inventory_units_unit_quantity_check", sql`${t.unit_quantity}>=0`),
+  check("factory_inventory_units_quantity_kg_check", sql`${t.quantity_kg}>=0`),
+  check("factory_inventory_units_specification_check", sql`${t.specification}->>'unit' IN ('kg','packet','roll','piece') AND ${t.specification}->>'method' IN ('unit_weight','piece_weight')`),
+  check("factory_inventory_units_count_check", sql`${t.specification}->>'unit'='kg' OR ${t.unit_quantity}=trunc(${t.unit_quantity})`),
 ]);
 export const factory_movements = pgTable("factory_movements", {
   id: serial("id").primaryKey(), receipt_id: integer("receipt_id").notNull(),
