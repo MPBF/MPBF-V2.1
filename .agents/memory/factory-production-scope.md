@@ -231,3 +231,11 @@ all customer-order groups expanded.
 
 **How to apply:** preserve this phone-oriented disclosure preference when
 changing the film board; do not expand all requests by default.
+
+صالة الإنتاج هي الموقع، ولا توجد مواقع متعددة داخلها.
+
+**Why:** the user corrected the storage-location assumption: «الصحيح انه لا يوجد مواقع متعددة في الصاله وان صاله الانتاج هي الموقع».
+
+**How to apply:** do not require creating or selecting an internal storage
+location in the production hall. Keep this rule scoped to the production hall;
+do not infer multiple sublocations there from the existing warehouse data model.
