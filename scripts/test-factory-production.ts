@@ -90,6 +90,9 @@ try {
   await setup.query(readFileSync("migrations/0011_factory_roll_production.sql", "utf8"));
   await setup.query(readFileSync("migrations/0013_order_number_allocations.sql", "utf8"));
   await setup.query(readFileSync("migrations/0016_finished_inventory_units.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0014_raw_material_mixing.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0017_raw_mixing_screws.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0018_production_monitoring.sql", "utf8"));
   setup.release(); setup = undefined;
   const location = await warehouse.location(actor, { ...key(), name: "Location", name_ar: "موقع" }) as { id: number };
   const secondLocation = await warehouse.location(actor, { ...key(), name: "Second", name_ar: "ثاني" }) as { id: number };

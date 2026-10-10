@@ -113,7 +113,7 @@ describe("production operator tab boundaries", () =>
     const account = user("admin", "operate_film")
 ;
 
-    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting", "mixing"])
+    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting", "mixing", "monitoring"])
 ;
 
     expect(initialProductionPath(account)).toBe("/production")

@@ -1,5 +1,6 @@
 import i18n from "../i18n";
 import type { FilmInput, ProductionRollDetail, ProductionRollRecord, ProductionState, ReceiptInput, ProductionHistoryKind, ProductionHistoryFilter, ProductionHistoryPage, ProductionStateScope } from "../../../shared/production";
+import type { FilmMixTracking } from "../../../shared/production-monitoring";
 
 export type ProductionRollLabel = {
   roll: ProductionRollRecord;
@@ -42,7 +43,7 @@ export const productionApi = {
   },
   labels: (rollIds: number[]) => productionRequest<{ labels: ProductionRollLabel[] }>("/labels", { roll_ids: rollIds }),
   start: (id: number, request_id: string) => productionRequest(`/orders/${id}/start`, { request_id }),
-  film: (id: number, input: FilmInput) => productionRequest(`/orders/${id}/rolls`, input),
+   film: (id: number, input: FilmInput) => productionRequest<ProductionRollRecord & {mix_tracking?: FilmMixTracking}>(`/orders/${id}/rolls`, input),
   closeFilm: (id: number, request_id: string) => productionRequest(`/orders/${id}/close-film`, { request_id }),
   print: (id: number, machine_id: string, request_id: string) => productionRequest(`/rolls/${id}/print`, { machine_id, request_id }),
   cut: (id: number, machine_id: string, net_weight_kg: string, request_id: string) =>

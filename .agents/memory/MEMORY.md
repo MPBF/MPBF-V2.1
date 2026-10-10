@@ -92,3 +92,4 @@
 - [Bulk order deletion policy](order-bulk-deletion-policy.md) — user chose all-or-nothing deletion, not partial success.
 - [Static dictionary audits](static-dictionary-audits.md) — reject unsupported mutations explicitly; a static audit must not silently differ from runtime translations.
 - [Warehouse fixture parity](warehouse-fixture-parity.md) — types can pass with blank stock cards; verify empty snapshots, paginated feeds and visible unit-count cards together.
+- [Prospective mix accounting](production-mix-accounting.md) — machine-wide FIFO, shortages allowed without later reconciliation; no second raw deduction or inferred screw/layer dosing.

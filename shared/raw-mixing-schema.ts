@@ -26,6 +26,8 @@ export const factory_mixes = pgTable("factory_mixes", {
   check("factory_mixes_screw_check", sql`${table.screw} IS NULL OR ${table.screw} IN ('A','B')`),
   index("factory_mixes_machine_screw_latest_idx").on(table.machine_id,table.screw,table.id.desc()),
   index("factory_mixes_actor_idx").on(table.created_by,table.id),
+  index("factory_mixes_fifo").on(table.machine_id,table.created_at,table.id),
+  index("factory_mixes_monitor_page").on(table.machine_id,table.id.desc()),
 ]);
 export const factory_mix_items = pgTable("factory_mix_items", {
   id: serial("id").primaryKey(),

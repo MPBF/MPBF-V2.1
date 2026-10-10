@@ -9,6 +9,7 @@ import { ProductionExecutionService } from "./execution";
 import { ProductionWarehouseService } from "./warehouse";
 import { ProductionReadService } from "./read";
 import { RawMixingService } from "./mixing";
+import { ProductionMonitoringService, monitoringPermission } from "./monitoring";
 
 const request = z.object({ request_id: z.string().uuid() }).strict();
 const id = z.coerce.number().int().positive().max(2147483647);
@@ -47,6 +48,32 @@ const execution = new ProductionExecutionService(connectionPool);
 const warehouse = new ProductionWarehouseService(connectionPool);
 const read = new ProductionReadService(connectionPool);
 const mixing = new RawMixingService(connectionPool);
+const monitoring = new ProductionMonitoringService(connectionPool);
+router.use("/monitoring", handler(async (req, res, next) => {
+  monitoringPermission(req.user!);
+  res.setHeader("Cache-Control","private, no-store");
+  next();
+}));
+const monitoringCursor = safeText(12000).optional();
+const monitoringFilters = z.object({
+  cursor: monitoringCursor, limit: z.coerce.number().int().min(1).max(100).optional(),
+  machine_id: machine.optional(), stage: z.enum(["film","printing","cutting"]).optional(),
+  from: z.string().date().optional(), to: z.string().date().optional(), search: safeText(120).optional(),
+}).strict().refine(f=>!f.from||!f.to||f.from<=f.to);
+router.get("/monitoring/log",handler(async(req,res)=>{res.json(await monitoring.log(req.user!,monitoringFilters.parse(req.query)));}));
+router.get("/monitoring/summary",handler(async(req,res)=>{z.object({}).strict().parse(req.query);res.json(await monitoring.summary(req.user!));}));
+router.get("/monitoring/mixes",handler(async(req,res)=>{
+  const filters=z.object({cursor:monitoringCursor,limit:z.coerce.number().int().min(1).max(100).optional(),machine_id:machine.optional()}).strict().parse(req.query);
+  res.json(await monitoring.mixes(req.user!,filters));
+}));
+router.get("/monitoring/mixes/:id",handler(async(req,res)=>{
+  const {cursor}=z.object({cursor:monitoringCursor}).strict().parse(req.query);
+  res.json(await monitoring.mix(req.user!,id.parse(req.params.id),cursor));
+}));
+router.get("/monitoring/rolls/:id",handler(async(req,res)=>{
+  const {cursor}=z.object({cursor:monitoringCursor}).strict().parse(req.query);
+  res.json(await monitoring.roll(req.user!,id.parse(req.params.id),cursor));
+}));
 router.get("/mixing", handler(async (req, res) => {
   const { before } = z.object({ before: id.optional() }).strict().parse(req.query);
   res.setHeader("Cache-Control", "private, no-store");

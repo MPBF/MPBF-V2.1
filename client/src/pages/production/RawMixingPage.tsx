@@ -121,6 +121,7 @@ function Nav({ user, en }: { user: ProductionUser; en: boolean }) {
   const labels: Record<string, [string, string]> = {
     management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"],
     printing: ["الطباعة", "Printing"], cutting: ["القص", "Cutting"], mixing: ["خلط مواد الخام", "Raw material mixing"],
+    monitoring: ["مراقبة الإنتاج", "Production monitoring"],
   };
   return <nav className="raw-ops-nav" aria-label={en ? "Production modules" : "وحدات الإنتاج"}>
     {views.map(view => <Link key={view.view} href={view.href} aria-current={view.href === "/production/mixing" ? "page" : undefined}>{labels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
@@ -274,6 +275,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
     setBusy(true);
     try {
       await rawMixingApi.record(operation.payload);
+      window.dispatchEvent(new Event("production-data-changed"));
       removePendingMix(storageKey);
       setPending(null); setPendingFailed(false); setSaveError(""); setSuccess(tx("success", en));
        if (draftFingerprintRef.current === operation.fingerprint) { setRows([{ materialId: "", quantity: "" }]); setNotes(""); setNotesVisible(false); }

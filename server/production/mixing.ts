@@ -1,6 +1,7 @@
 import { kgHundredths, kgString, type ProductionUser } from "../../shared/production";
 import { canRecordMixing, canViewMixing, canViewRawInventory, type MixingInput, type MixingRecord, type MixingState, type RawMaterial, type RawMovementInput, type RawVoucher } from "../../shared/raw-mixing";
 import { mutate, one, permission, ProductionError, rows, type ConnectionPool, type Connection } from "./core";
+import { lockMixMachine } from "./mix-consumption";
 
 const filmTypes = ["extruder"];
 // The catalogue owns material identities; stock and operational forms cannot
@@ -9,7 +10,7 @@ const rawCategorySQL = `(lower(trim(c.name)) IN ('raw','raw material','raw mater
   OR trim(c.name_ar) IN ('خام','الخامات','مواد خام','المواد الخام'))`;
 // Resolve catalog names without turning an internal identifier into a name.
 // Stock-voucher/inventory presentation deliberately keeps its existing contract.
-const mixProjection = `m.id,m.machine_id,m.screw,m.created_by,m.created_at,m.notes,m.total_kg::text,
+export const mixProjection = `m.id,m.machine_id,m.screw,m.created_by,m.created_at,m.notes,m.total_kg::text,
   ma.name machine_name,ma.name_ar machine_name_ar,
   COALESCE(NULLIF(u.display_name,''),u.username) actor_name,
   COALESCE(NULLIF(u.display_name_ar,''),NULLIF(u.full_name,''),u.username) actor_name_ar,
@@ -96,6 +97,7 @@ export class RawMixingService {
   record(actor: ProductionUser, input: MixingInput) {
     if (!canRecordMixing(actor)) throw new ProductionError("لا تملك صلاحية تسجيل الخلطات", "You cannot record mixes.", 403);
     return mutate(this.pool, actor, "raw-mixing", input, async tx => {
+      await lockMixMachine(tx, input.machine_id);
       const machine = await one<{ type: string | null; status: string; screw_type: string | null }>(tx, "SELECT type,status,screw_type FROM machines WHERE id=$1 FOR SHARE", [input.machine_id]);
       if (!filmTypes.includes(String(machine.type).toLowerCase()) || machine.status !== "active")
         throw new ProductionError("اختر ماكينة فيلم نشطة", "Choose an active film machine.", 400);
