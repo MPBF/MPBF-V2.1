@@ -123,6 +123,19 @@ finished inventory and raw inventory, never manufacturing-operation tabs.
 **How to apply:** apply this module boundary even for administrators or users
 with both production and warehouse grants; still filter tabs by permission.
 
+Production-hall balances are cumulative ready kilograms. Selected orders
+become numbered receipt lines, and finished stock is tracked by actual packing
+units while retaining equivalent kg. One order may be received in several units.
+The exact units are «كيلو-باكت-رول-قطعة»; support both unit-weight and
+piece-content/weight calculations per receipt line.
+
+**Why:** the user explicitly confirmed both calculation methods and these
+four units when redefining the warehouse receiving workflow.
+
+**How to apply:** never combine dissimilar units or packing weights as one
+count. Keep partial remaining kg in the hall, validate all lines together, and
+do not infer historical units from old kg-only balances.
+
 Order release is a focused transition to ready for production, not a general
 status editor or automatic manufacturing start.
 

@@ -9,7 +9,7 @@
   backdrop-filter: blur(3px);
 }
 .production .receipt-voucher-dialog {
-  width: min(100%, 880px);
+  width: min(100%, 1160px);
   max-height: min(94dvh, 960px);
   overflow: auto;
   border: 1px solid #cbd9ce;
@@ -107,6 +107,48 @@
   color: #7d9286;
   font: 700 10px "IBM Plex Mono", monospace;
 }
+.production .receipt-voucher-order-context { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; margin: -3px 0 12px; color: #6e8276; font-size: 10px; }
+.production .receipt-voucher-order-context bdi { color: #315e4b; font: 700 10px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-order-context strong { color: #496b5b; font-size: 11px; }
+.production .receipt-voucher-order-context span { color: #829188; }
+.production .receipt-voucher-line .prod-form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 185px), 1fr)); }
+.production .receipt-voucher-line .prod-field > small { color: #85948a; font-size: 9px; }
+.production .receipt-voucher-line input[readonly] { background: #edf3eb; color: #2c6650; font: 700 13px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid #dce6dd; }
+.production .receipt-voucher-table { width: 100%; min-width: 900px; border-collapse: collapse; table-layout: fixed; }
+.production .receipt-voucher-table th {
+  padding: 9px 8px;
+  background: #edf3eb;
+  color: #71877a;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: start;
+  vertical-align: bottom;
+}
+.production .receipt-voucher-table th:first-child { width: 48px; }
+.production .receipt-voucher-table th:nth-child(2) { width: 190px; }
+.production .receipt-voucher-table th:nth-child(3) { width: 88px; }
+.production .receipt-voucher-table th:nth-child(4) { width: 90px; }
+.production .receipt-voucher-table th:nth-child(5) { width: 230px; }
+.production .receipt-voucher-table th:nth-child(6) { width: 100px; }
+.production .receipt-voucher-table th:nth-child(7) { width: 150px; }
+.production .receipt-voucher-table td { padding: 8px; border-top: 1px solid #e1e8df; vertical-align: top; }
+.production .receipt-voucher-table .receipt-voucher-line { background: #fffefa; }
+.production .receipt-voucher-table .prod-field { display: grid; gap: 5px; min-width: 0; }
+.production .receipt-voucher-table select,
+.production .receipt-voucher-table input { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
+.production .receipt-voucher-table-line { display: grid; justify-items: center; gap: 6px; color: #748a7c; font: 700 10px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-table-line .receipt-voucher-remove { min-width: 30px; min-height: 30px; padding: 4px; }
+.production .receipt-voucher-table-line .receipt-voucher-remove span { display: none; }
+.production .receipt-voucher-available { display: inline-block; padding-top: 8px; color: #416b55; font: 650 11px "IBM Plex Mono", monospace; white-space: nowrap; }
+.production .receipt-voucher-packing-cell { display: grid; gap: 6px; min-width: 0; }
+.production .receipt-voucher-packing-cell label { color: #71877a; font-size: 10px; font-weight: 600; }
+.production .receipt-voucher-packing-cell > small { color: #819086; font-size: 9px; }
+.production .receipt-voucher-piece-spec { display: grid; grid-template-columns: .75fr 1fr; gap: 5px; }
+.production .receipt-voucher-table .receipt-voucher-calculated { background: #edf3eb; color: #2c6650; font: 700 12px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-table .receipt-voucher-order-context { display: grid; gap: 2px; margin: 5px 0 0; font-size: 9px; }
+.production .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .production .receipt-voucher-remove {
   min-height: 30px;
   padding: 4px 8px;
@@ -149,7 +191,7 @@
   gap: 9px;
   margin-top: 13px;
 }
-@media (max-width: 700px) {
+@media (max-width: 767px) {
   .production.receipt-voucher-backdrop { padding: 0; align-items: end; }
   .production .receipt-voucher-dialog { width: 100%; max-height: 96dvh; border-bottom: 0; }
   .production .receipt-voucher-header { padding: 15px; }
@@ -157,6 +199,24 @@
   .production .receipt-voucher-route strong { font-size: 10px; }
   .production .receipt-voucher-dialog form { padding: 12px 12px 18px; }
   .production .receipt-voucher-line { padding: 10px; }
+  .production .receipt-voucher-table-wrap { overflow: visible; border: 0; }
+  .production .receipt-voucher-table { display: block; width: 100%; min-width: 0; }
+  .production .receipt-voucher-table thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .production .receipt-voucher-table tbody { display: grid; gap: 10px; }
+  .production .receipt-voucher-table .receipt-voucher-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; padding: 10px; border: 1px solid #dce6dd; border-inline-start: 3px solid #6a9580; }
+  .production .receipt-voucher-table td { display: grid; min-width: 0; padding: 8px 0; border-top: 1px solid #edf0e9; }
+  .production .receipt-voucher-table td::before { content: attr(data-label); margin-bottom: 5px; color: #71877a; font-size: 9px; font-weight: 700; }
+  .production .receipt-voucher-table td:first-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-start; border: 0; padding: 0 0 5px; }
+  .production .receipt-voucher-table td:first-child::before { content: none; }
+  .production .receipt-voucher-table td:nth-child(2),
+  .production .receipt-voucher-table td:nth-child(5),
+  .production .receipt-voucher-table td:last-child { grid-column: 1 / -1; }
+  .production .receipt-voucher-table-line { display: flex; width: 100%; justify-content: space-between; }
+  .production .receipt-voucher-table-line .receipt-voucher-remove { min-width: 34px; min-height: 30px; }
+  .production .receipt-voucher-table-line .receipt-voucher-remove span { display: inline; }
+  .production .receipt-voucher-packing-cell { grid-template-columns: minmax(0, 1fr); }
+  .production .receipt-voucher-table select,
+  .production .receipt-voucher-table input { min-height: 38px; }
   .production .receipt-voucher-footer > button { flex: 1 1 130px; min-height: 46px; }
 }
 @media (prefers-reduced-motion: reduce) {

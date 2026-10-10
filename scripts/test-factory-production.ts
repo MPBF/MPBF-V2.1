@@ -21,6 +21,7 @@ import { verifyProductionHistory } from "./verify-production-history";
 import { verifyFilmDurations } from "./verify-film-durations";
 import { verifyRollActors } from "./verify-roll-actors";
 import { verifyFilmOperationSpecs } from "./verify-film-operation-specs";
+import { verifyFinishedUnitReceiving } from "./verify-finished-unit-receiving";
 
 if (process.env.NODE_ENV === "production") throw Error("Integration tests are development-only.");
 if (process.argv.includes("--large") && !process.argv.includes("--local")) throw Error("Large fixtures require --local and a disposable database.");
@@ -88,6 +89,7 @@ try {
   `);
   await setup.query(readFileSync("migrations/0011_factory_roll_production.sql", "utf8"));
   await setup.query(readFileSync("migrations/0013_order_number_allocations.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0016_finished_inventory_units.sql", "utf8"));
   setup.release(); setup = undefined;
   const location = await warehouse.location(actor, { ...key(), name: "Location", name_ar: "موقع" }) as { id: number };
   const secondLocation = await warehouse.location(actor, { ...key(), name: "Second", name_ar: "ثاني" }) as { id: number };
@@ -423,6 +425,18 @@ try {
       assert.equal((await call("/history/orders", "view_finished_inventory")).status, 403);
       assert.equal((await call("/history/receipts", "operate_film")).status, 403);
       assert.equal((await call("/history/receipts", "view_finished_inventory")).status, 200);
+      const packedLine={production_order_id:9,location_id:location.id,packing:{unit:"packet",method:"unit_weight",quantity:"1",unit_weight_kg:"1"}};
+      assert.equal((await call("/receipts","view_finished_inventory",{...key(),items:[packedLine]})).status,403);
+      for(const invalid of [
+        {...packedLine,packing:{...packedLine.packing,unit:"box"}},
+        {...packedLine,packing:{...packedLine.packing,quantity:"-1"}},
+        {...packedLine,packing:{...packedLine.packing,actor_id:123}},
+        {...packedLine,line_number:999},
+        {...packedLine,packaging:{roll_weight_grams:"1",rolls_per_unit:1,units:1}},
+        {production_order_id:9,location_id:location.id},
+      ]){
+        assert.equal((await call("/receipts","receive_production",{...key(),items:[invalid]})).status,400);
+      }
       for (const query of ["limit=101", "limit=0", "before=-1", "search=a&search=b", "from=invalid", "from=2026-02-30", "from=2026-10-02&to=2026-10-01", "status=unknown", "location_id=0"]) {
         assert.equal((await call(`/history/orders?${query}`, "view_production")).status, 400, query);
       }
@@ -461,6 +475,7 @@ try {
   await verifyFilmDurations(isolated, query);
   await verifyRollActors(isolated, query);
   await verifyFilmOperationSpecs(isolated, query);
+  await verifyFinishedUnitReceiving(isolated, query);
   console.log(`Verified ${passed} PostgreSQL factory production integration scenarios.`);
 } catch (error) {
   console.error(error);

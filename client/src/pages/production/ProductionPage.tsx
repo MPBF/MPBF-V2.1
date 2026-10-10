@@ -12,7 +12,7 @@ import {
   type FilmInput, type ProductionMachine, type ProductionOrderRecord, type ProductionRollDetail, type ProductionRollRecord,
   type ProductionStage, type ProductionState, type ProductionUser, type ProductionReceipt, type ReceiptInput, type StorageLocation,
 } from "../../../../shared/production";
-import { productionApi } from "../../lib/production-api";
+import { confirmedProductionRejection, productionApi } from "../../lib/production-api";
 import { availableProductionViews, canOpenProductionView } from "../../lib/production-navigation";
 import { availableWarehouseViews, canOpenWarehouseView, initialWarehousePath } from "../../lib/warehouse-navigation";
 import { productionActorName } from "../../lib/production-actors";
@@ -22,6 +22,7 @@ import "../warehouse/warehouse-cards.css";
 import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
 import { ReceiptVoucherModal, type ReceiptDraft } from "../warehouse/ReceiptVoucherModal";
+import { calculatePacking, type ReceiptPacking } from "../../../../shared/production-packing";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
 export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" };
@@ -130,26 +131,27 @@ function Metric({ label, value, unit = "kg" }: { label: string; value: string; u
 }
 
 function useWrite(reload: () => Promise<void>, language: string) {
-  const [saving, setSaving] = useState(false), [error, setError] = useState(""), [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false), [error, setError] = useState(""), [success, setSuccess] = useState(""), [uncertain, setUncertain] = useState(false);
   const savedOperation = useRef<{ fingerprint: string; requestId: string; action: (requestId: string) => Promise<unknown>; feedback: string; onSuccess?: () => void } | null>(null);
   const savingRef = useRef(false);
   const run = useCallback(async (operation: NonNullable<typeof savedOperation.current>) => {
     if (savingRef.current) return false;
     savingRef.current = true;
-    setSaving(true); setError(""); setSuccess("");
+    setSaving(true); setError(""); setSuccess(""); setUncertain(false);
     try {
       if (!operation.requestId) {
         try { operation.requestId = idempotencyKey(); }
         catch { throw new Error(text("secureUnavailable", language)); }
       }
       await operation.action(operation.requestId);
-      savedOperation.current = null;
       operation.onSuccess?.();
       setSuccess(text(operation.feedback, language));
       await reload();
+      savedOperation.current = null;
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text("errorGeneric", language));
+      setUncertain(!confirmedProductionRejection(cause));
       return false;
     } finally { savingRef.current = false; setSaving(false); }
   }, [language, reload]);
@@ -166,11 +168,10 @@ function useWrite(reload: () => Promise<void>, language: string) {
   const retry = useCallback(async () => {
     const operation = savedOperation.current;
     if (!operation) return false;
-    await reload();
     return run(operation);
-  }, [reload, run]);
-  const fail = (message: string) => { setError(message); setSuccess(""); };
-  return { saving, error, success, perform, retry, fail };
+  }, [run]);
+  const fail = (message: string) => { setError(message); setSuccess(""); setUncertain(false); };
+  return { saving, error, success, perform, retry, fail, uncertain };
 }
 
 function OrderSummary({ order, language, showFilmDuration = true }: { order: ProductionOrderRecord; language: string; showFilmDuration?: boolean }) {
@@ -390,31 +391,45 @@ function OperatorBoard({ state,user,stage,language,reload,machineSlot }: {state:
   </>;
 }
 
-const emptyDraft = ():ReceiptDraft=>({orderId:"",locationId:"",quantity:"",packaging:false,rollWeight:"",rollsPerUnit:"",units:""});
+const emptyDraft = (orderId=""):ReceiptDraft=>({orderId,locationId:"",quantity:"",unit:"kg",count:"",method:"unit_weight",unitWeight:"1",pieces:"",pieceWeight:""});
+const kgHundredths=(value:string|number|null|undefined):bigint=>{
+  const raw=latinDigits(String(value??""));
+  if(!/^\d+(?:\.\d{1,2})?$/.test(raw))return 0n;
+  const [whole,fraction=""]=raw.split(".");
+  return BigInt(whole)*100n+BigInt(fraction.padEnd(2,"0"));
+};
 function Hall({state,user,language,reload}:{state:ProductionState;user:ProductionUser;language:string;reload:()=>Promise<void>}) {
   const canReceive=hasProductionPermission(user,"receive_production"), write=useWrite(reload,language);
-  const [drafts,setDrafts]=useState<ReceiptDraft[]>([emptyDraft()]),[notes,setNotes]=useState("");
+  const [drafts,setDrafts]=useState<ReceiptDraft[]>([emptyDraft()]),[notes,setNotes]=useState(""),[selected,setSelected]=useState<number[]>([]);
   const [receiptOpen,setReceiptOpen]=useState(false),[savedReceipt,setSavedReceipt]=useState<ProductionReceipt|null>(null),[formError,setFormError]=useState("");
   const receiptOpener=useRef<HTMLButtonElement|null>(null);
   const closeReceipt=useCallback(()=>setReceiptOpen(false),[]);
   const receiptDraft=useRef("");
   receiptDraft.current=JSON.stringify({drafts,notes});
   const eligible=state.orders.filter(order=>Number(order.remaining_kg)>0);
-  const addLine=()=>{setSavedReceipt(null);setDrafts(rows=>[...rows,emptyDraft()]);};
+  const addLine=()=>{setSavedReceipt(null);setDrafts(rows=>rows.length<100?[...rows,emptyDraft()]:rows);};
   const submit=(event:FormEvent)=>{
     event.preventDefault();
-    const normalized=drafts.map(row=>({...row,quantity:latinDigits(row.quantity),rollWeight:latinDigits(row.rollWeight),rollsPerUnit:latinDigits(row.rollsPerUnit),units:latinDigits(row.units)}));
-    const invalidLine=normalized.findIndex(row=>!row.orderId||!row.locationId||!row.quantity||!Number.isFinite(Number(row.quantity))||Number(row.quantity)<=0||
-      (row.packaging&&(!row.rollWeight||!Number.isFinite(Number(row.rollWeight))||Number(row.rollWeight)<=0||!Number.isInteger(Number(row.rollsPerUnit))||Number(row.rollsPerUnit)<=0||!Number.isInteger(Number(row.units))||Number(row.units)<=0)));
+    if(drafts.length>100){setFormError(language==="en"?"A voucher can contain at most 100 lines.":"يمكن أن يحتوي السند على 100 سطر كحد أقصى.");return;}
+    const normalized=drafts.map(row=>({...row,count:latinDigits(row.count),unitWeight:latinDigits(row.unitWeight),pieces:latinDigits(row.pieces),pieceWeight:latinDigits(row.pieceWeight)}));
+    const calculated=normalized.map(row=>{
+      try {
+        const packing:ReceiptPacking=row.unit==="kg"?{unit:"kg",method:"unit_weight",quantity:row.count}
+          :row.method==="unit_weight"?{unit:row.unit,method:row.method,quantity:row.count,unit_weight_kg:row.unitWeight}
+          :{unit:row.unit,method:row.method,quantity:row.count,pieces_per_unit:Number(row.pieces),piece_weight_grams:row.pieceWeight};
+        return {packing,result:calculatePacking(packing)};
+      } catch { return null; }
+    });
+    const invalidLine=normalized.findIndex((row,index)=>!row.orderId||!row.locationId||!calculated[index]);
     if(invalidLine>=0){setFormError(language==="en"?`Complete every field in line ${invalidLine+1} before saving.`:`أكمل جميع حقول السطر ${invalidLine+1} قبل الحفظ.`);return;}
-    const totalsByOrder=new Map<string,number>();
-    normalized.forEach(row=>totalsByOrder.set(row.orderId,(totalsByOrder.get(row.orderId)??0)+Math.round(Number(row.quantity)*100)));
-    const exceeded=[...totalsByOrder].find(([orderId,total])=>total>Math.round(Number(eligible.find(order=>String(order.id)===orderId)?.remaining_kg??0)*100));
+    const totalsByOrder=new Map<string,bigint>();
+    normalized.forEach((row,index)=>totalsByOrder.set(row.orderId,(totalsByOrder.get(row.orderId)??0n)+kgHundredths(calculated[index]!.result.quantity_kg)));
+    const exceeded=[...totalsByOrder].find(([orderId,total])=>total>kgHundredths(eligible.find(order=>String(order.id)===orderId)?.remaining_kg));
     if(exceeded){const order=eligible.find(item=>String(item.id)===exceeded[0]);setFormError(language==="en"?`Receipt quantity exceeds the available ${order?.production_order_number??"order"} balance.`:`كمية الاستلام تتجاوز المتاح للأمر ${order?.production_order_number??""}.`);return;}
     setFormError("");
-    const items=normalized.map(row=>({
-      production_order_id:Number(row.orderId),location_id:Number(row.locationId),quantity_kg:row.quantity,
-      ...(row.packaging?{packaging:{roll_weight_grams:row.rollWeight,rolls_per_unit:Number(row.rollsPerUnit),units:Number(row.units)}}:{})
+    const items=normalized.map((row,index)=>({
+      production_order_id:Number(row.orderId),location_id:Number(row.locationId),
+      quantity_kg:calculated[index]!.result.quantity_kg,packing:calculated[index]!.packing,
     }));
     const input:ReceiptInput={request_id:"",notes:notes.trim()||undefined,items};
     const submittedDraft=receiptDraft.current;
@@ -423,12 +438,23 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
       setSavedReceipt(receipt);
       return receipt;
     },"receiptCreated",()=>{
-      if(receiptDraft.current===submittedDraft){setDrafts([emptyDraft()]);setNotes("");}
+      if(receiptDraft.current===submittedDraft){setDrafts([emptyDraft()]);setNotes("");setSelected([]);}
     });
   };
-  const setRow=(index:number,key:keyof ReceiptDraft,value:string|boolean)=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value}:row));};
+  const setRow=(index:number,key:keyof ReceiptDraft,value:string)=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value,...(key==="unit"&&value==="kg"?{method:"unit_weight",unitWeight:"1",pieces:"",pieceWeight:""}:{}),...(key==="unit"&&value!=="kg"&&row.unit==="kg"?{unitWeight:""}:{})}:row));};
   const locationOptions=state.locations.filter(location=>location.is_active);
   const readyOrders=eligible.filter(order=>Number(order.ready_kg)>0||Number(order.received_kg)>0);
+  const lockReceipt=write.uncertain;
+  const receiveSelected=()=>{
+    const ids=selected.filter(id=>eligible.some(order=>order.id===id));
+    if(!ids.length)return;
+    const dirty=drafts.some(row=>row.orderId||row.locationId||row.count)||Boolean(notes);
+    const draftIds=new Set(drafts.map(row=>Number(row.orderId)).filter(Boolean));
+    if(dirty&&ids.length===draftIds.size&&ids.every(id=>draftIds.has(id))){setReceiptOpen(true);return;}
+    if(dirty&&!window.confirm(language==="en"?"Replace the unsaved receipt draft with the selected orders?":"استبدال مسودة سند الاستلام غير المحفوظة بالأوامر المحددة؟"))return;
+    setDrafts(ids.map(id=>emptyDraft(String(id))));setNotes("");setSavedReceipt(null);setFormError("");setReceiptOpen(true);
+  };
+  const setSelectedOrder=(id:number,checked:boolean)=>setSelected(items=>checked?[...new Set([...items,id])]:items.filter(value=>value!==id));
   return <>
     {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
     <div className="prod-grid"><Metric label={text("eligibleWeight",language)} value={`${number(eligible.reduce((total,order)=>total+Number(order.remaining_kg),0),language)} kg`}/><Metric label={text("order",language)} value={number(eligible.length,language,0)} unit={text("ordersUnit",language)}/><Metric label={text("locations",language)} value={number(locationOptions.length,language,0)} unit={text("activeLocations",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
@@ -440,6 +466,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
           return <article className="warehouse-order-card" key={order.id}>
             <header><div><span className="warehouse-order-number">{order.production_order_number}</span><small>{text("customerOrder",language)} · {order.order_number}</small></div><span className={`warehouse-order-state${complete?" complete":""}`}><small>{text("productionStatus",language)}</small>{text(complete?"productionComplete":"productionIncomplete",language)}</span></header>
             <div className="warehouse-order-product"><strong>{orderProduct(order,language)}</strong><span>{customerName(order,language)}</span></div>
+            {canReceive&&<label className="warehouse-order-select"><input type="checkbox" data-hall-select={order.id} checked={selected.includes(order.id)} disabled={write.saving||lockReceipt} onChange={event=>setSelectedOrder(order.id,event.target.checked)}/><span>{language==="en"?"Select for receipt":"تحديد للاستلام"}</span></label>}
             <div className="warehouse-order-metrics">
               <div><span>{text("readyKg",language)}</span><strong>{number(order.ready_kg,language)} <small>kg</small></strong></div>
               <div><span>{text("received",language)}</span><strong>{number(order.received_kg,language)} <small>kg</small></strong></div>
@@ -449,7 +476,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
         })}
       </div> : <Empty title={text("noEligible",language)}/>}
     </section>
-    <Card title={text("receiveBatch",language)} action={canReceive?<button ref={receiptOpener} data-receipt-launcher className="prod-btn" type="button" disabled={!locationOptions.length} onClick={()=>{setSavedReceipt(null);setFormError("");setReceiptOpen(true);}}>{language==="en"?"Finished goods receipt voucher":"سند استلام مواد تامة"}</button>:undefined}>
+     <Card title={text("receiveBatch",language)} action={canReceive?<div className="warehouse-receipt-actions"><button data-receipt-launcher className="prod-btn" type="button" disabled={!locationOptions.length||write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;setFormError("");setReceiptOpen(true);}}>{language==="en"?"New receipt voucher":"سند استلام مواد تامة"}</button><button className="prod-btn secondary" data-hall-receive-selected type="button" disabled={!selected.length||!locationOptions.length||write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;receiveSelected();}}>{language==="en"?`Receive selected (${selected.length})`:`استلام المحدد (${selected.length})`}</button><button className="prod-btn quiet" type="button" disabled={!selected.length||write.saving||lockReceipt} onClick={()=>setSelected([])}>{language==="en"?"Clear selection":"مسح التحديد"}</button></div>:undefined}>
       {canReceive ? <>{!locationOptions.length&&<div className="prod-callout">{text("noLocations",language)}</div>}{eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}</>:<div className="prod-muted">{text("readonly",language)}</div>}
     </Card>
     {canReceive&&receiptOpen&&<ReceiptVoucherModal
@@ -459,6 +486,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
       drafts={drafts}
       notes={notes}
       saving={write.saving}
+      locked={lockReceipt}
       error={formError||write.error}
       savedReceipt={savedReceipt}
       openerRef={receiptOpener}
@@ -503,8 +531,10 @@ function Warehouse({state,user,language,reload}:{state:ProductionState;user:Prod
       </form>}
       {locations.length?locations.map(location=><div className="prod-location-row" key={location.id}><div><strong>{localized(location.name_ar,location.name,language)}</strong><small className="prod-muted">{location.name} · {location.name_ar}</small></div><span className={`prod-chip ${location.is_active?"":"muted"}`}>{location.is_active?text("active",language):text("inactive",language)}</span>{canWrite&&<button className="prod-btn secondary" onClick={()=>edit(location)}><Settings2/>{text("edit",language)}</button>}</div>):<Empty title={text("noLocations",language)}/>}
     </Card>
-    <div className="warehouse-finished-view"><ProductionHistory kind="inventory" title={text("balances",language)} language={language} locations={locations} refresh={state} defaultOpen/></div>
-    <ProductionHistory kind="receipts" title={text("vouchers",language)} language={language} locations={locations} refresh={state}/>
+     <section className="warehouse-finished-view">
+       <ProductionHistory kind="inventory" title={text("balances",language)} language={language} locations={locations} refresh={state} defaultOpen presentation="cards"/>
+     </section>
+     <ProductionHistory kind="receipts" title={text("vouchers",language)} language={language} locations={locations} refresh={state} presentation="cards"/>
     <ProductionHistory kind="movements" title={text("movements",language)} language={language} locations={locations} refresh={state}/>
   </>;
 }

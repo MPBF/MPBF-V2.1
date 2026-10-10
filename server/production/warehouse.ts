@@ -1,4 +1,5 @@
 import { kgHundredths, kgString, packagingMatches, type ProductionUser, type ReceiptInput } from "../../shared/production";
+import { calculatePacking, PackingError } from "../../shared/production-packing";
 import { available, execution, lockOrders, mutate, one, permission, ProductionError, rows, type ConnectionPool } from "./core";
 
 export class ProductionWarehouseService {
@@ -6,10 +7,27 @@ export class ProductionWarehouseService {
   receive(actor: ProductionUser, input: ReceiptInput) {
     permission(actor, "receive_production");
     return mutate(this.pool, actor, "receive", input, async tx => {
+      if (!input.items.length || input.items.length > 100) throw new ProductionError("اختر من بند إلى 100 بند للاستلام.", "Choose 1 to 100 receipt lines.", 400);
+      const items = input.items.map(item => {
+        if (item.packing) {
+          if (item.packaging) throw new ProductionError("لا تجمع طريقتي التعبئة في البند نفسه.", "Do not combine legacy and unit packing in one line.", 400);
+          let calculated;
+          try { calculated = calculatePacking(item.packing); }
+          catch (error) {
+            if (error instanceof PackingError) throw new ProductionError(error.message_ar, error.message_en, 400);
+            throw error;
+          }
+          if (item.quantity_kg !== undefined && kgHundredths(item.quantity_kg) !== kgHundredths(calculated.quantity_kg))
+            throw new ProductionError("وزن البند لا يطابق حساب التعبئة.", "Line weight does not match the packing calculation.", 400);
+          return {...item, quantity_kg: calculated.quantity_kg, calculated};
+        }
+        if (!item.quantity_kg) throw new ProductionError("أدخل بيانات التعبئة أو كمية الاستلام.", "Enter packing details or a receipt quantity.", 400);
+        return {...item, quantity_kg: item.quantity_kg, calculated: null};
+      });
       const orders = await lockOrders(tx, input.items.map(i => i.production_order_id), false);
       if (orders.some(o => ["cancelled", "archived", "delivered"].includes(o.order_status)))
         throw new ProductionError("لا يمكن الاستلام لطلب ملغي أو مؤرشف أو مسلّم", "Cannot receive for a cancelled, archived or delivered order.");
-      const pairs = input.items.map(i => `${i.production_order_id}:${i.location_id}`);
+      const pairs = items.map(i => `${i.production_order_id}:${i.location_id}:${i.calculated?.packing_key ?? "legacy"}`);
       if (new Set(pairs).size !== pairs.length) throw new ProductionError("بند الاستلام مكرر", "A receipt line is duplicated.", 400);
       const locations = [...new Set(input.items.map(i => i.location_id))].sort((a, b) => a - b);
       const existingLocations = await rows<{ id: number; is_active: boolean }>(tx,
@@ -19,11 +37,11 @@ export class ProductionWarehouseService {
       for (const order of orders) {
         await execution(tx, order.id);
         const total = await available(tx, order.id);
-        const requested = input.items.filter(i => i.production_order_id === order.id).reduce((sum, i) => sum + kgHundredths(i.quantity_kg), 0n);
+        const requested = items.filter(i => i.production_order_id === order.id).reduce((sum, i) => sum + kgHundredths(i.quantity_kg), 0n);
         if (requested > kgHundredths(total.ready) - kgHundredths(total.received))
           throw new ProductionError("كمية الاستلام تتجاوز الجاهز المتبقي؛ أعد تحميل الصالة", "Receipt quantity exceeds the remaining ready weight. Reload the hall.");
       }
-      for (const item of input.items) {
+      for (const item of items) {
         if (kgHundredths(item.quantity_kg) <= 0n) throw new ProductionError("كمية الاستلام يجب أن تكون موجبة", "Receipt weight must be positive.", 400);
         if (item.packaging && !packagingMatches(item.quantity_kg, item.packaging))
           throw new ProductionError("وزن التعبئة لا يطابق الاستلام ضمن ±2% وهامش 0.01 كجم", "Packaging weight does not match receipt weight within ±2% plus 0.01 kg.", 400);
@@ -34,17 +52,24 @@ export class ProductionWarehouseService {
         "INSERT INTO factory_receipts(id,voucher_number,created_by,notes) VALUES($1,$2,$3,$4) RETURNING *",
         [id, `FR-${String(id).padStart(8, "0")}`, actor.id, input.notes ?? null]);
       const savedItems = [];
-      for (const item of input.items) {
+      for (const [index, item] of items.entries()) {
         const exec = await execution(tx, item.production_order_id);
         const weight = kgString(kgHundredths(item.quantity_kg));
         const saved = await one<{ id: number }>(tx, `INSERT INTO factory_receipt_items
-          (receipt_id,production_order_id,customer_product_id,item_id,location_id,quantity_kg,packaging)
-          VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *`,
-        [id, item.production_order_id, exec.customer_product_id, exec.item_id, item.location_id, weight, item.packaging ? JSON.stringify(item.packaging) : null]);
-        await tx.query(`INSERT INTO factory_inventory(production_order_id,customer_product_id,item_id,location_id,quantity_kg)
+          (receipt_id,production_order_id,customer_product_id,item_id,location_id,quantity_kg,packaging,line_number,packing)
+          VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb) RETURNING *`,
+        [id, item.production_order_id, exec.customer_product_id, exec.item_id, item.location_id, weight,
+          item.packaging ? JSON.stringify(item.packaging) : null, index+1,
+          item.calculated ? JSON.stringify({...item.calculated.specification, quantity:item.calculated.unit_quantity}) : null]);
+        const inventory = await one<{id:number}>(tx, `INSERT INTO factory_inventory(production_order_id,customer_product_id,item_id,location_id,quantity_kg)
           VALUES($1,$2,$3,$4,$5) ON CONFLICT(customer_product_id,production_order_id,location_id) DO UPDATE
-          SET quantity_kg=factory_inventory.quantity_kg+excluded.quantity_kg`,
+          SET quantity_kg=factory_inventory.quantity_kg+excluded.quantity_kg RETURNING id`,
         [item.production_order_id, exec.customer_product_id, exec.item_id, item.location_id, weight]);
+        if (item.calculated) await tx.query(`INSERT INTO factory_inventory_units(inventory_id,packing_key,specification,unit_quantity,quantity_kg)
+          VALUES($1,$2,$3::jsonb,$4,$5) ON CONFLICT(inventory_id,packing_key) DO UPDATE SET
+          unit_quantity=factory_inventory_units.unit_quantity+excluded.unit_quantity,
+          quantity_kg=factory_inventory_units.quantity_kg+excluded.quantity_kg`,
+        [inventory.id,item.calculated.packing_key,JSON.stringify(item.calculated.specification),item.calculated.unit_quantity,weight]);
         await tx.query("INSERT INTO factory_movements(receipt_id,receipt_item_id,quantity_kg) VALUES($1,$2,$3)", [id, saved.id, weight]);
         savedItems.push(saved);
       }
