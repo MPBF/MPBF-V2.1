@@ -114,6 +114,15 @@ receipt voucher through a button, rather than remaining expanded in the hall.
 **How to apply:** preserve partial receiving and existing stock safeguards;
 closing the window must not itself submit or discard the draft.
 
+Warehouse-page tabs must remain scoped to the warehouse: production hall,
+finished inventory and raw inventory, never manufacturing-operation tabs.
+
+**Why:** the user corrected the raw inventory navigation: «فقط صالة الانتاج
+والمخزون التام ومخزون الخام من يجب ان يظهر».
+
+**How to apply:** apply this module boundary even for administrators or users
+with both production and warehouse grants; still filter tabs by permission.
+
 Order release is a focused transition to ready for production, not a general
 status editor or automatic manufacturing start.
 
