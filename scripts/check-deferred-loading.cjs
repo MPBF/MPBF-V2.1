@@ -59,7 +59,7 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       const url = new URL(request.url, "http://fixture.test");
       if (url.pathname === "/fixture-receipt") {
         response.writeHead(200, { "Content-Type": "text/html" });
-        response.end(receiptPrintHtml(receiptFixture, "en")); return;
+        response.end(receiptPrintHtml(receiptFixture, url.searchParams.get("lang") === "ar" ? "ar" : "en")); return;
       }
       if (url.pathname.startsWith("/api/")) {
         apiRequests.push(url.pathname);
@@ -356,6 +356,33 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       await open("/production/film"); await wait("!!document.querySelector('.production-app .prod-empty')");
       check(`${lang} revocation removes every production tab`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), 0);
       check(`${lang} revoked Film route never requests production data`, apiRequests.slice(beforeRevocation).includes("/api/production/state"), false);
+      if (lang === "ar") {
+        permissions = ["admin"]; productionBinding = undefined;
+        const body = () => evaluate("document.body.innerText");
+        await open("/production/mixing");
+        await wait("document.body.innerText.includes('لا توجد خلطات مسجلة بعد.')");
+        check("Arabic mixing title and empty materials", (await body()).includes("خلط مواد الخام") && (await body()).includes("لا توجد مواد خام في الدليل."));
+        await open("/warehouse/raw-materials");
+        await wait("document.body.innerText.includes('لا توجد مواد خام معتمدة متاحة.')");
+        check("Arabic inventory title", (await body()).includes("مخزون المواد الخام"));
+        await open("/production/monitoring");
+        await wait("document.body.innerText.includes('لا توجد عمليات إنتاج مطابقة.')");
+        check("Arabic monitoring title", (await body()).includes("مراقبة الإنتاج"));
+        await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='مراقبة الخلط').click()");
+        await wait("document.body.innerText.includes('أرصدة الماكينات منذ التفعيل')");
+        check("Arabic mix monitoring copy", (await body()).includes("مراقبة الخلط"));
+        await open("/warehouse/hall");
+        await wait("!!document.querySelector('[data-receipt-launcher]')");
+        await click("[data-receipt-launcher]");
+        await wait("!!document.querySelector('[data-receipt-voucher]')");
+        check("Arabic receipt dialog quantity label", (await body()).includes("الكمية المطلوب استلامها (كجم)"));
+        check("Arabic receipt dialog title", (await body()).includes("سند استلام مواد تامة"));
+        check("Arabic receipt dialog direction", await evaluate("document.querySelector('[data-receipt-voucher]').dir"), "rtl");
+        await open("/fixture-receipt?lang=ar");
+        await wait("!!document.querySelector('.signatures')");
+        check("Arabic receipt print direction", await evaluate("document.documentElement.dir"), "rtl");
+        check("Arabic receipt print title and total", (await body()).includes("سند استلام مواد تامة") && (await body()).includes("إجمالي السند"));
+      }
       if (lang === "en") {
         permissions = ["admin"]; productionBinding = undefined;
         const body = () => evaluate("document.body.innerText");

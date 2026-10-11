@@ -2,10 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { auditEnglish, hasArabic, isValidEnglish } from "./lib/i18n-audit.mjs";
+import { auditLocalCopy, localCopyFiles } from "./lib/i18n-local-copy.mjs";
 
 const sourceRoot = path.resolve("client/src");
 const reviewedOverrides = JSON.parse(fs.readFileSync(new URL("./i18n-reviewed-overrides.json", import.meta.url), "utf8"));
 const audit = auditEnglish(sourceRoot, reviewedOverrides);
+// Small fixture roots used by the dictionary tests do not include app screens.
+// A real production dictionary always requires all five local-copy sources.
+const localAudit = audit.mergeOrder.includes("i18n-en-production.ts")
+  ? auditLocalCopy(sourceRoot, audit.effective, localCopyFiles)
+  : { pairs: [], errors: [] };
 const englishKeys = new Set(Object.entries(audit.effective).filter(([, value]) => isValidEnglish(value)).map(([key]) => key));
 const missing = new Map();
 const files = [];
@@ -57,4 +63,7 @@ for (const conflict of audit.conflicts.filter((entry) => entry.reviewed)) {
 }
 console.log(`Missing English entries: ${missing.size}`);
 console.log([...missing.values()].sort().join("\n"));
-if (missing.size || audit.errors.length) process.exitCode = 1;
+console.log(`Local bilingual pairs checked: ${localAudit.pairs.length}`);
+console.log(`Local English copy errors: ${localAudit.errors.length}`);
+for (const error of localAudit.errors) console.error(error);
+if (missing.size || audit.errors.length || localAudit.errors.length) process.exitCode = 1;
