@@ -295,13 +295,17 @@
 .film-operator .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .roll-operator .roll-operator-production-order { min-width:0; }
 .roll-operator .roll-operator-rolls {
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-start;
   gap:8px;
   grid-column:1/-1;
   min-width:0;
 }
 .roll-operator .roll-operator-roll {
+  flex:0 0 180px;
+  width:180px;
+  max-width:100%;
   display:grid;
   grid-template-columns:minmax(0,1fr);
   align-content:start;
@@ -331,13 +335,14 @@
 .roll-operator .roll-operator-net-field input { min-height:44px; font-size:16px; }
 .roll-operator .roll-operator-action { min-height:44px; }
   .film-recorded-rolls {
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:flex-start;
     grid-column:1/-1;
     gap:8px;
     min-width:0;
   }
-  .film-recorded-roll { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:7px; padding:9px; border:1px solid var(--prod-line); background:#f8fbf7; min-width:0; }
+  .film-recorded-roll { flex:0 0 180px; width:180px; max-width:100%; display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:7px; padding:9px; border:1px solid var(--prod-line); background:#f8fbf7; min-width:0; }
  .film-recorded-roll > div { display:grid; gap:3px; min-width:0; overflow-wrap:anywhere; }
  .film-recorded-roll strong { font-size:13px; }
  .film-recorded-roll-link { display:inline-flex; align-items:center; min-height:44px; color:var(--prod-deep); }

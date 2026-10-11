@@ -83,3 +83,14 @@ Do not assume the browser returned by Playwright's executable-path helper is ins
 **Why:** the supplied Playwright runtime reported cache paths for both full Chromium and headless shell, but neither executable existed; the installed system Chromium worked.
 
 **How to apply:** verify the executable exists before launching. Prefer the existing system Chromium when the Playwright cache is absent; do not reinstall project dependencies just to obtain a browser.
+
+Use a small subpixel tolerance for animated control geometry while checking
+the intended minimum size through computed CSS.
+
+**Why:** exact `getBoundingClientRect().height >= 44` checks were unstable:
+the condition could pass a wait and fail immediately afterward without a
+layout change. Waiting alone did not resolve the false failures.
+
+**How to apply:** require the intended computed minimum height and allow a
+small tolerance (such as half a pixel) in rendered bounds. Continue checking
+that controls are enabled and contained; do not relax functional assertions.
