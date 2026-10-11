@@ -863,14 +863,14 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       const originalRolls = structuredClone(state.rolls);
       for (const lang of ["ar", "en"]) {
         language = lang;
-        for (const width of [320, 390, 768, 1440]) {
+        for (const width of [320, 390, 768, 1280, 1440]) {
           await send("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });
           for (const stage of ["film", "printing", "cutting"]) {
             permissions = [`operate_${stage}`];
             const orderId = stage === "cutting" ? 3 : 2;
             const container = `[data-production-order-id="${orderId}"] ${stage === "film" ? ".film-recorded-rolls" : ".roll-operator-rolls"}`;
             let singleWidth;
-            for (const count of [1, 2, 12]) {
+            for (const count of [1, 8, 9]) {
               const template = originalRolls.find(r => r.production_order_id === orderId);
               state.rolls = [
                 ...originalRolls.filter(r => r.production_order_id !== orderId),
@@ -883,18 +883,24 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
               const context = `${lang} ${width}px ${stage} ${count} roll(s)`;
               const geometry = await evaluate(`(()=>{
                 const parent=document.querySelector(${jsLiteral(container)}),box=parent.getBoundingClientRect();
-                return {left:box.left,right:box.right,width:box.width,cards:[...parent.children].map(e=>{
+                const style=getComputedStyle(parent);
+                return {left:box.left,right:box.right,width:box.width,
+                  columns:style.gridTemplateColumns.split(' ').length,trackWidth:parseFloat(style.gridTemplateColumns),
+                  cards:[...parent.children].map(e=>{
                   const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,width:r.width};
                 })};
               })()`);
               if (count === 1) singleWidth = geometry.cards[0].width;
-              check(`${context}: fixed small width`, geometry.cards.every(card => Math.abs(card.width - Math.min(180, geometry.width)) < 1));
+              check(`${context}: eight desktop columns or fewer on small screens`,
+                width >= 1100 ? geometry.columns === 8 : geometry.columns < 8);
+              check(`${context}: each card takes one track`,
+                geometry.cards.every(card => Math.abs(card.width - geometry.trackWidth) < 1));
               check(`${context}: count never stretches or squeezes cards`, geometry.cards.every(card => Math.abs(card.width - singleWidth) < 1));
               check(`${context}: cards stay inside collection`, geometry.cards.every(card => card.left >= geometry.left - 1 && card.right <= geometry.right + 1));
               check(`${context}: logical start alignment`, Math.abs(lang === "ar" ? geometry.cards[0].right - geometry.right : geometry.cards[0].left - geometry.left) < 1);
               check(`${context}: page stays inside viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
               if (count > 1) {
-                const capacity = Math.max(1, Math.floor((geometry.width + 8) / (singleWidth + 8)));
+                const capacity = geometry.columns;
                 check(`${context}: wraps only when row is full`,
                   geometry.cards.every((card, index) => index < capacity
                     ? Math.abs(card.top - geometry.cards[0].top) < 1
@@ -902,6 +908,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
               }
               check(`${context}: roll links preserved`,
                 await evaluate(`[...document.querySelector(${jsLiteral(container)}).children].every(e=>e.querySelector('a').getAttribute('href')==='/production/rolls/'+e.dataset.productionRollId)`));
+              check(`${context}: all contents stay inside compact cards`,
+                await evaluate(`[...document.querySelector(${jsLiteral(container)}).children].every(e=>e.scrollWidth<=e.clientWidth+1&&[...e.querySelectorAll('input,button')].every(c=>{const r=c.getBoundingClientRect(),p=e.getBoundingClientRect();return r.left>=p.left-1&&r.right<=p.right+1;}))`));
               if (stage !== "film") {
                 await wait(`[...document.querySelector(${jsLiteral(container)}).querySelectorAll('.roll-operator-action')].every(b=>!b.disabled&&b.getBoundingClientRect().height>=43.5)`);
                 check(`${context}: registration buttons remain enabled and usable`,
@@ -910,7 +918,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
                   await evaluate(`document.querySelector(${jsLiteral(container)}).querySelectorAll('input[id^="net-"]').length`),
                   stage === "cutting" ? count : 0);
               }
-              if (lang === "ar" && count === 12 && [390, 1440].includes(width)) {
+              if (lang === "ar" && count === 9 && [390, 1280, 1440].includes(width)) {
                 const shot = await send("Page.captureScreenshot", { format: "png" });
                 await fs.writeFile(`/tmp/compact-rolls-${stage}-${width}.png`, Buffer.from(shot.data, "base64"));
               }
@@ -985,7 +993,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             check(`${lang} ${width} related production orders grouped`,await evaluate("document.querySelector('#film-order-panel-2').querySelectorAll('[data-production-order-id]').length"),3);
             check(`${lang} ${width} one header per customer order`,await evaluate("document.querySelectorAll('[data-film-order-id=\"2\"]').length"),1);
              check(`${lang} ${width} film rolls nested under their production order`,await evaluate("[...document.querySelectorAll('.film-recorded-roll')].every(node=>Number(node.closest('[data-production-order-id]').dataset.productionOrderId)===({2:2,12:2,8:8,9:9})[Number(node.dataset.productionRollId)])&&document.querySelector('[data-production-order-id=\"2\"] .film-recorded-rolls').children.length===2"));
-             check(`${lang} ${width} film rolls wrap when collection fills`,await evaluate("(()=>{const parent=document.querySelector('[data-production-order-id=\"2\"] .film-recorded-rolls'),nodes=parent.children,a=nodes[0].getBoundingClientRect(),b=nodes[1].getBoundingClientRect();return Math.abs(a.top-b.top)<1&&Math.abs(a.left-b.left)>1})()"),await evaluate("document.querySelector('[data-production-order-id=\"2\"] .film-recorded-rolls').getBoundingClientRect().width>=368"));
+             check(`${lang} ${width} film rolls wrap when collection fills`,await evaluate("(()=>{const parent=document.querySelector('[data-production-order-id=\"2\"] .film-recorded-rolls'),nodes=parent.children,a=nodes[0].getBoundingClientRect(),b=nodes[1].getBoundingClientRect();return Math.abs(a.top-b.top)<1&&Math.abs(a.left-b.left)>1})()"),await evaluate("getComputedStyle(document.querySelector('[data-production-order-id=\"2\"] .film-recorded-rolls')).gridTemplateColumns.split(' ').length>=2"));
              check(`${lang} ${width} film roll links trace their own roll`,await evaluate("[...document.querySelectorAll('.film-recorded-roll')].every(node=>node.querySelector('a').getAttribute('href')==='/production/rolls/'+node.dataset.productionRollId)"));
              await openFilmOrder(4);
              check(`${lang} ${width} film lists downstream completed rolls while order stays open`,await evaluate("!!document.querySelector('[data-production-order-id=\"4\"] [data-production-roll-id=\"4\"]')"));
@@ -1059,7 +1067,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             check(`${lang} ${width} ${stage} disclosure regions accessible`,await evaluate("[...document.querySelectorAll('[data-operator-order-id]')].every(node=>!!document.getElementById(node.getAttribute('aria-controls')))"));
             check(`${lang} ${width} ${stage} no operator status chips`,await evaluate("document.querySelectorAll('.roll-operator .prod-chips').length"),0);
             check(`${lang} ${width} ${stage} roll traceability retained`,await evaluate(`document.querySelector('[data-production-roll-id="${rollId}"] a').getAttribute('href')`),`/production/rolls/${rollId}`);
-            if (operatorLayoutOnly) check(`${lang} ${width} ${stage} rolls wrap when collection fills`,await evaluate(`(()=>{const nodes=document.querySelector('[data-production-order-id="${stage==="printing"?2:3}"] .roll-operator-rolls').children;const a=nodes[0].getBoundingClientRect(),b=nodes[1].getBoundingClientRect();return Math.abs(a.top-b.top)<1&&Math.abs(a.left-b.left)>1})()`),await evaluate(`document.querySelector('[data-production-order-id="${stage==="printing"?2:3}"] .roll-operator-rolls').getBoundingClientRect().width>=368`));
+            if (operatorLayoutOnly) check(`${lang} ${width} ${stage} rolls wrap when collection fills`,await evaluate(`(()=>{const nodes=document.querySelector('[data-production-order-id="${stage==="printing"?2:3}"] .roll-operator-rolls').children;const a=nodes[0].getBoundingClientRect(),b=nodes[1].getBoundingClientRect();return Math.abs(a.top-b.top)<1&&Math.abs(a.left-b.left)>1})()`),await evaluate(`getComputedStyle(document.querySelector('[data-production-order-id="${stage==="printing"?2:3}"] .roll-operator-rolls')).gridTemplateColumns.split(' ').length>=2`));
             if(stage==="printing"){
               check(`${lang} ${width} printing groups related production orders`,await evaluate("document.querySelectorAll('.roll-operator [data-production-order-id]').length"),2);
               check(`${lang} ${width} printing groups multiple rolls in one production order`,await evaluate("document.querySelector('[data-production-order-id=\"2\"]').querySelectorAll('[data-production-roll-id]').length"),2);
