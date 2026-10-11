@@ -331,6 +331,67 @@
 .roll-operator .roll-operator-net-field { min-width:0; }
 .roll-operator .roll-operator-net-field input { min-height:44px; font-size:16px; }
 .roll-operator .roll-operator-action { min-height:44px; white-space:normal; overflow-wrap:anywhere; justify-content:center; }
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing {
+  position:relative;
+  gap:5px;
+  padding:7px;
+  align-content:start;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-head {
+  gap:2px;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-link {
+  min-height:32px;
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-weight {
+  color:var(--prod-deep);
+  font-size:14px;
+  line-height:1.25;
+  font-weight:800;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-context {
+  gap:4px;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-context > div {
+  display:grid;
+  grid-template-columns:14px minmax(0,1fr);
+  align-items:start;
+  column-gap:5px;
+  min-width:0;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-context svg {
+  width:13px;
+  height:13px;
+  margin-top:2px;
+  color:var(--prod-muted);
+  stroke-width:1.8;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-context strong {
+  min-width:0;
+  font-size:11px;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-print-action {
+  justify-self:end;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:44px;
+  min-width:44px;
+  height:44px;
+  min-height:44px;
+  padding:0;
+  white-space:nowrap;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-print-action svg {
+  width:18px;
+  height:18px;
+  flex:none;
+}
   .film-recorded-rolls {
      display:grid;
      grid-template-columns:repeat(8,minmax(0,1fr));
