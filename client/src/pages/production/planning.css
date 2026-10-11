@@ -200,6 +200,133 @@
   outline-offset: 2px;
 }
 
+/* Management order cards only: compact planning records without changing operator or warehouse layouts. */
+.planning-page .prod-list.prod-management-list {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+.planning-page .prod-management-order {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+}
+.planning-page .prod-management-order > * { min-width: 0; }
+.planning-page .prod-management-order .prod-order-main {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.planning-page .prod-management-order .prod-order-main h3 {
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+.planning-page .prod-management-order .prod-order-meta {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.planning-page .prod-management-order .prod-chips {
+  gap: 4px;
+  margin-top: 6px !important;
+}
+.planning-page .prod-management-order .prod-chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.planning-page .prod-management-order .prod-film-duration {
+  margin-top: 7px;
+  padding-top: 7px;
+}
+.planning-page .prod-management-order .prod-film-duration h4 { margin-bottom: 5px; }
+.planning-page .prod-management-order .prod-film-duration-list { gap: 5px; }
+.planning-page .prod-management-order .prod-film-duration-item {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 7px 8px;
+}
+.planning-page .prod-management-order .prod-film-duration-times {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.planning-page .prod-management-order .prod-film-duration-item span,
+.planning-page .prod-management-order .prod-film-duration-times span { margin-bottom: 2px; }
+.planning-page .prod-management-order .prod-film-duration-value p { overflow-wrap: anywhere; }
+.planning-page .prod-management-metrics {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 9px;
+  min-width: 0;
+}
+.planning-page .prod-management-metrics .prod-measure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 6px;
+  min-width: 0;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--planning-line);
+}
+.planning-page .prod-management-metrics .prod-measure span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.planning-page .prod-management-metrics .prod-measure strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: end;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.planning-page .prod-management-metrics .prod-measure small {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+.planning-page .prod-management-order .prod-callout {
+  grid-column: 1 / -1 !important;
+  min-width: 0;
+  padding: 8px 9px;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.planning-page .prod-management-unstarted > .prod-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-width: 112px;
+  min-height: 44px;
+}
+.planning-page .prod-management-order .prod-roll-trace {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.planning-page .prod-management-order .prod-roll-trace summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 700px) {
+  .planning-page .prod-list.prod-management-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1100px) {
+  .planning-page .prod-list.prod-management-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 700px) {
   .production.planning-page { padding: 18px 13px 40px; }
   .planning-page .planning-header {
@@ -219,6 +346,7 @@
   .planning-page .prod-card-body,
   .planning-page .raw-ops-card-head,
   .planning-page .raw-ops-card-body { padding: 13px; }
+  .planning-page .prod-management-order { padding: 11px; gap: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
