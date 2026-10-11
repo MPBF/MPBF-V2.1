@@ -14,6 +14,9 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "deferred-loading-"));
   const root = path.resolve("dist/public");
   const initialAssets = collectInitialAssets(root);
+  const initialCss = (await Promise.all(initialAssets.filter(file => file.endsWith(".css"))
+    .map(file => fs.readFile(path.join(root, file), "utf8")))).join("\n");
+  assert.ok(!initialCss.includes(".order-status--new"), "Order table feature CSS must not enter the initial bundle");
   let language = "ar", signedIn = false, permissions = ["admin"], failChunk = false;
   let productionBinding, roleName = "Administrator";
   const filmRole = { id: 891, name: "Night team", name_ar: "فريق الليل",
@@ -56,6 +59,14 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
           daysWorked: 1, absentDays: 2, overtimeMinutes: 30, incompleteDays: 3 }] };
         else if (url.pathname === "/api/hr/self-service-admin") data = { requests: [], users: [employee] };
         else if (url.pathname === "/api/production/state") data = state;
+        else if (url.pathname.startsWith("/api/production/history/")) data = {
+          records: url.pathname.endsWith("/inventory") ? [{
+            id: 1, production_order_number: "PO-FIXTURE", quantity_kg: "100",
+            location_name: "Fixture Location", location_name_ar: "موقع تجريبي", product,
+            unit_balances: [{ id: 1, unit: "carton", method: "unit_weight", unit_quantity: "20",
+              unit_weight_kg: "5", quantity_kg: "100" }],
+          }] : [], next: null,
+        };
         else if (url.pathname === "/api/customers") data = [customer];
         else if (url.pathname === "/api/customer-products") data = [product];
         else if (url.pathname === "/api/orders") data = [{ ...order, production_orders_summary: [] }];
@@ -196,6 +207,28 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       check(`${lang} attendance print contains employee and direction`, await evaluate(`window.printFixture.includes("Fixture Employee") && window.printFixture.includes('dir="${lang === "ar" ? "rtl" : "ltr"}"')`));
       await click('a[href="/orders"]'); await wait("!!document.querySelector('.order-workspace')");
       check(`${lang} orders navigation loads controls on demand`, assets.some(value => /OrderWorkspaceControls-.*\.js/.test(value)));
+      await wait("!!document.querySelector('table .order-status--new')");
+      check(`${lang} order CSS requested on navigation`, assets.some(value => /OrderWorkspaceControls-.*\.css/.test(value)));
+      check(`${lang} order status retains its color`, await evaluate("getComputedStyle(document.querySelector('table .order-status--new')).backgroundColor"), "rgb(225, 242, 232)");
+      check(`${lang} order table retains separate rows`, await evaluate("getComputedStyle(document.querySelector('table:has(.order-number-column)')).borderSpacing"), "0px 8px");
+      permissions = ["view_orders"];
+      await open("/orders"); await wait("!!document.querySelector('table .order-status--new')");
+      check(`${lang} fresh read-only order list loads feature CSS`, await evaluate("getComputedStyle(document.querySelector('table .order-row-tools')).display"), "grid");
+      await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+      check(`${lang} mobile order cards remain visible`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards')).display"), "grid");
+      check(`${lang} mobile status retains sizing`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-status')).minHeight"), "28px");
+      check(`${lang} mobile order rows retain two action lines`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-row-tools')).gridTemplateRows.split(' ').length"), 2);
+      await send("Emulation.clearDeviceMetricsOverride");
+      permissions = ["admin"];
+      await open("/planning"); await wait("!!document.querySelector('.planning-page .prod-grid')");
+      check(`${lang} planning layout and navigation render`, await evaluate("getComputedStyle(document.querySelector('.planning-header')).display === 'flex' && !!document.querySelector('.planning-nav a[aria-current=\"page\"]')"));
+      await click('a[href="/warehouse"]'); await wait("!!document.querySelector('.warehouse-hall-section')");
+      check(`${lang} warehouse hall navigation renders`, await evaluate("!!document.querySelector('.prod-view-nav a[aria-current=\"page\"]')"));
+      await click('.prod-view-nav a[href="/warehouse/finished-inventory"]');
+      await wait("!!document.querySelector('.warehouse-inventory-card')");
+      check(`${lang} finished inventory loads its cards and styles`, await evaluate("getComputedStyle(document.querySelector('.warehouse-inventory-card')).display !== 'inline' && document.querySelector('.warehouse-inventory-card').textContent.includes('PO-FIXTURE')"));
+      check(`${lang} stock unit quantities remain visible`, await evaluate("document.querySelector('.warehouse-balance-spec strong').textContent.includes('20')"));
+      check(`${lang} planning and warehouse show no loading error`, await evaluate("document.querySelectorAll('.prod-error').length"), 0);
       await open("/production/film"); await wait("!!document.querySelector('.production-app')");
       check(`${lang} production page chunk loads`, assets.some(value => /ProductionPage-.*\.js/.test(value)));
       await open("/orders/7/print"); await wait("!!document.querySelector('.opp-sheet')");
