@@ -12,7 +12,7 @@ import {
   type ProductionEvent,
   type RollMixDetail,
 } from "../../../../shared/production-monitoring";
-import { availableProductionViews } from "../../lib/production-navigation";
+import { availablePlanningViews } from "../../lib/planning-navigation";
 import { monitoringApi } from "../../lib/production-monitoring-api";
 import { formatNumber } from "../../lib/format-number";
 import "./production.css";
@@ -31,6 +31,7 @@ type ProductionMachineOption = { machine_id: string; machine_name: string | null
 
 const copy: Record<string, [string, string]> = {
   title: ["مراقبة الإنتاج", "Production monitoring"],
+  planning: ["التخطيط والمراقبة", "Planning and monitoring"],
   intro: ["سجل تشغيلي لللفات والخلطات المسجلة — دون افتراض قياس جرعات اللولب الفعلية.", "Operational records of registered rolls and mixes — without implying physical screw-dose measurement."],
   log: ["سجل الإنتاج", "Production log"],
   mixes: ["مراقبة الخلط", "Mix monitoring"],
@@ -395,10 +396,9 @@ export default function ProductionMonitoringPage({ user }: ProductionMonitoringP
     };
   }, [permitted]);
 
-  const views = availableProductionViews(user);
+  const views = availablePlanningViews(user);
   const viewLabels: Record<string, [string, string]> = {
-    management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"],
-    printing: ["الطباعة", "Printing"], cutting: ["القص", "Cutting"], mixing: ["خلط مواد الخام", "Raw material mixing"],
+    management: ["إدارة الإنتاج", "Production management"],
     monitoring: ["مراقبة الإنتاج", "Production monitoring"],
   };
   const logMachineOptions = summary?.production_machines ?? [];
@@ -409,8 +409,8 @@ export default function ProductionMonitoringPage({ user }: ProductionMonitoringP
   return <main className="raw-ops production pm-page" dir={en ? "ltr" : "rtl"}>
     <header className="raw-ops-header">
       <div className="raw-ops-heading">
-        <div className="raw-ops-kicker">MPBF / OPERATIONS AUDIT</div>
-        <h1>{tr("title", en)}</h1>
+        <div className="raw-ops-kicker">MPBF / PLANNING &amp; MONITORING</div>
+        <h1>{tr("planning", en)}</h1>
         <p>{tr("intro", en)}</p>
       </div>
       <div className="raw-ops-actions">
@@ -419,8 +419,8 @@ export default function ProductionMonitoringPage({ user }: ProductionMonitoringP
       </div>
     </header>
 
-    <nav className="raw-ops-nav" aria-label={en ? "Production modules" : "وحدات الإنتاج"}>
-      {views.map(view => <Link key={view.view} href={view.href} aria-current={view.view === "monitoring" && permitted ? "page" : undefined}>{viewLabels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
+    <nav className="raw-ops-nav" aria-label={tr("planning", en)}>
+      {views.map(view => <Link key={view.view} href={view.href} aria-current={view.view === "monitoring" ? "page" : undefined}>{viewLabels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
     </nav>
     {!permitted ? <div className="raw-ops-banner error" role="alert">{tr("permission", en)}</div> : <>
       <div className="pm-tabs" aria-label={tr("title", en)}>

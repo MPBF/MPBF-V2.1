@@ -5,6 +5,7 @@ import { Link, Redirect, Route, Switch, useLocation, useRoute, useSearchParams }
 import { availableOrderTabs, selectedOrderTab, type OrderPageTab } from "./lib/order-tabs";
 import { productionPermissions } from "../../shared/production";
 import { initialProductionPath } from "./lib/production-navigation";
+import { initialPlanningPath } from "./lib/planning-navigation";
 import { initialWarehousePath } from "./lib/warehouse-navigation";
 import ProductionRoleBindingFields from "./components/ProductionRoleBindingFields";
 import { finishedGoodsPermissionGroup, finishedGoodsPermissionDescriptions } from "./lib/finished-goods-permissions";
@@ -214,18 +215,20 @@ const nav = [
   ["/", "لوحة الإدارة", Gauge, ["admin"]], ["/my-dashboard", "لوحة المستخدم", Users, []], ["/customers", "العملاء", Users, configs.customers.read],
   ["/orders", "الطلبات", FileText, [...configs.orders.read, ...configs.production.read]],
   ["/production", "الإنتاج والتشغيل", Factory, ["admin", ...productionPermissions, "view_mixing", "manage_mixing"]],
+  ["/planning", "التخطيط والمراقبة", Gauge, ["admin", "view_production", "manage_production"]],
   ["/warehouse", "المستودع", Boxes, ["view_production_hall", "view_finished_inventory", "receive_production", "manage_finished_warehouse", "view_raw_inventory", "manage_raw_materials"]],
   ["/hr", "الموارد البشرية", UsersRound, ["manage_hr", "manage_attendance", "admin"]],
   ["/admin", "الإدارة", Shield, ["manage_users", "manage_roles", "manage_sections", "manage_settings", "manage_machines", "manage_maintenance", "manage_categories", "manage_items", "manage_master_batch", "manage_definitions", "view_orders", "manage_customers", "manage_orders", "admin"]],
 ] as const;
 
 function mainNavActive(href: string, location: string) {
-  return location === href || (href === "/production" || href === "/warehouse") && location.startsWith(`${href}/`);
+  return location === href || (href === "/production" || href === "/planning" || href === "/warehouse") && location.startsWith(`${href}/`);
 }
 
 function canOpenMainNavigation(user: Row, href: string, permissions: readonly string[]) {
   const account = { id: Number(user.id), permissions: user.permissions ?? [], production_role_binding: user.production_role_binding };
   if (href === "/production") return !!initialProductionPath(account);
+  if (href === "/planning") return !!initialPlanningPath(account);
   if (href === "/warehouse") return !!initialWarehousePath(account);
   return !permissions.length || can(user, permissions);
 }
@@ -331,7 +334,7 @@ function Layout({ children, user, setUser, branding }: { children: ReactNode; us
   const visibleNav = nav.filter(([href, , , permissions]) => canOpenMainNavigation(user, href, permissions));
   const adminNav = visibleNav.find(([href]) => href === "/admin");
   const mobileNav = visibleNav.length <= 5 ? [...visibleNav] : [...visibleNav.slice(0, 4), adminNav || visibleNav[4]];
-  const currentModule = visibleNav.find(([href]) => (href === "/production" || href === "/warehouse") && mainNavActive(href, loc));
+  const currentModule = visibleNav.find(([href]) => (href === "/production" || href === "/planning" || href === "/warehouse") && mainNavActive(href, loc));
   if (currentModule && !mobileNav.includes(currentModule)) mobileNav[3] = currentModule;
   const title = loc === "/" && !can(user, ["admin"]) ? "لوحة المستخدم" : nav.find(([href]) => mainNavActive(href, loc))?.[1] || "الإدارة التشغيلية";
   const logout = async () => { try { await api("/logout", { method: "POST" }); } finally { setUser(null); setLoc("/"); } };
@@ -1456,7 +1459,8 @@ function App() {
     <Route path="/production/printing"><ProductionPage user={productionUser} view="printing" /></Route>
     <Route path="/production/cutting"><ProductionPage user={productionUser} view="cutting" /></Route>
     <Route path="/production/mixing"><RawMixingPage user={productionUser} /></Route>
-    <Route path="/production/monitoring"><ProductionMonitoringPage user={productionUser} /></Route>
+    <Route path="/production/monitoring"><Redirect to="/planning/monitoring" replace /></Route>
+    <Route path="/planning/monitoring"><ProductionMonitoringPage user={productionUser} /></Route>
     <Route path="/warehouse/raw-materials"><RawInventoryPage user={productionUser} /></Route>
     <Route path="/production/hall"><Redirect to="/warehouse/hall" replace /></Route>
     <Route path="/production/warehouse"><Redirect to="/warehouse/finished-inventory" replace /></Route>
@@ -1464,7 +1468,8 @@ function App() {
     <Route path="/warehouse/hall"><WarehousePage user={productionUser} view="hall" /></Route>
     <Route path="/warehouse/finished-inventory"><WarehousePage user={productionUser} view="warehouse" /></Route>
     <Route path="/warehouse">{warehouseHome ? <Redirect to={warehouseHome} replace /> : <WarehousePage user={productionUser} view="hall" />}</Route>
-    <Route path="/production">{productionHome && productionHome !== "/production" ? <Redirect to={productionHome} replace /> : !productionHome && warehouseHome ? <Redirect to={warehouseHome} replace /> : <ProductionPage user={productionUser} view="management" />}</Route>
+    <Route path="/planning"><ProductionPage user={productionUser} view="management" moduleContext="planning" /></Route>
+    <Route path="/production">{productionHome ? <Redirect to={productionHome} replace /> : warehouseHome ? <Redirect to={warehouseHome} replace /> : <ProductionPage user={productionUser} view="film" />}</Route>
     <Route path="/admin"><Admin user={auth.user} /></Route>
     <Route>{isAdmin ? <Dashboard user={auth.user} /> : <UserDashboard user={auth.user} />}</Route>
   </Switch></DeferredContent></Layout>;

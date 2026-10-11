@@ -14,6 +14,7 @@ import {
 } from "../../../../shared/production";
 import { confirmedProductionRejection, productionApi } from "../../lib/production-api";
 import { availableProductionViews, canOpenProductionView } from "../../lib/production-navigation";
+import { availablePlanningViews, canOpenPlanningView } from "../../lib/planning-navigation";
 import { availableWarehouseViews, canOpenWarehouseView, initialWarehousePath } from "../../lib/warehouse-navigation";
 import { productionActorName } from "../../lib/production-actors";
 import { formatWholeNumber } from "../../lib/format-number";
@@ -25,7 +26,7 @@ import { ReceiptVoucherModal, type ReceiptDraft } from "../warehouse/ReceiptVouc
 import { calculatePacking, type ReceiptPacking } from "../../../../shared/production-packing";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
-export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" };
+export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" | "planning" };
 
 const executableOrder = (status: string) => status === "for_production" || status === "in_production";
 const unstartableProductionStatuses = new Set(["completed", "archived", "cancelled"]);
@@ -49,6 +50,7 @@ const idempotencyKey = () => {
 
 const messages: Record<string, [string, string]> = {
   monitoring: ["مراقبة الإنتاج", "Production monitoring"],
+  planning: ["التخطيط والمراقبة", "Planning and monitoring"],
   mixing: ["خلط مواد الخام", "Raw material mixing"],
   raw: ["صالة الخام", "Raw materials hall"],
   title: ["تشغيل الإنتاج", "Production operations"], intro: ["كل رول يسير في مساره؛ والدفعات تصل للمخزون عند استلامها.", "Each roll moves on its own; batches enter stock when received."],
@@ -102,9 +104,9 @@ function useProductionState(allowed: boolean, view: ProductionView) {
   return { state: allowed && snapshot?.view === view ? snapshot.state : null, loading, error, reload: load };
 }
 
-function Header({ view, language, refreshing, onRefresh, machineSlotRef, children, moduleContext }: { view: ProductionView; language: string; refreshing: boolean; onRefresh: () => void; machineSlotRef: (node: HTMLDivElement | null) => void; children?: ReactNode; moduleContext: "production" | "warehouse" }) {
+function Header({ view, language, refreshing, onRefresh, machineSlotRef, children, moduleContext }: { view: ProductionView; language: string; refreshing: boolean; onRefresh: () => void; machineSlotRef: (node: HTMLDivElement | null) => void; children?: ReactNode; moduleContext: "production" | "warehouse" | "planning" }) {
   const isOperatorView = view === "film" || view === "printing" || view === "cutting";
-  const heading = moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : text(view, language);
+  const heading = moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : moduleContext === "planning" ? text("planning", language) : text(view, language);
   return <header className={`prod-heading${isOperatorView ? " operator-header" : ""}`}>
     <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{heading}</h2><p>{moduleContext === "warehouse" ? (language === "en" ? "Receiving, finished inventory and movement history." : "الاستلام والمخزون التام وحركاتهما.") : view === "management" ? text("intro", language) : text("title", language)}</p></div>
     <div className="prod-heading-controls">
@@ -577,26 +579,28 @@ export default function ProductionPage({user,view,rollId,moduleContext="producti
   const {i18n}=useTranslation();
   const language=i18n.language==="en"?"en":"ar";
   const [machineSlot,setMachineSlot]=useState<HTMLDivElement|null>(null);
-  const allowed = moduleContext === "warehouse"
+  const allowed = moduleContext === "planning"
+    ? view === "management" && canOpenPlanningView(user, "management")
+    : moduleContext === "warehouse"
     ? view === "roll"
       ? canOpenWarehouseView(user,"hall") || canOpenWarehouseView(user,"warehouse")
       : (view === "hall" || view === "warehouse") && canOpenWarehouseView(user,view)
-    : canOpenProductionView(user, view);
-  const visibleViews = moduleContext === "warehouse" ? availableWarehouseViews(user) : availableProductionViews(user);
+    : view !== "management" && canOpenProductionView(user, view);
+  const visibleViews = moduleContext === "planning" ? availablePlanningViews(user) : moduleContext === "warehouse" ? availableWarehouseViews(user) : availableProductionViews(user);
   const returnPath = moduleContext === "warehouse" ? initialWarehousePath(user) : null;
   const data=useProductionState(allowed,view);
   const state=data.state;
   return <section className="production production-app">
     <Header view={view} language={language} refreshing={data.loading} onRefresh={()=>void data.reload()} machineSlotRef={setMachineSlot} moduleContext={moduleContext}>
-      {moduleContext === "production" && view!=="management"&&canOpenProductionView(user,"management")&&<Link className="prod-btn secondary" href="/production"><ChevronRight/>{text("goManagement",language)}</Link>}
+      {moduleContext === "production" && view!=="management"&&canOpenPlanningView(user,"management")&&<Link className="prod-btn secondary" href="/planning"><ChevronRight/>{text("goManagement",language)}</Link>}
       {moduleContext === "warehouse" && view === "roll" && returnPath && <Link className="prod-btn secondary" href={returnPath}><ChevronRight/>{language==="en"?"Back to warehouse":"العودة إلى المستودع"}</Link>}
     </Header>
-    <nav className="prod-view-nav" aria-label={moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : text("title",language)}>
+    <nav className="prod-view-nav" aria-label={moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : moduleContext === "planning" ? text("planning", language) : text("title",language)}>
       {visibleViews.map(({view: destination,href})=>
         <Link key={destination} href={href} className={`prod-btn ${view===destination?"":"secondary"}`} aria-current={view===destination?"page":undefined}>{text(destination,language)}</Link>
       )}
     </nav>
-      {!allowed?<Empty title={text("permission",language)}/>:view==="roll"?<>{data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}<RollDetail rollId={rollId??""} user={user} language={language} state={state} moduleContext={moduleContext}/></>:data.loading&&!state?<Loading language={language}/>:data.error&&!state?<ErrorBanner message={data.error||text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:!state?<ErrorBanner message={text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:
+      {!allowed?<Empty title={text("permission",language)}/>:view==="roll"?<>{data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}<RollDetail rollId={rollId??""} user={user} language={language} state={state} moduleContext={moduleContext === "warehouse" ? "warehouse" : "production"}/></>:data.loading&&!state?<Loading language={language}/>:data.error&&!state?<ErrorBanner message={data.error||text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:!state?<ErrorBanner message={text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:
       <>
         {data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}
         {view==="management"&&<Management state={state} user={user} language={language} reload={data.reload}/>}

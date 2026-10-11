@@ -78,7 +78,7 @@ const WebSocket=require("ws");
     const click=async(expression)=>{await evaluate(`(${expression}).click()`);await new Promise(r=>setTimeout(r,180));};
     const button=text=>click(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(text)})`);
     const input=async(selector,value)=>{await evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});const setter=Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set;setter.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));})()`);};
-    const navigate=async()=>{await send("Page.navigate",{url:`${base}/production/monitoring`});await wait("!!document.querySelector('.pm-page')");};
+    const navigate=async()=>{await send("Page.navigate",{url:`${base}/planning/monitoring`});await wait("!!document.querySelector('.pm-page')");};
     if(!process.argv.includes("--behavior-only"))for(const lang of ["ar","en"])for(const width of [390,768,1280]){
       language=lang;permissions=["admin"];
       await send("Emulation.setDeviceMetricsOverride",{width,height:1000,deviceScaleFactor:1,mobile:false});

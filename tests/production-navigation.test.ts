@@ -11,6 +11,7 @@ import
 }
  from "../client/src/lib/production-navigation"
 ;
+import { canOpenPlanningView } from "../client/src/lib/planning-navigation";
 
 import type 
 {
@@ -53,7 +54,8 @@ describe("production operator tab boundaries", () =>
     expect(initialProductionPath(account)).toBe(`/production/${stage}`)
 ;
 
-    for (const view of ["management", "film", "printing", "cutting", "hall", "warehouse"] as const) 
+    expect(canOpenPlanningView(account, "management")).toBe(false);
+    for (const view of ["film", "printing", "cutting", "hall", "warehouse"] as const) 
 {
 
       expect(canOpenProductionView(account, view)).toBe(view === stage)
@@ -113,10 +115,10 @@ describe("production operator tab boundaries", () =>
     const account = user("admin", "operate_film")
 ;
 
-    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting", "mixing", "monitoring"])
+    expect(tabs(account)).toEqual(["film", "printing", "cutting", "mixing"])
 ;
 
-    expect(initialProductionPath(account)).toBe("/production")
+    expect(initialProductionPath(account)).toBe("/production/film")
 ;
 
   
@@ -130,10 +132,10 @@ describe("production operator tab boundaries", () =>
     const account = user("manage_production", "operate_film")
 ;
 
-    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting", "mixing"])
+    expect(tabs(account)).toEqual(["film", "printing", "cutting", "mixing"])
 ;
 
-    expect(initialProductionPath(account)).toBe("/production")
+    expect(initialProductionPath(account)).toBe("/production/film")
 ;
 
     expect(canOpenProductionView(account, "hall")).toBe(false)
@@ -147,7 +149,7 @@ describe("production operator tab boundaries", () =>
   it("preserves general read, receiving and inventory navigation for non-operators", () => 
 {
 
-    expect(tabs(user("view_production"))).toEqual(["management", "film", "printing", "cutting"])
+    expect(tabs(user("view_production"))).toEqual(["film", "printing", "cutting"])
 ;
 
     expect(tabs(user("receive_production"))).toEqual([])
@@ -209,7 +211,7 @@ describe("production operator tab boundaries", () =>
     
 }
 
-    expect(canOpenProductionView(account, "management")).toBe(false)
+    expect(canOpenPlanningView(account, "management")).toBe(false)
 ;
 
     expect(canOpenProductionView(account, "roll")).toBe(true)
@@ -229,10 +231,10 @@ describe("production operator tab boundaries", () =>
 }
 ;
 
-    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting"])
+    expect(tabs(account)).toEqual(["film", "printing", "cutting"])
 ;
 
-    expect(initialProductionPath(account)).toBe("/production")
+    expect(initialProductionPath(account)).toBe("/production/film")
 ;
 
   
@@ -406,7 +408,7 @@ describe("production operator tab boundaries", () =>
 }
 ;
 
-    expect(tabs(account).slice(0, 4)).toEqual(["management", "film", "printing", "cutting"])
+    expect(tabs(account).slice(0, 3)).toEqual(["film", "printing", "cutting"])
 ;
 
   
@@ -428,7 +430,7 @@ describe("production operator tab boundaries", () =>
 }
 ;
 
-    expect(tabs(account)).toEqual(["management", "film", "printing", "cutting"])
+    expect(tabs(account)).toEqual(["film", "printing", "cutting"])
 ;
 
     account.permissions = []
