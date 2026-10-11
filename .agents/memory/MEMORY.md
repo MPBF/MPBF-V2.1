@@ -95,3 +95,4 @@
 - [Prospective mix accounting](production-mix-accounting.md) — machine-wide FIFO, shortages allowed without later reconciliation; no second raw deduction or inferred screw/layer dosing.
 - [Order status design](order-status-design.md) — user requires colored order states and approved combining status/actions into two rows to save table width.
 - [Operator roll card sizing](operator-roll-card-sizing.md) — user approved small fixed-width roll cards that wrap, never stretch or squeeze as counts change.
+- [Warehouse hall card sizing](warehouse-hall-card-sizing.md) — user approved six ready-order cards per desktop row, fewer on smaller screens; scoped to the production hall.
