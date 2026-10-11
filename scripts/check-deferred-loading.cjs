@@ -18,7 +18,7 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
     .map(file => fs.readFile(path.join(root, file), "utf8")))).join("\n");
   assert.ok(!initialCss.includes(".order-status--new"), "Order table feature CSS must not enter the initial bundle");
   let language = "ar", signedIn = false, permissions = ["admin"], failChunk = false;
-  let productionBinding, roleName = "Administrator";
+  let productionBinding, roleName = "Administrator", failAdminChunk = "";
   const filmRole = { id: 891, name: "Night team", name_ar: "فريق الليل",
     permissions: ["view_production", "view_film_dashboard"],
     production_role_binding: { mode: "operator", stages: ["film"] } };
@@ -53,6 +53,9 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
             role_name: roleName, production_role_binding: productionBinding } } : { message: "Sign in required" };
         } else if (url.pathname === "/api/public-branding") data = { companyNameAr: "مصنع تجريبي", companyNameEn: "Fixture Factory", defaultLanguage: language };
         else if (url.pathname === "/api/dashboard") data = {};
+        else if (url.pathname === "/api/users") data = [employee];
+        else if (url.pathname === "/api/company-profile") data = { name: "Fixture Factory", name_ar: "مصنع تجريبي", default_language: language, working_hours_per_day: 8 };
+        else if (url.pathname === "/api/system-settings") data = [{ id: 1, setting_key: "factory_timezone", setting_value: "Asia/Riyadh" }];
         else if (url.pathname === "/api/roles") data = [filmRole];
         else if (url.pathname === "/api/hr/data") data = { shifts: [], users: [employee], history: [] };
         else if (url.pathname === "/api/hr/attendance-summary") data = { rows: [{ ...employee, workedMinutes: 480,
@@ -88,8 +91,11 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
         if (failChunk && /HumanResources-.*\.js$/.test(url.pathname)) {
           response.writeHead(503); response.end("Fixture chunk failure"); return;
         }
+        if (failAdminChunk && url.pathname.includes(`/${failAdminChunk}-`) && url.pathname.endsWith(".js")) {
+          response.writeHead(503); response.end("Fixture admin chunk failure"); return;
+        }
         // Make the loading state observable on first navigation.
-        if (/HumanResources-.*\.js$/.test(url.pathname)) await new Promise(resolve => setTimeout(resolve, 350));
+        if (/(?:HumanResources|UsersAdmin|RolesAdmin|SettingsAdmin)-.*\.js$/.test(url.pathname)) await new Promise(resolve => setTimeout(resolve, 350));
       }
       const type = file.endsWith(".js") ? "text/javascript" : file.endsWith(".css") ? "text/css" : "text/html";
       response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
@@ -152,7 +158,8 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
     };
     const open = async route => { assets.length = 0; await send("Page.navigate", { url: origin + route }); };
     const click = async selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-    const deferred = /(?:HumanResources|UserDashboard|ProductionPage|OrderPrintPage|OrderCreateModal|CustomerProductModal|CustomerModal|ProductionOrderModal|OrderDetailsModal|OrderWorkspaceControls|xlsx|jspdf|html2canvas)[-.]/;
+    const adminChunks = /(?:UsersAdmin|RolesAdmin|SettingsAdmin)-.*\.js$/;
+    const deferred = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|HumanResources|UserDashboard|ProductionPage|OrderPrintPage|OrderCreateModal|CustomerProductModal|CustomerModal|ProductionOrderModal|OrderDetailsModal|OrderWorkspaceControls|xlsx|jspdf|html2canvas)[-.]/;
     const download = async extension => {
       for (let attempt = 0; attempt < 400; attempt++) {
         const file = (await fs.readdir(temp)).find(name => name.endsWith(extension) && !name.endsWith("-order.pdf"));
@@ -173,6 +180,7 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       check(`${lang} document direction`, await evaluate("document.documentElement.dir"), lang === "ar" ? "rtl" : "ltr");
       signedIn = true;
       await open("/customers"); await wait("!!document.querySelector('a[href=\"/hr\"]')");
+      check(`${lang} customer navigation does not load administration`, assets.filter(value => adminChunks.test(value)), []);
       await click('a[href="/hr"]');
       await wait("!!document.querySelector('[role=\"status\"][aria-busy=\"true\"]')");
       check(`${lang} translated loading state`, await evaluate("document.querySelector('[role=\"status\"]').textContent"), lang === "ar" ? "جارٍ التحميل…" : "Loading…");
@@ -258,8 +266,21 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       check(`${lang} customer editor not loaded by list`, assets.some(value => /CustomerModal-.*\.js/.test(value)), false);
       await click(".page-heading .btn-primary"); await wait("!!document.querySelector('.customer-modal')");
       check(`${lang} customer editor loaded by create action`, assets.some(value => /CustomerModal-.*\.js/.test(value)));
-      await open("/admin"); await wait("!!document.querySelector('#admin-tab-roles')");
-      await click("#admin-tab-roles"); await wait("!!document.querySelector('.role-card button')");
+      await open("/admin"); await wait("!!document.querySelector('#admin-panel-users [role=\"status\"][aria-busy=\"true\"]')");
+      check(`${lang} admin tabs stay visible while users load`, await evaluate("document.querySelector('#admin-tab-users').getAttribute('aria-selected')"), "true");
+      check(`${lang} users translated loading state`, await evaluate("document.querySelector('#admin-panel-users [role=\"status\"]').textContent"), lang === "ar" ? "جارٍ التحميل…" : "Loading…");
+      await wait("document.querySelectorAll('.users-table tbody tr').length===1");
+      check(`${lang} admin initially loads only the users tab`, assets.filter(value => adminChunks.test(value)).map(value => value.match(/(UsersAdmin|RolesAdmin|SettingsAdmin)-/)[1]), ["UsersAdmin"]);
+      check(`${lang} users list retains fixture identity`, await evaluate("document.querySelector('.users-table').textContent.includes('Fixture Employee')"));
+      await click("#admin-panel-users .page-heading button"); await wait("!!document.querySelector('#user-role option[value=\"891\"]')");
+      check(`${lang} user create dialog retains password requirement`, await evaluate("document.querySelector('input[type=password][autocomplete=new-password]').required"));
+      check(`${lang} user dialog does not preload the roles editor`, assets.some(value => /RolesAdmin-.*\.js$/.test(value)), false);
+      await click('button[aria-label=' + JSON.stringify(lang === "ar" ? "إغلاق حوار المستخدم" : "Close user dialog") + ']');
+      await click("#admin-tab-roles"); await wait("!!document.querySelector('#admin-panel-roles [role=\"status\"][aria-busy=\"true\"]')");
+      check(`${lang} role tab retains navigation during loading`, await evaluate("document.querySelector('#admin-tab-roles').getAttribute('aria-selected')"), "true");
+      await wait("!!document.querySelector('.role-card button')");
+      check(`${lang} roles chunk loaded by tab click`, assets.some(value => /RolesAdmin-.*\.js$/.test(value)));
+      check(`${lang} roles tab does not preload settings`, assets.some(value => /SettingsAdmin-.*\.js$/.test(value)), false);
       await click(".role-card button"); await wait("!!document.querySelector('#production-role-mode')");
       check(`${lang} renamed role editor retains operator binding`, await evaluate("document.querySelector('#production-role-mode').value"), "operator");
       check(`${lang} role editor shows selected stages without adding write grants`,
@@ -273,6 +294,31 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       check(`${lang} editor supports multiple stages`, await evaluate("[...document.querySelectorAll('fieldset input')].map(input=>input.checked)"), [true, false, true]);
       await click(".role-modal footer button[type=button]");
       check(`${lang} cancelling never changes stored role binding`, filmRole.production_role_binding.stages, ["film"]);
+      await click("#admin-tab-settings"); await wait("!!document.querySelector('#admin-panel-settings [role=\"status\"][aria-busy=\"true\"]')");
+      check(`${lang} settings translated loading state`, await evaluate("document.querySelector('#admin-panel-settings [role=\"status\"]').textContent"), lang === "ar" ? "جارٍ التحميل…" : "Loading…");
+      await wait("document.querySelector('#profile-name')?.value==='Fixture Factory'");
+      check(`${lang} settings chunk loaded by tab click`, assets.some(value => /SettingsAdmin-.*\.js$/.test(value)));
+      check(`${lang} settings retain profile and operation values`, await evaluate("[document.querySelector('#default-language').value, document.querySelector('#factory-timezone').value, document.querySelector('#work-hours-day').value]"), [lang, "Asia/Riyadh", "8"]);
+      check(`${lang} settings field is translated`, await evaluate("document.querySelector('label[for=profile-name]').textContent"), lang === "ar" ? "اسم الشركة بالإنجليزية" : "Company name in English");
+      await click("#admin-tab-users"); await wait("document.querySelectorAll('.users-table tbody tr').length===1");
+      check(`${lang} returning to users retains selection`, await evaluate("document.querySelector('#admin-tab-users').getAttribute('aria-selected')"), "true");
+      permissions = ["manage_roles"];
+      await open("/admin"); await wait("!!document.querySelector('.role-card button')");
+      check(`${lang} role-only account sees only its tab`, await evaluate("[...document.querySelectorAll('.admin-tabs button')].map(button=>button.id)"), ["admin-tab-roles"]);
+      check(`${lang} role-only account loads only its permitted editor`, assets.filter(value => adminChunks.test(value)).map(value => value.match(/(UsersAdmin|RolesAdmin|SettingsAdmin)-/)[1]), ["RolesAdmin"]);
+      check(`${lang} role-only account cannot delete roles`, await evaluate("!!document.querySelector('.role-card button[title=" + JSON.stringify(lang === "ar" ? "حذف" : "Delete") + "]')"), false);
+      await click(".role-card button"); await wait("!!document.querySelector('.role-modal')");
+      check(`${lang} role-only account cannot grant admin`, await evaluate("document.querySelector('.permission-groups .permission input').disabled"));
+      await click(".role-modal footer button[type=button]");
+      permissions = ["manage_settings"];
+      await open("/admin"); await wait("document.querySelector('#profile-name')?.value==='Fixture Factory'");
+      check(`${lang} settings-only account sees only settings`, await evaluate("[...document.querySelectorAll('.admin-tabs button')].map(button=>button.id)"), ["admin-tab-settings"]);
+      check(`${lang} settings-only account loads only settings`, assets.filter(value => adminChunks.test(value)).map(value => value.match(/(UsersAdmin|RolesAdmin|SettingsAdmin)-/)[1]), ["SettingsAdmin"]);
+      permissions = ["manage_users"];
+      await open("/admin"); await wait("document.querySelectorAll('.users-table tbody tr').length===1");
+      check(`${lang} user-only account sees only users`, await evaluate("[...document.querySelectorAll('.admin-tabs button')].map(button=>button.id)"), ["admin-tab-users"]);
+      check(`${lang} user-only account loads only users`, assets.filter(value => adminChunks.test(value)).map(value => value.match(/(UsersAdmin|RolesAdmin|SettingsAdmin)-/)[1]), ["UsersAdmin"]);
+      check(`${lang} user-only account cannot delete users`, await evaluate("!!document.querySelector('.users-table button[title=" + JSON.stringify(lang === "ar" ? "حذف" : "Delete") + "]')"), false);
       permissions = [...filmRole.permissions]; productionBinding = filmRole.production_role_binding; roleName = filmRole.name;
       await open("/production"); await wait("!!document.querySelector('.prod-view-nav')");
       check(`${lang} renamed operator lands on Film`, await evaluate("location.pathname"), "/production/film");
@@ -292,6 +338,19 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
     failChunk = false;
     await click('[role="alert"] button'); await wait("!!document.querySelector('.hr-tabs')");
     check("Retry reloads the failed chunk successfully", await evaluate("!!document.querySelector('.hr-tabs')"));
+    for (const [chunk, permission, selector] of [
+      ["UsersAdmin", "manage_users", ".users-table tbody tr"],
+      ["RolesAdmin", "manage_roles", ".role-card"],
+      ["SettingsAdmin", "manage_settings", "#profile-name"],
+    ]) {
+      permissions = [permission]; failAdminChunk = chunk;
+      await open("/admin"); await wait("!!document.querySelector('[role=\"tabpanel\"] [role=\"alert\"] button')");
+      check(`${chunk} failure keeps admin navigation visible`, await evaluate("document.querySelectorAll('.admin-tabs button').length"), 1);
+      check(`${chunk} failure shows translated retry`, await evaluate("document.querySelector('[role=\"tabpanel\"] [role=\"alert\"] button').textContent"), "Try again");
+      failAdminChunk = "";
+      await click('[role="tabpanel"] [role="alert"] button'); await wait(`!!document.querySelector(${JSON.stringify(selector)})`);
+      check(`${chunk} retry succeeds`, await evaluate(`!!document.querySelector(${JSON.stringify(selector)})`));
+    }
     console.log(`Verified ${checks} production-build checks. Temporary files: ${temp}`);
   } finally {
     if (ws) ws.close();

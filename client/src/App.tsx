@@ -1,26 +1,25 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, Boxes, Copy, Eye, Factory, FileText, Gauge, LogOut, Package, Pencil, Plus, Printer, Search, Shield, Trash2, Users, UsersRound, Wrench, X, Settings2, Cog, KeyRound, Building2, Check } from "lucide-react";
+import { ArrowRight, Boxes, Copy, Eye, Factory, FileText, Gauge, LogOut, Package, Pencil, Plus, Printer, Search, Shield, Trash2, Users, UsersRound, Wrench, X, Settings2, Cog, KeyRound } from "lucide-react";
 import { Link, Redirect, Route, Switch, useLocation, useRoute, useSearchParams } from "wouter";
 import { availableOrderTabs, selectedOrderTab, type OrderPageTab } from "./lib/order-tabs";
 import { productionPermissions } from "../../shared/production";
 import { initialProductionPath } from "./lib/production-navigation";
 import { initialPlanningPath } from "./lib/planning-navigation";
 import { initialWarehousePath } from "./lib/warehouse-navigation";
-import ProductionRoleBindingFields from "./components/ProductionRoleBindingFields";
-import { finishedGoodsPermissionGroup, finishedGoodsPermissionDescriptions } from "./lib/finished-goods-permissions";
 import { defaultBranding, fetchBrandingSnapshot, type BrandingSnapshot } from "./lib/branding";
 import PageHero from "./components/PageHero";
 import DeferredContent from "./components/DeferredContent";
 import FlagLanguageSelector from "./components/FlagLanguageSelector";
 import type { WorkspaceOrder } from "./components/OrderWorkspaceControls";
 import MasterBatchSwatch from "./components/MasterBatchSwatch";
-import { createLatestRequestGate, fetchAllPages, LIST_PAGE_SIZE, runLatestRequest } from "./lib/listing";
+import { createLatestRequestGate, LIST_PAGE_SIZE, runLatestRequest } from "./lib/listing";
+import { api, can, latinDigits, list, listPage, type Row } from "./lib/app-api";
 import { sortCustomerProductsByCategory } from "./lib/customer-product-sort";
 import type { OrderWorkspaceAction } from "../../shared/order-workspace";
 import type { OrderDisplayFolder } from "./lib/order-workspace";
 import { canonicalMachineType, eligibleInlinePrinterMachines, MACHINE_CAPACITY_TYPES, MACHINE_RAW_MATERIAL_TYPES, machineTypeMatches, newAdminFormDefaults, usesGeneratedAdminId } from "./lib/admin-form-review";
-import i18n, { applyLanguage, localizedName, normalizeLanguage, translate, translateError } from "./i18n";
+import i18n, { applyLanguage, localizedName, normalizeLanguage, translate } from "./i18n";
 
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const HumanResources = lazy(() => import("./pages/HumanResources"));
@@ -39,8 +38,10 @@ const OrderWorkspaceControls = lazy(() => import("./components/OrderWorkspaceCon
 const OrderRowActionMenu = lazy(() => import("./components/OrderWorkspaceControls").then((module) => ({ default: module.OrderRowActionMenu })));
 const OrderSelectionBox = lazy(() => import("./components/OrderWorkspaceControls").then((module) => ({ default: module.OrderSelectionBox })));
 const RoleSwitcher = lazy(() => import("./components/RoleSwitcher"));
+const UsersAdmin = lazy(() => import("./pages/admin/UsersAdmin"));
+const RolesAdmin = lazy(() => import("./pages/admin/RolesAdmin"));
+const SettingsAdmin = lazy(() => import("./pages/admin/SettingsAdmin"));
 
-type Row = Record<string, any>;
 type OrderProductionSummary = {
   id: number;
   production_order_number: string;
@@ -52,47 +53,6 @@ type OrderProductionSummary = {
 type Field = { key: string; label: string; type?: "integer" | "decimal" | "date" | "select" | "percentage" | "textarea" | "boolean"; options?: string[]; relation?: string; required?: boolean; wide?: boolean; onlyMachineType?: string };
 type Column = { key: string; label: string; kind?: "text" | "number" | "date" | "status" | "relation" | "color" | "boolean" | "bilingual"; priority?: boolean; unit?: string; tightUnit?: boolean; fallbackKey?: string; secondaryKey?: string; secondaryRelation?: string; joinKey?: string; joinUnit?: string; colorKey?: string; compact?: "customer"; width?: "category" | "size" | "numeric" | "combined" | "material" | "color" | "order-customer"; centered?: boolean; truncateNumbers?: boolean; customerLink?: boolean };
 type Config = { path: string; title: string; singular: string; read: string[]; write: string[]; del?: string[]; fields: Field[]; columns?: Column[]; mobileColumnLimit?: number; lockedFields?: string[]; clone?: boolean };
-
-const api = async (path: string, options: RequestInit = {}) => {
-  const response = await fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const fallbackByStatus: Record<number, string> = {
-      400: "البيانات المدخلة غير صالحة",
-      401: "انتهت الجلسة أو يلزم تسجيل الدخول",
-      403: "لا تملك صلاحية تنفيذ هذا الإجراء",
-      404: "العنصر المطلوب غير موجود",
-      409: "تعذر تنفيذ الإجراء بسبب تعارض في البيانات",
-      422: "تعذر التحقق من صحة البيانات",
-      429: "عدد المحاولات كبير. حاول مرة أخرى لاحقاً",
-      500: "حدث خطأ داخلي في الخادم",
-    };
-    throw new Error(translateError((i18n.language === "en" ? body.message_en : body.message) || body.message || fallbackByStatus[response.status] || "تعذر تنفيذ الطلب"));
-  }
-  return normalizePayload(body);
-};
-const listPage = (path: string, search = "", offset = 0, limit = LIST_PAGE_SIZE, displayFolder?: OrderDisplayFolder, categoryId?: string) => {
-  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  if (search) query.set("search", search);
-  if (displayFolder) query.set("display_folder", displayFolder);
-  if (categoryId) query.set("category_id", categoryId);
-  return api(`${path}?${query.toString()}`).then((value) => {
-    if (!Array.isArray(value)) throw new Error(translate("تعذر تحميل قائمة البيانات"));
-    return value as Row[];
-  });
-};
-const list = (path: string, search = "") => {
-  // These lookup endpoints intentionally return the complete, small reference list.
-  if (path === "/roles" || path === "/sections") {
-    const query = search ? `?search=${encodeURIComponent(search)}` : "";
-    return api(`${path}${query}`).then((value) => {
-      if (!Array.isArray(value)) throw new Error(translate("تعذر تحميل قائمة البيانات"));
-      return value as Row[];
-    });
-  }
-  return fetchAllPages<Row>((offset, limit) => listPage(path, search, offset, limit));
-};
-const can = (user: Row, permissions: readonly string[]) => permissions.some((permission) => user.permissions?.includes("*") || user.permissions?.includes(permission));
 
 const orderStatuses = ["waiting", "on_hold", "in_production", "for_production", "paused", "cancelled", "completed", "delivered", "archived"];
 const productionStatuses = ["pending", "active", "completed", "cancelled", "archived"];
@@ -112,17 +72,6 @@ const relationLabel = (row: Row, key: string) => {
     (key === "order" ? row.order_number : null) ||
     (key === "production_order" ? row.production_order_number : null) || row[`${key}_id`] ||
     (typeof row[key] === "string" ? localizedName(row[key], row[key], "") : row[key]) || null;
-};
-const latinDigits = (value: string) => value
-  .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
-  .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
-  .replace(/٫/g, ".")
-  .replace(/٬/g, ",");
-const normalizePayload = (value: any): any => {
-  if (typeof value === "string") return latinDigits(value);
-  if (Array.isArray(value)) return value.map(normalizePayload);
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalizePayload(item)]));
-  return value;
 };
 const fmtNumber = (value: any, digits = 2, unit = "", tightUnit = false) => {
   if (value === null || value === undefined || value === "") return "—";
@@ -783,529 +732,17 @@ function CompanyProfile({ user }: { user: Row }) {
   return <section className="panel"><div className="panel-head"><h3>{translate("ملف الشركة")}</h3></div><form className="form-grid" onSubmit={save}>{fields.map(([key, label]) => <div className="field" key={key}><label htmlFor={`company-${key}`}>{translate(label)}</label><input id={`company-${key}`} type={key === "working_hours_per_day" ? "number" : "text"} value={form[key] ?? ""} onChange={(e) => setForm({ ...form, [key]: key === "working_hours_per_day" ? Number(e.target.value) : e.target.value })} /></div>)}<div className="wide" aria-live="polite">{error && <div className="error" role="alert">{error}</div>}{saved && <div className="tag">{translate("تم حفظ التغييرات")}</div>}<button className="btn btn-primary">{translate("حفظ ملف الشركة")}</button></div></form></section>;
 }
 
-const permissionGroups = [
-  { label: "النظام والإدارة", items: [["admin","مدير النظام"],["manage_users","إدارة المستخدمين"],["manage_roles","إدارة الأدوار والصلاحيات"],["manage_sections","إدارة الأقسام"],["manage_settings","إدارة الإعدادات"],["manage_definitions","إدارة التعريفات"],["view_system_health","صحة النظام"],["view_system_monitoring","مراقبة النظام"]] },
-  { label: "الصيانة والآلات", items: [["manage_machines","إدارة الماكينات"],["manage_maintenance","إدارة الصيانة"],["manage_maintenance_actions","إجراءات الصيانة"],["create_maintenance_requests","إنشاء طلبات الصيانة"],["view_maintenance","عرض الصيانة"],["view_maintenance_reports","تقارير الصيانة"],["view_maintenance_requests","طلبات الصيانة"],["view_maintenance_stats_reports","إحصاءات الصيانة"]] },
-  { label: "الإنتاج والتشغيل", items: [["manage_production","إدارة الإنتاج"],["operate_film","تشغيل الفيلم"],["operate_printing","تشغيل الطباعة"],["operate_cutting","تشغيل القص"],["view_production_hall","عرض صالة الإنتاج"],["delete_production","حذف سجلات الإنتاج"],["manage_production_hall","إدارة صالة الإنتاج"],["view_production","عرض الإنتاج"],["view_production_monitoring","مراقبة الإنتاج"],["view_production_reports","تقارير الإنتاج"],["view_today_production","إنتاج اليوم"],["view_cutting_dashboard","لوحة القص"],["view_film_dashboard","لوحة الفيلم"],["view_printing_dashboard","لوحة الطباعة"],["manage_mixing","إدارة الخلط"],["view_mixing","عرض الخلط"]] },
-  finishedGoodsPermissionGroup,
-  { label: "المخزون والمستودع", items: [["manage_inventory","إدارة المخزون"],["view_inventory","عرض المخزون"],["manage_warehouse","إدارة المستودع"],["view_warehouse","عرض المستودع"],["view_raw_inventory","عرض مخزون المواد الخام"],["manage_raw_materials","إدارة مواد الخام"],["manage_warehouse_vouchers","إدارة سندات المستودع"],["view_warehouse_vouchers","عرض سندات المستودع"],["view_warehouse_reports","تقارير المستودع"],["manage_spare_parts","قطع الغيار"],["manage_consumable_parts","المواد المستهلكة"],["manage_items","إدارة الأصناف"],["manage_categories","إدارة التصنيفات"]] },
-  { label: "الجودة والطلبات والعملاء", items: [["manage_quality","إدارة الجودة"],["manage_quality_settings","إعدادات الجودة"],["create_quality_inspections","إنشاء فحوص الجودة"],["view_quality","عرض الجودة"],["view_quality_reports","تقارير الجودة"],["view_quality_control_reports","تقارير ضبط الجودة"],["manage_orders","إدارة الطلبات"],["view_orders","عرض الطلبات"],["view_my_orders","طلباتي"],["update_order_status","تحديث حالة الطلب"],["manage_customers","إدارة العملاء"]] },
-  { label: "الموارد البشرية والحضور", items: [["manage_hr","إدارة الموارد البشرية"],["view_hr","عرض الموارد البشرية"],["view_hr_reports","تقارير الموارد البشرية"],["manage_attendance","إدارة الحضور"],["view_attendance","عرض الحضور"],["view_attendance_reports","تقارير الحضور"],["manage_leaves","إدارة الإجازات"],["manage_training","إدارة التدريب"],["view_training","عرض التدريب"],["manage_negligence","إدارة الإهمال"],["manage_work_violations","إدارة مخالفات العمل"],["record_work_violations","تسجيل مخالفات العمل"],["view_work_violations","عرض مخالفات العمل"]] },
-  { label: "التحليلات والعرض", items: [["view_dashboard","لوحة المتابعة"],["view_user_dashboard","لوحة المستخدم"],["view_home","الرئيسية"],["view_reports","التقارير"],["manage_analytics","التحليلات"],["view_financial_reports","التقارير المالية"],["manage_alerts","إدارة التنبيهات"],["view_alerts","عرض التنبيهات"],["view_notifications","الإشعارات"],["manage_display_screen","إدارة شاشة العرض"],["view_display_screen","عرض الشاشة"]] },
-  { label: "الذكاء والتكاملات", items: [["manage_ai_agent","إدارة وكيل الذكاء"],["use_ai_agent","استخدام وكيل الذكاء"],["view_ai_agent","عرض وكيل الذكاء"],["manage_whatsapp","إدارة واتساب"],["manage_factory_simulation","إدارة محاكاة المصنع"],["view_factory_simulation","عرض محاكاة المصنع"],["view_tools","عرض الأدوات"],["view_legacy_database","عرض قاعدة البيانات القديمة"],["view_bag_configurator","مهيئ الأكياس"],["manage_master_batch","إدارة الماستر باتش"]] },
-] as const;
-const allPermissionLabels = new Map<string, string>(permissionGroups.flatMap((group) => group.items as readonly (readonly [string, string])[]));
-
-const professionOptions = [
-  "مدير",
-  "مشرف",
-  "موظف إداري",
-  "محاسب",
-  "مندوب مبيعات",
-  "مشغل ماكينة",
-  "فني صيانة",
-  "فني كهرباء",
-  "فني ميكانيكا",
-  "مراقب جودة",
-  "أمين مستودع",
-  "عامل إنتاج",
-  "سائق",
-  "حارس أمن",
-  "عامل نظافة",
-  "أخرى",
-] as const;
-
-const nationalityOptions = [
-  "سعودي",
-  "مصري",
-  "سوداني",
-  "يمني",
-  "هندي",
-  "باكستاني",
-  "بنغلاديشي",
-  "نيبالي",
-  "فلبيني",
-  "سريلانكي",
-  "أردني",
-  "سوري",
-  "أخرى",
-] as const;
-
-function UserModal({ row, user, onClose, onSaved }: { row: Row; user: Row; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<Row>({ status: "active", include_in_attendance: true, must_change_password: false, is_system_user: false, ...row });
-  const [roles, setRoles] = useState<Row[]>([]); const [sections, setSections] = useState<Row[]>([]); const [error, setError] = useState(""); const [lookupError, setLookupError] = useState(""); const [loadingLookups, setLoadingLookups] = useState(true); const [saving, setSaving] = useState(false); const [retryLookups, setRetryLookups] = useState(0);
-  const isAdmin = can(user, ["admin"]);
-  useEffect(() => {
-    let active = true;
-    setLoadingLookups(true);
-    setLookupError("");
-    Promise.all([list("/roles"), list("/sections")]).then(([r, s]) => {
-      if (active) { setRoles(r); setSections(s); }
-    }).catch((e) => { if (active) setLookupError(e.message); }).finally(() => { if (active) setLoadingLookups(false); });
-    return () => { active = false; };
-  }, [retryLookups]);
-  const textFields = [["username","اسم المستخدم"],["display_name","الاسم بالإنجليزية"],["display_name_ar","الاسم بالعربية"],["phone","الهاتف"],["email","البريد الإلكتروني"],["national_id","رقم الهوية"]] as const;
-  const save = async (event: FormEvent) => { event.preventDefault(); setError(""); if (lookupError || loadingLookups) return; setSaving(true); try {
-    const body: Row = {};
-    textFields.forEach(([key]) => { body[key] = key === "username" ? String(form[key] || "").trim() : form[key] || null; });
-    body.profession = form.profession || null;
-    body.nationality = form.nationality || null;
-    body.birth_date = form.birth_date || null;
-    body.service_start_date = form.service_start_date || null;
-    body.status = form.status || "active";
-    const validRole = roles.some((role) => String(role.id) === String(form.role_id));
-    const currentRoleMissing = row.id && String(form.role_id ?? "") === String(row.role_id ?? "") && !validRole;
-    if (!validRole && !currentRoleMissing) throw new Error(translate("اختر دوراً صالحاً من القائمة"));
-    if (!currentRoleMissing) body.role_id = Number(form.role_id);
-    const validSection = !form.section_id || sections.some((section) => String(section.id) === String(form.section_id));
-    const currentSectionMissing = row.id && String(form.section_id ?? "") === String(row.section_id ?? "") && !validSection;
-    if (!validSection && !currentSectionMissing) throw new Error(translate("اختر قسماً صالحاً من القائمة"));
-    if (!currentSectionMissing) body.section_id = form.section_id || null;
-    if (form.password) body.password = form.password;
-    if (form.birth_date && Number.isNaN(Date.parse(`${form.birth_date}T00:00:00`))) throw new Error(translate("تاريخ الميلاد غير صالح"));
-    if (form.service_start_date && Number.isNaN(Date.parse(`${form.service_start_date}T00:00:00`))) throw new Error(translate("تاريخ بدء الخدمة غير صالح"));
-    if (form.birth_date && new Date(`${form.birth_date}T00:00:00`).getTime() > Date.now()) throw new Error(translate("تاريخ الميلاد لا يمكن أن يكون في المستقبل"));
-    if (form.birth_date && form.service_start_date && form.service_start_date < form.birth_date) throw new Error(translate("تاريخ بدء الخدمة يجب أن يكون بعد تاريخ الميلاد"));
-    body.must_change_password = Boolean(form.must_change_password);
-    body.include_in_attendance = Boolean(form.include_in_attendance);
-    if (isAdmin) body.is_system_user = Boolean(form.is_system_user);
-    if (!row.id && !form.password) throw new Error(translate("كلمة المرور مطلوبة عند إنشاء مستخدم"));
-    setSaving(true);
-    await api(row.id ? `/users/${row.id}` : "/users", { method: row.id ? "PUT" : "POST", body: JSON.stringify(body) }); onSaved();
-  } catch (e) { setError((e as Error).message); } finally { setSaving(false); } };
-  const roleName = (role: Row) => role.name_ar || role.name || String(role.id);
-  const currentRoleUnavailable = Boolean(form.role_id) && !roles.some((role) => String(role.id) === String(form.role_id));
-  const currentSectionUnavailable = Boolean(form.section_id) && !sections.some((section) => String(section.id) === String(form.section_id));
-  return <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !saving && onClose()}><form className="modal wide-modal" role="dialog" aria-modal="true" aria-labelledby="user-dialog-title" onSubmit={save}>
-    <header><div><div className="eyebrow">{translate("ملف هوية وصلاحيات")}</div><h3 id="user-dialog-title">{row.id ? translate("تعديل مستخدم") : translate("إضافة مستخدم")}</h3></div><button aria-label={translate("إغلاق حوار المستخدم")} title={translate("إغلاق")} disabled={saving} type="button" className="btn btn-plain" onClick={onClose}><X /></button></header>
-    {lookupError && <div className="error" role="alert" style={{ margin: 18 }}>{lookupError} <button type="button" className="btn btn-muted" onClick={() => setRetryLookups((attempt) => attempt + 1)}>{translate("إعادة تحميل الأدوار والأقسام")}</button></div>}
-    {currentRoleUnavailable || currentSectionUnavailable ? <div className="tag" role="status" style={{ margin: 18 }}>{translate("توجد علاقة قديمة غير موجودة في القوائم؛ ستبقى كما هي ما لم تختر بديلاً صالحاً.")}</div> : null}
-    {error && <div className="error" role="alert" style={{ margin: 18 }}>{error}</div>}<div className="form-grid">
-      <div className="field"><label htmlFor="user-record-id">{translate("رقم المستخدم")}</label><input id="user-record-id" value={row.id ?? "يُولَّد تلقائيًا عند الحفظ"} disabled readOnly /></div>
-      {textFields.map(([key, label]) => <div className="field" key={key}><label htmlFor={`user-${key}`}>{translate(label)}</label><input id={`user-${key}`} name={key} type={key === "email" ? "email" : key === "phone" ? "tel" : "text"} required={key === "username"} value={form[key] ?? ""} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></div>)}
-      <div className="field"><label htmlFor="user-profession">{translate("المهنة")}</label><select id="user-profession" value={form.profession ?? ""} onChange={(e) => setForm({ ...form, profession: e.target.value })}><option value="">{translate("اختر المهنة")}</option>{form.profession && !professionOptions.includes(form.profession as typeof professionOptions[number]) && <option value={String(form.profession)}>{String(form.profession)}</option>}{professionOptions.map((profession) => <option key={profession} value={profession}>{translate(profession)}</option>)}</select></div>
-      <div className="field"><label htmlFor="user-nationality">{translate("الجنسية")}</label><select id="user-nationality" value={form.nationality ?? ""} onChange={(e) => setForm({ ...form, nationality: e.target.value })}><option value="">{translate("اختر الجنسية")}</option>{form.nationality && !nationalityOptions.includes(form.nationality as typeof nationalityOptions[number]) && <option value={String(form.nationality)}>{String(form.nationality)}</option>}{nationalityOptions.map((nationality) => <option key={nationality} value={nationality}>{translate(nationality)}</option>)}</select></div>
-      <div className="field"><label htmlFor="user-role">{translate("الدور")}</label><select id="user-role" required={!currentRoleUnavailable} value={form.role_id ?? ""} onChange={(e) => setForm({ ...form, role_id: e.target.value })}><option value="">{translate("اختر الدور")}</option>{roles.map((r) => <option key={r.id} value={r.id}>{roleName(r)}</option>)}{currentRoleUnavailable && <option value={form.role_id}>{translate("الدور الحالي المحفوظ (")}{form.role_id})</option>}</select></div>
-      <div className="field"><label htmlFor="user-section">{translate("القسم")}</label><select id="user-section" value={form.section_id ?? ""} onChange={(e) => setForm({ ...form, section_id: e.target.value })}><option value="">{translate("بدون قسم")}</option>{sections.map((s) => <option key={s.id} value={s.id}>{s.name_ar || s.name || s.id}</option>)}{currentSectionUnavailable && <option value={form.section_id}>{translate("القسم الحالي المحفوظ (")}{form.section_id})</option>}</select></div>
-      <div className="field"><label>{translate("حالة الحساب")}</label><select value={form.status ?? "active"} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="active">{translate("نشط")}</option><option value="inactive">{translate("غير نشط")}</option></select></div>
-      <div className="field"><label>{translate("تاريخ الميلاد")}</label><input type="date" value={form.birth_date ?? ""} onChange={(e) => setForm({ ...form, birth_date: e.target.value })} /></div>
-      <div className="field"><label>{translate("تاريخ بدء الخدمة")}</label><input type="date" value={form.service_start_date ?? ""} onChange={(e) => setForm({ ...form, service_start_date: e.target.value })} /></div>
-      <div className="field"><label>{translate("كلمة المرور")}{" "}{row.id && <small>{translate("(اختيارية عند التعديل)")}</small>}</label><input type="password" autoComplete="new-password" minLength={8} required={!row.id} value={form.password ?? ""} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
-      <div className="check-grid wide">{[["must_change_password","إجبار تغيير كلمة المرور"],["include_in_attendance","يظهر في الحضور"],...(isAdmin ? [["is_system_user","حساب نظام"] as const] : [])].map(([key,label]) => <label className="check-row" key={key}><input type="checkbox" checked={Boolean(form[key])} disabled={key === "is_system_user" && !isAdmin} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />{translate(label)}</label>)}</div>
-    </div><footer><button disabled={saving || loadingLookups || Boolean(lookupError)} className="btn btn-primary"><Check size={16} />{saving ? translate("جارٍ الحفظ…") : translate("حفظ المستخدم")}</button><button disabled={saving} type="button" className="btn btn-muted" onClick={onClose}>{translate("إلغاء")}</button></footer>
-  </form></div>;
-}
-
-function UsersAdmin({ user, refreshToken = 0 }: { user: Row; refreshToken?: number }) {
-  const [loadedRows, setRows] = useState<Row[]>([]); const [search, setSearch] = useState(""); const [page, setPage] = useState(0); const [resultKey, setResultKey] = useState(""); const [busy, setBusy] = useState(true); const [edit, setEdit] = useState<Row | null>(null); const [error, setError] = useState("");
-  const requestGate = useRef(createLatestRequestGate());
-  const activeKey = `${search}|${page}|${refreshToken}`;
-  const rows = resultKey === activeKey ? loadedRows : [];
-  const requestBusy = busy || resultKey !== activeKey;
-  const load = useCallback(() => {
-    const request = requestGate.current.begin();
-    const requestKey = activeKey;
-    setBusy(true);
-    setResultKey("");
-    setError("");
-    void runLatestRequest(requestGate.current, request, listPage("/users", search, page * LIST_PAGE_SIZE), {
-      onSuccess: (value) => {
-        setRows(value);
-        setResultKey(requestKey);
-      },
-      onError: (requestError) => {
-        setRows([]);
-        setResultKey(requestKey);
-        setError(requestError.message);
-      },
-      onSettled: () => setBusy(false),
-    });
-  }, [activeKey, page, search]);
-  const latestLoad = useRef(load);
-  latestLoad.current = load;
-  useEffect(() => {
-    const gate = requestGate.current;
-    load();
-    return () => gate.invalidate();
-  }, [load]);
-  const remove = async (row: Row) => { if (!confirm(translate("تأكيد حذف المستخدم؟"))) return; try { await api(`/users/${row.id}`, { method: "DELETE" }); latestLoad.current(); } catch (e) { setError((e as Error).message); } };
-  const arabicName = (row: Row) => row.display_name_ar || row.full_name || row.display_name || "—";
-  const englishName = (row: Row) => row.display_name || row.full_name || "—";
-  return <>
-    <div className="page-heading"><button className="btn btn-primary" onClick={() => setEdit({})}><Plus size={17} />{" "}{translate("إضافة مستخدم")}</button></div>
-    {error && <div className="error" role="alert">{error}</div>}
-    <section className="panel">
-      <div className="panel-head">
-        <div><h3>{translate("دليل المستخدمين")}</h3><small className="muted-text">{translate("بيانات الهوية، الدور، والقسم")}</small></div>
-        <div className="tools"><Search size={17} aria-hidden="true" /><label className="sr-only" htmlFor="users-search">{translate("بحث في المستخدمين")}</label><input id="users-search" aria-label={translate("بحث بالاسم أو المستخدم")} className="search" placeholder={translate("بحث بالاسم أو المستخدم…")} value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); setEdit(null); }} /></div>
-      </div>
-      {requestBusy ? <div style={{ padding: 20 }} aria-busy="true"><div className="skeleton" /></div> : <div className="table-wrap">
-        <table className="users-table"><thead><tr><th>{translate("الاسم")}</th><th>{translate("اسم المستخدم")}</th><th>{translate("القسم")}</th><th>{translate("الدور")}</th><th>{translate("الهاتف")}</th><th>{translate("خيارات")}</th></tr></thead>
-          <tbody>{rows.map((r) => <tr key={r.id}><td><strong>{arabicName(r)}</strong><small className="cell-sub" dir="ltr">{englishName(r)}</small></td><td>{r.username || "—"}</td><td>{r.section_name_ar || r.section_name || "—"}</td><td>{r.role_name_ar || r.role_name || "—"}</td><td>{r.phone || "—"}</td><td><div className="actions"><button aria-label={translate("تعديل المستخدم")} className="btn btn-plain" title={translate("تعديل")} onClick={() => setEdit(r)}><Pencil size={16} /></button>{can(user, ["admin"]) && <button aria-label={translate("حذف المستخدم")} className="btn btn-plain" title={translate("حذف")} onClick={() => remove(r)}><Trash2 size={16} /></button>}</div></td></tr>)}</tbody>
-        </table>
-        <div className="mobile-cards user-cards">{rows.map((r) => <article className="entity-card" key={r.id}><strong>{arabicName(r)}</strong><small className="cell-sub" dir="ltr">{englishName(r)}</small><div className="card-line"><span>{translate("اسم المستخدم")}</span><b>{r.username || "—"}</b></div><div className="card-line"><span>{translate("القسم")}</span><b>{r.section_name_ar || r.section_name || "—"}</b></div><div className="card-line"><span>{translate("الدور")}</span><b>{r.role_name_ar || r.role_name || "—"}</b></div><div className="card-line"><span>{translate("الهاتف")}</span><b>{r.phone || "—"}</b></div><div className="actions"><button aria-label={translate("تعديل المستخدم")} className="btn btn-muted" onClick={() => setEdit(r)}><Pencil size={15} />{" "}{translate("تعديل")}</button>{can(user, ["admin"]) && <button aria-label={translate("حذف المستخدم")} className="btn btn-danger" onClick={() => remove(r)}><Trash2 size={15} />{" "}{translate("حذف")}</button>}</div></article>)}</div>
-        {!rows.length && <div className="empty"><strong>{translate("لا توجد حسابات مطابقة")}</strong>{translate("أنشئ حساباً جديداً لبدء إدارة الوصول.")}</div>}
-      </div>}
-      {!requestBusy && (page > 0 || rows.length === LIST_PAGE_SIZE) && <nav className="list-pagination" aria-label={translate("صفحات المستخدمين")}><button className="btn btn-muted" type="button" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>{translate("السابق")}</button><span>{translate("صفحة")}{" "}{page + 1}</span><button className="btn btn-muted" type="button" disabled={rows.length < LIST_PAGE_SIZE} onClick={() => setPage((current) => current + 1)}>{translate("التالي")}</button></nav>}
-    </section>
-    {edit && <UserModal row={edit} user={user} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); latestLoad.current(); }} />}
-  </>;
-}
-
-function RoleModal({ row, user, onClose, onSaved }: { row: Row; user: Row; onClose: () => void; onSaved: () => void }) {
-  const existing: string[] = Array.isArray(row.permissions) ? row.permissions.map(String) : []; const [form, setForm] = useState<Row>({ ...row, permissions: existing, production_role_binding: row.production_role_binding ?? { mode: "general", stages: [] } }); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
-  const actorPermissions: string[] = Array.isArray(user.permissions) ? user.permissions.map(String) : [];
-  const isAdmin = can(user, ["admin"]);
-  const canGrant = (permission: string) => isAdmin || (permission !== "admin" && (actorPermissions.includes("*") || actorPermissions.includes(permission)));
-  const toggle = (value: string) => {
-    if (!canGrant(value)) return;
-    const permissions: string[] = form.permissions;
-    if (value === "admin" && !window.confirm(translate("تغيير صلاحية مدير النظام قد يمنح وصولاً كاملاً للنظام أو يزيله. هل تريد المتابعة؟"))) return;
-    setForm({ ...form, permissions: permissions.includes(value) ? permissions.filter((p) => p !== value) : [...permissions, value] });
-  };
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!String(form.name || "").trim()) { setError(translate("اسم الدور مطلوب")); return; }
-    const newlyGranted = form.permissions.filter((permission: string) => !existing.includes(permission));
-    if (newlyGranted.some((permission: string) => !canGrant(permission))) { setError(translate("لا يمكنك منح صلاحيات لا تملكها")); return; }
-    setSaving(true); setError("");
-    try { await api(row.id ? `/roles/${row.id}` : "/roles", { method: row.id ? "PUT" : "POST", body: JSON.stringify({ name: String(form.name).trim(), name_ar: form.name_ar || null, permissions: form.permissions, production_role_binding: form.production_role_binding }) }); onSaved(); } catch (err) { setError((err as Error).message); } finally { setSaving(false); }
-  };
-  useEffect(() => { const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !saving) onClose(); }; window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, [saving, onClose]);
-  return <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !saving && onClose()}>
-    <form className="modal role-modal" role="dialog" aria-modal="true" aria-labelledby="role-dialog-title" onSubmit={save}>
-      <header><div><div className="eyebrow">{translate("سياسة الوصول")}</div><h3 id="role-dialog-title">{row.id ? translate("تعديل دور") : translate("إضافة دور")}</h3></div><button aria-label={translate("إغلاق حوار الدور")} title={translate("إغلاق")} disabled={saving} type="button" className="btn btn-plain" onClick={onClose}><X /></button></header>
-      {error && <div className="error" role="alert" style={{ margin: 18 }}>{error}</div>}
-      <div className="role-head form-grid">
-        <div className="field"><label htmlFor="role-record-id">{translate("رقم الدور")}</label><input id="role-record-id" value={row.id ?? "يُولَّد تلقائيًا عند الحفظ"} disabled readOnly /></div>
-        <div className="field"><label htmlFor="role-name">{translate("اسم الدور بالإنجليزية")}</label><input id="role-name" required value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-        <div className="field"><label htmlFor="role-name-ar">{translate("اسم الدور بالعربية")}</label><input id="role-name-ar" value={form.name_ar ?? ""} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} /></div>
-      </div>
-      <ProductionRoleBindingFields value={form.production_role_binding} disabled={saving}
-        onChange={production_role_binding => setForm({ ...form, production_role_binding })} />
-      <div className="permission-summary"><KeyRound size={17} /> <strong>{form.permissions.length}</strong>{" "}{translate("صلاحية محددة")}{" "}<span>{translate("الصلاحيات التي لا تملكها محفوظة دون تغيير؛ منح صلاحية مدير النظام يتطلب تأكيداً صريحاً من مدير النظام.")}</span></div>
-      <div className="permission-groups">
-        {permissionGroups.map((group) => {
-          const bulkKeys: string[] = group.items.map(([key]) => key).filter((key) => key !== "admin" && canGrant(key));
-          const selected = bulkKeys.filter((key) => form.permissions.includes(key)).length;
-          return <section className="permission-group" key={group.label}>
-            <div className="permission-group-head">
-              <strong>{translate(group.label)}</strong>
-              {bulkKeys.length > 0 && <button type="button" className="text-button" onClick={() => setForm({ ...form, permissions: selected === bulkKeys.length ? form.permissions.filter((p: string) => !bulkKeys.includes(p)) : Array.from(new Set([...form.permissions, ...bulkKeys])) })}>{selected === bulkKeys.length ? translate("إلغاء تحديد الكل") : translate("تحديد الكل")}</button>}
-              <span>{selected}/{bulkKeys.length}{" "}{translate("متاحة")}</span>
-            </div>
-            {"description" in group && <p className="permission-group-description">{translate(group.description)}</p>}
-            <div className="permission-grid">{group.items.map(([key, label]) => <label className={`permission ${form.permissions.includes(key) ? "selected" : ""}`} key={key}>
-              <input type="checkbox" checked={form.permissions.includes(key)} disabled={!canGrant(key)} aria-describedby={finishedGoodsPermissionDescriptions[key] ? `permission-description-${key}` : undefined} onChange={() => toggle(key)} />
-              <span>{translate(label)}{key === "admin" ? translate(" (تأكيد مطلوب)") : ""}
-                {finishedGoodsPermissionDescriptions[key] && <small id={`permission-description-${key}`}>{translate(finishedGoodsPermissionDescriptions[key])}</small>}
-              </span>
-            </label>)}</div>
-          </section>;
-        })}
-        {existing.filter((p: string) => !allPermissionLabels.has(p)).length > 0 && <div className="unknown-permissions"><strong>{translate("صلاحيات محفوظة أخرى")}</strong><div>{existing.filter((p: string) => !allPermissionLabels.has(p)).map((p: string) => <span className="tag" key={p}>{p}</span>)}</div></div>}
-      </div>
-      <footer><button disabled={saving} className="btn btn-primary"><Check size={16} />{saving ? translate("جارٍ الحفظ…") : translate("حفظ الدور")}</button><button disabled={saving} type="button" className="btn btn-muted" onClick={onClose}>{translate("إلغاء")}</button></footer>
-    </form>
-  </div>;
-}
-
-function RolesAdmin({ user, refreshToken = 0 }: { user: Row; refreshToken?: number }) {
-  const [rows, setRows] = useState<Row[]>([]); const [edit, setEdit] = useState<Row | null>(null); const [error, setError] = useState("");
-  const writable = can(user, configs.roles.write);
-  const deletable = can(user, configs.roles.del || ["admin"]);
-  const requestGate = useRef(createLatestRequestGate());
-  const load = useCallback(() => {
-    const request = requestGate.current.begin();
-    setError("");
-    list("/roles").then((value) => {
-      if (requestGate.current.isCurrent(request)) setRows(value);
-    }).catch((e) => {
-      if (requestGate.current.isCurrent(request)) setError(e.message);
-    });
-  }, []);
-  useEffect(() => {
-    const gate = requestGate.current;
-    load();
-    return () => gate.invalidate();
-  }, [load, refreshToken]);
-  const remove = async (r: Row) => { if (!deletable || !confirm(translate("تأكيد حذف الدور؟"))) return; try { await api(`/roles/${r.id}`, { method: "DELETE" }); load(); } catch (e) { setError((e as Error).message); } };
-  return <>{writable && <div className="page-heading"><button className="btn btn-primary" onClick={() => setEdit({ permissions: [] })}><Plus size={17} />{" "}{translate("إضافة دور")}</button></div>}{error && <div className="error" role="alert">{error}</div>}<div className="role-cards">{rows.map((r) => <article className="role-card" key={r.id}><div className="role-icon"><Shield size={19} /></div><div className="role-card-main"><strong>{localizedName(r.name_ar, r.name, String(r.id))}</strong><span className="cell-sub">{localizedName("", r.name, "")}</span><div className="role-count">{Array.isArray(r.permissions) ? r.permissions.length : 0}{" "}{translate("صلاحية")}</div></div><div className="actions">{writable && <button aria-label={`${translate("تعديل")} ${translate("دور")} ${localizedName(r.name_ar, r.name, String(r.id))}`} title={translate("تعديل")} className="btn btn-plain" onClick={() => setEdit(r)}><Pencil size={16} /></button>}{deletable && <button aria-label={`${translate("حذف")} ${translate("دور")} ${localizedName(r.name_ar, r.name, String(r.id))}`} title={translate("حذف")} className="btn btn-plain" onClick={() => remove(r)}><Trash2 size={16} /></button>}</div></article>)}{!rows.length && <div className="empty panel"><strong>{translate("لا توجد أدوار")}</strong>{writable ? translate("أنشئ أول سياسة وصول للنظام.") : translate("لا توجد أدوار مسجلة.")}</div>}</div>{edit && writable && <RoleModal row={edit} user={user} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}</>;
-}
-
-function SettingsAdmin({ refreshToken = 0 }: { refreshToken?: number }) {
-  const [profile, setProfile] = useState<Row>({
-    name: "",
-    name_ar: "",
-    tax_number: "",
-    phone: "",
-    email: "",
-    address: "",
-    default_language: "ar",
-    working_hours_per_day: 8,
-  });
-  const [settings, setSettings] = useState<Row[]>([]);
-  const [operations, setOperations] = useState<Row>({
-    timezone: "Asia/Riyadh",
-    overtime_factor: "1.50",
-    weekly_holiday_day: "friday",
-    enable_holiday_overtime: "true",
-  });
-  const [logoDataUrl, setLogoDataUrl] = useState("");
-  const [logoFileName, setLogoFileName] = useState("");
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState("");
-
-  const languageOptions = [
-    { value: "ar", label: "العربية" },
-    { value: "en", label: "English" },
-  ];
-  const timezoneOptions = ["Asia/Riyadh", "UTC", "Asia/Dubai", "Africa/Cairo"];
-  const overtimeFactorOptions = ["1.25", "1.50", "1.75", "2.00"];
-  const weeklyHolidayOptions = [
-    { value: "sunday", label: "الأحد" },
-    { value: "monday", label: "الاثنين" },
-    { value: "tuesday", label: "الثلاثاء" },
-    { value: "wednesday", label: "الأربعاء" },
-    { value: "thursday", label: "الخميس" },
-    { value: "friday", label: "الجمعة" },
-    { value: "saturday", label: "السبت" },
-  ];
-
-  const settingsByKey = useMemo(
-    () => Object.fromEntries(settings.map((row) => [String(row.setting_key), row])),
-    [settings],
-  );
-
-  const parseBoolean = (value: unknown, fallback = false) => {
-    if (value === undefined || value === null || value === "") return fallback;
-    return String(value).toLowerCase() === "true";
-  };
-
-  const getSettingValue = (key: string, fallback = "") => {
-    const value = settingsByKey[key]?.setting_value;
-    if (value === undefined || value === null || value === "") return fallback;
-    return String(value);
-  };
-
-  useEffect(() => {
-    let active = true;
-    setError("");
-    Promise.all([api("/company-profile"), list("/system-settings")])
-      .then(([company, sys]) => {
-        if (!active) return;
-        const loadedProfile = company || {};
-        setSettings(Array.isArray(sys) ? sys : []);
-        setProfile({
-          name: loadedProfile.name ?? "",
-          name_ar: loadedProfile.name_ar ?? "",
-          tax_number: loadedProfile.tax_number ?? "",
-          phone: loadedProfile.phone ?? "",
-          email: loadedProfile.email ?? "",
-          address: loadedProfile.address ?? "",
-          default_language: loadedProfile.default_language ?? "ar",
-          working_hours_per_day: Number(loadedProfile.working_hours_per_day ?? 8) || 8,
-        });
-      })
-      .catch((e) => { if (active) setError(e.message); });
-    return () => { active = false; };
-  }, [refreshToken]);
-
-  useEffect(() => {
-    if (!settings.length) return;
-    setOperations({
-      timezone: getSettingValue("factory_timezone", "Asia/Riyadh"),
-      overtime_factor: getSettingValue("overtime_factor", "1.50"),
-      weekly_holiday_day: getSettingValue("weekly_holiday_day", "friday"),
-      enable_holiday_overtime: getSettingValue("enable_holiday_overtime", "true"),
-    });
-    setLogoDataUrl(getSettingValue("company_logo_data_url", ""));
-    setLogoFileName(getSettingValue("company_logo_file_name", ""));
-  }, [settingsByKey]);
-
-  const upsertSetting = async (key: string, value: string, type: string, description: string) => {
-    let existing = settingsByKey[key];
-    if (!existing) {
-      const candidates = await list("/system-settings", key);
-      if (Array.isArray(candidates)) {
-        const matchingSetting = candidates.find((row) => String(row.setting_key) === key);
-        if (matchingSetting) existing = matchingSetting;
-      }
-    }
-    if (existing?.id) {
-      await api(`/system-settings/${existing.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ setting_value: value }),
-      });
-      return;
-    }
-    await api("/system-settings", {
-      method: "POST",
-      body: JSON.stringify({
-        setting_key: key,
-        setting_value: value,
-        setting_type: type,
-        description,
-        is_editable: true,
-      }),
-    });
-  };
-
-  const saveCompanyAndOperations = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setSaved("");
-    try {
-      if (!String(profile.name || "").trim()) throw new Error("اسم الشركة مطلوب");
-      await api("/company-profile", {
-        method: "PUT",
-        body: JSON.stringify({
-          name: String(profile.name).trim(),
-          name_ar: profile.name_ar || null,
-          tax_number: profile.tax_number || null,
-          phone: profile.phone || null,
-          email: profile.email || null,
-          address: profile.address || null,
-          default_language: profile.default_language || "ar",
-          working_hours_per_day: Number(profile.working_hours_per_day) || 8,
-        }),
-      });
-
-      await upsertSetting("factory_timezone", String(operations.timezone || "Asia/Riyadh"), "string", "المنطقة الزمنية للمصنع");
-      await upsertSetting("overtime_factor", String(operations.overtime_factor || "1.50"), "number", "معامل ساعة العمل الإضافي");
-      await upsertSetting("weekly_holiday_day", String(operations.weekly_holiday_day || "friday"), "string", "يوم العطلة الأسبوعي");
-      await upsertSetting("enable_holiday_overtime", String(parseBoolean(operations.enable_holiday_overtime, true)), "boolean", "تفعيل احتساب إضافي في يوم العطلة");
-      await upsertSetting("company_logo_data_url", logoDataUrl || "", "string", "ملف شعار الشركة المرفوع");
-      await upsertSetting("company_logo_file_name", logoFileName || "", "string", "اسم ملف شعار الشركة");
-
-      setSettings(await list("/system-settings"));
-      setSaved(translate("تم حفظ هوية المصنع وإعدادات التشغيل"));
-      window.dispatchEvent(new Event("branding:updated"));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const onLogoFileChange = (event: any) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError(translate("ملف الشعار يجب أن يكون صورة"));
-      return;
-    }
-    if (file.size > 1_500_000) {
-      setError(translate("حجم الشعار كبير. الحد الأقصى 1.5MB"));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setLogoDataUrl(String(reader.result || ""));
-      setLogoFileName(file.name);
-      setError("");
-    };
-    reader.onerror = () => setError(translate("تعذر قراءة ملف الشعار"));
-    reader.readAsDataURL(file);
-  };
-
-  return (
-    <div className="settings-layout">
-      <div aria-live="polite">
-        {error && <div className="error" role="alert">{error}</div>}
-        {saved && <div className="success"><Check size={16} />{saved}</div>}
-      </div>
-      <section className="panel settings-section">
-        <div className="panel-head">
-          <div>
-            <div className="eyebrow">{translate("هوية المصنع وتشغيل النظام")}</div>
-            <h3>{translate("الإعدادات الأساسية")}</h3>
-          </div>
-          <Building2 size={21} color="var(--orange)" />
-        </div>
-        <form className="form-grid" onSubmit={saveCompanyAndOperations}>
-          <div className="field">
-            <label htmlFor="profile-name-ar">{translate("اسم الشركة بالعربية")}</label>
-            <input id="profile-name-ar" value={profile.name_ar ?? ""} onChange={(e) => setProfile({ ...profile, name_ar: e.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="profile-name">{translate("اسم الشركة بالإنجليزية")}</label>
-            <input id="profile-name" required value={profile.name ?? ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="profile-tax">{translate("الرقم الضريبي")}</label>
-            <input id="profile-tax" value={profile.tax_number ?? ""} onChange={(e) => setProfile({ ...profile, tax_number: e.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="profile-phone">{translate("الهاتف")}</label>
-            <input id="profile-phone" type="tel" value={profile.phone ?? ""} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="profile-email">{translate("البريد الإلكتروني")}</label>
-            <input id="profile-email" type="email" value={profile.email ?? ""} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
-          </div>
-          <div className="field wide">
-            <label htmlFor="profile-address">{translate("العنوان")}</label>
-            <textarea id="profile-address" value={profile.address ?? ""} onChange={(e) => setProfile({ ...profile, address: e.target.value })} />
-          </div>
-          <div className="field wide">
-            <label htmlFor="profile-logo-file">{translate("شعار الشركة (رفع ملف)")}</label>
-            <input id="profile-logo-file" type="file" accept="image/*" onChange={onLogoFileChange} />
-            {logoFileName && <small className="cell-sub">{translate("الملف الحالي:")}{" "}{logoFileName}</small>}
-            {logoDataUrl && <img src={logoDataUrl} alt={translate("شعار الشركة")} style={{ marginTop: 8, maxHeight: 72, borderRadius: 8, border: "1px solid var(--line)" }} />}
-          </div>
-          <div className="field">
-            <label htmlFor="default-language">{translate("اللغة الافتراضية")}</label>
-            <select id="default-language" value={profile.default_language ?? "ar"} onChange={(e) => setProfile({ ...profile, default_language: e.target.value })}>
-              {languageOptions.map((option) => <option key={option.value} value={option.value}>{translate(option.label)}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="factory-timezone">{translate("المنطقة الزمنية")}</label>
-            <select id="factory-timezone" value={operations.timezone} onChange={(e) => setOperations({ ...operations, timezone: e.target.value })}>
-              {timezoneOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="work-hours-day">{translate("ساعات العمل اليومية")}</label>
-            <select id="work-hours-day" value={String(profile.working_hours_per_day ?? 8)} onChange={(e) => setProfile({ ...profile, working_hours_per_day: Number(e.target.value) })}>
-              {[6, 7, 8, 9, 10, 12].map((hours) => <option key={hours} value={hours}>{hours}{" "}{translate("ساعة")}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="overtime-factor">{translate("معامل ساعة الإضافي")}</label>
-            <select id="overtime-factor" value={operations.overtime_factor} onChange={(e) => setOperations({ ...operations, overtime_factor: e.target.value })}>
-              {overtimeFactorOptions.map((factor) => <option key={factor} value={factor}>{factor}x</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="holiday-day">{translate("يوم العطلة الأسبوعي")}</label>
-            <select id="holiday-day" value={operations.weekly_holiday_day} onChange={(e) => setOperations({ ...operations, weekly_holiday_day: e.target.value })}>
-              {weeklyHolidayOptions.map((day) => <option key={day.value} value={day.value}>{translate(day.label)}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="holiday-overtime">{translate("احتساب إضافي في يوم العطلة")}</label>
-            <select id="holiday-overtime" value={String(operations.enable_holiday_overtime)} onChange={(e) => setOperations({ ...operations, enable_holiday_overtime: e.target.value })}>
-              <option value="true">{translate("مفعل")}</option>
-              <option value="false">{translate("غير مفعل")}</option>
-            </select>
-          </div>
-          <div className="wide">
-            <button className="btn btn-primary">{translate("حفظ الإعدادات الأساسية")}</button>
-          </div>
-        </form>
-      </section>
-    </div>
-  );
-}
-
-
 function Admin({ user }: { user: Row }) {
   const tabs = [["users", "المستخدمون", Users, ["manage_users", "admin"]], ["roles", "الأدوار والصلاحيات", KeyRound, ["manage_roles", "admin"]], ["sections", "الأقسام", Boxes, ["manage_sections", "admin"]], ["machines", "الماكينات", Cog, ["manage_machines", "admin"]], ["components", "مكونات الصيانة", Wrench, ["manage_maintenance", "admin"]], ["categories", "التصنيفات", Boxes, configs.categories.read], ["items", "الأصناف", Package, configs.items.read], ["colors", "ألوان الماستر باتش", Cog, configs.colors.read], ["settings", "إعدادات المصنع", Settings2, ["manage_settings", "admin"]]] as const;
   const visibleTabs = tabs.filter(([, , , permissions]) => can(user, permissions));
   const [tab, setTab] = useState(visibleTabs[0]?.[0] || "users");
   const [refreshToken, setRefreshToken] = useState(0);
   // Each tab starts with page 0 and an empty search; EntityPage clears categoryId outside items.
-  return <><PageHero kicker="مركز الإدارة · صلاحياتك مفعلة" title={translate("الإدارة")} description="إدارة الهوية والأصول والتعريفات من مساحة واحدة منظمة." onRefresh={() => setRefreshToken((token) => token + 1)} actions={<span className="tag"><Shield size={16} /> ADMIN / CORE</span>} /><div className="admin-tabs" role="tablist">{visibleTabs.map(([key, label, Icon]) => <button id={`admin-tab-${key}`} aria-controls={`admin-panel-${key}`} role="tab" aria-selected={tab === key} key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><Icon size={17} />{translate(label)}</button>)}</div><div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} style={{ marginTop: 24 }}>{tab === "users" ? <UsersAdmin user={user} refreshToken={refreshToken} /> : tab === "roles" ? <RolesAdmin user={user} refreshToken={refreshToken} /> : tab === "settings" ? <SettingsAdmin refreshToken={refreshToken} /> : <EntityPage key={tab} kind={tab} user={user} refreshToken={refreshToken} showHero={false} />}</div></>;
+  return <><PageHero kicker="مركز الإدارة · صلاحياتك مفعلة" title={translate("الإدارة")} description="إدارة الهوية والأصول والتعريفات من مساحة واحدة منظمة." onRefresh={() => setRefreshToken((token) => token + 1)} actions={<span className="tag"><Shield size={16} /> ADMIN / CORE</span>} /><div className="admin-tabs" role="tablist">{visibleTabs.map(([key, label, Icon]) => <button id={`admin-tab-${key}`} aria-controls={`admin-panel-${key}`} role="tab" aria-selected={tab === key} key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><Icon size={17} />{translate(label)}</button>)}</div><div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} style={{ marginTop: 24 }}>
+    <DeferredContent key={tab}>
+      {tab === "users" ? <UsersAdmin user={user} refreshToken={refreshToken} /> : tab === "roles" ? <RolesAdmin user={user} refreshToken={refreshToken} writable={can(user, configs.roles.write)} deletable={can(user, configs.roles.del || ["admin"])} /> : tab === "settings" ? <SettingsAdmin refreshToken={refreshToken} /> : <EntityPage key={tab} kind={tab} user={user} refreshToken={refreshToken} showHero={false} />}
+    </DeferredContent>
+  </div></>;
 }
 
 function OrdersPage({ user }: { user: Row }) {
