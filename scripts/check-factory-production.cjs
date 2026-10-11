@@ -28,6 +28,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const planningNavigationOnly = process.argv.includes("--planning-navigation-only");
   const compactControlsOnly = process.argv.includes("--compact-controls-only");
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
+  const hallCompactOnly = process.argv.includes("--hall-compact-only");
   const rawMixingOnly = process.argv.includes("--raw-mixing-only");
   const receiptVoucherOnly = process.argv.includes("--receipt-voucher-only");
   let rejectMix = false;
@@ -862,6 +863,71 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       }
       check("warning UI has no runtime errors",errors,[]);
       console.log(`Verified ${passed} shortage-warning checks with synthetic API fixtures.`);return;
+    }
+    if (hallCompactOnly) {
+      for (const lang of ["ar", "en"]) {
+        language = lang;
+        permissions = ["view_production_hall", "receive_production"];
+        for (const width of [320, 390, 768, 1280, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", {width, height:1000, deviceScaleFactor:1, mobile:width<500});
+          let singleWidth;
+          for (const count of [1, 6, 7]) {
+            state.orders = Array.from({length:count}, (_, i) => order(8000+i, {
+              ready_kg:"12345.67", received_kg:"2000.00", remaining_kg:"10345.67",
+              completed_at:i%2 ? "2026-10-03T05:00:00Z" : null,
+              product: i===0 ? {...product,
+                name:"Plastic bag with a longer product name",
+                name_ar:"كيس بلاستيك باسم صنف طويل وواضح",
+                customer_name:"Warehouse fixture customer with a longer name",
+                customer_name_ar:"عميل مخزون الاختبار باسم طويل"} : product,
+            }));
+            await navigate("/warehouse/hall");
+            await wait(`document.querySelectorAll('.warehouse-hall-grid .warehouse-order-card').length===${count}`);
+            const context = `${lang} ${width}px hall ${count} order(s)`;
+            const geometry = await evaluate(`(()=>{
+              const e=document.querySelector('.warehouse-hall-grid'),r=e.getBoundingClientRect(),s=getComputedStyle(e);
+              return {left:r.left,right:r.right,columns:s.gridTemplateColumns.split(' ').length,
+                track:parseFloat(s.gridTemplateColumns),cards:[...e.children].map(n=>{
+                  const b=n.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,width:b.width};
+                })};
+            })()`);
+            if(count===1) singleWidth=geometry.cards[0].width;
+            check(`${context}: six desktop tracks or fewer on narrow screens`,width>=1100?geometry.columns===6:geometry.columns<6);
+            check(`${context}: count never stretches or squeezes cards`,geometry.cards.every(c=>Math.abs(c.width-singleWidth)<1&&Math.abs(c.width-geometry.track)<1));
+            check(`${context}: cards remain contained`,geometry.cards.every(c=>c.left>=geometry.left-1&&c.right<=geometry.right+1));
+            check(`${context}: cards start at logical edge`,lang==="ar"?Math.abs(geometry.cards[0].right-geometry.right)<1:Math.abs(geometry.cards[0].left-geometry.left)<1);
+            check(`${context}: rows fill before wrapping`,geometry.cards.every((c,i)=>i<geometry.columns?Math.abs(c.top-geometry.cards[0].top)<1:c.top>geometry.cards[0].top));
+            check(`${context}: long content does not overflow`,await evaluate("[...document.querySelectorAll('.warehouse-order-card,.warehouse-order-card header,.warehouse-order-product,.warehouse-order-metrics,.warehouse-order-metrics>div')].every(e=>e.scrollWidth<=e.clientWidth+1)&&document.documentElement.scrollWidth<=innerWidth+1"));
+            check(`${context}: quantities and identity retained`,await evaluate(`(()=>{
+              const c=document.querySelector('.warehouse-order-card'),values=[...c.querySelectorAll('.warehouse-order-metrics strong')].map(e=>e.innerText.replaceAll(',','').replace(/\\s+/g,''));
+              return c.querySelector('.warehouse-order-number').innerText==='PO-8000'&&
+                c.querySelector('.warehouse-order-product').innerText.includes(${jsLiteral(lang==="ar"?"عميل مخزون الاختبار":"Warehouse fixture customer")})&&
+                values.join('|')==='12345.67kg|2000kg|10345.67kg';
+            })()`));
+            check(`${context}: quantity digits remain on a single line`,await evaluate("[...document.querySelectorAll('.warehouse-order-metrics strong')].every(e=>{const r=document.createRange();r.selectNodeContents(e.firstChild);return [...r.getClientRects()].filter(b=>b.width>1).length===1;})"));
+            check(`${context}: production status retained`,await evaluate("document.querySelectorAll('.warehouse-order-state').length"),count);
+            check(`${context}: selection targets remain usable`,await evaluate("[...document.querySelectorAll('.warehouse-order-select')].every(e=>e.getBoundingClientRect().height>=43.5&&!e.querySelector('input').disabled)"));
+            await evaluate("document.querySelector('[data-hall-select=\"8000\"]').click()");
+            await wait("document.querySelector('[data-hall-select=\"8000\"]').checked&&!document.querySelector('[data-hall-receive-selected]').disabled");
+            check(`${context}: selection still opens receipt voucher`,await evaluate("document.querySelector('[data-hall-receive-selected]').click();true"));
+            await wait("!!document.querySelector('[data-receipt-voucher]')");
+            check(`${context}: selected order preserved in receipt`,await evaluate("[...document.querySelector('[data-receipt-voucher]').querySelectorAll('select')].some(s=>s.value==='8000')"));
+            await evaluate("document.querySelector('.receipt-voucher-close').click()");
+            await wait("!document.querySelector('[data-receipt-voucher]')");
+            if(lang==="ar"&&count===7&&[390,1280,1440].includes(width)) {
+              const shot=await send("Page.captureScreenshot",{format:"png"});
+              await fs.writeFile(`/tmp/hall-six-cards-${width}.png`,Buffer.from(shot.data,"base64"));
+            }
+          }
+        }
+      }
+      permissions=["view_production_hall"];
+      await navigate("/warehouse/hall");
+      check("read-only hall does not gain receipt selection",await evaluate("document.querySelectorAll('[data-hall-select]').length"),0);
+      check("hall layout does not write data",writes.length,0);
+      check("hall layout has no runtime errors",errors,[]);
+      console.log(`Verified ${passed} compact hall assertions with isolated API fixtures.`);
+      return;
     }
     if (compactRollsOnly) {
       const originalRolls = structuredClone(state.rolls);
