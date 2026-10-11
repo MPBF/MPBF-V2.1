@@ -21,7 +21,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const monitoringWarningOnly = process.argv.includes("--monitoring-warning-only");
    const operatorLayoutOnly = process.argv.includes("--operator-layout-only");
   const operatorNavigationOnly = process.argv.includes("--operator-navigation-only");
-  const compactRollsOnly = process.argv.includes("--compact-rolls-only");
+  const printingIconsOnly = process.argv.includes("--printing-icons-only");
+  const compactRollsOnly = process.argv.includes("--compact-rolls-only") || printingIconsOnly;
   const planningNavigationOnly = process.argv.includes("--planning-navigation-only");
   const compactControlsOnly = process.argv.includes("--compact-controls-only");
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
@@ -865,7 +866,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         language = lang;
         for (const width of [320, 390, 768, 1280, 1440]) {
           await send("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });
-          for (const stage of ["film", "printing", "cutting"]) {
+          for (const stage of (printingIconsOnly ? ["printing"] : ["film", "printing", "cutting"])) {
             permissions = [`operate_${stage}`];
             const orderId = stage === "cutting" ? 3 : 2;
             const container = `[data-production-order-id="${orderId}"] ${stage === "film" ? ".film-recorded-rolls" : ".roll-operator-rolls"}`;
@@ -918,6 +919,22 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
                   await evaluate(`document.querySelector(${jsLiteral(container)}).querySelectorAll('input[id^="net-"]').length`),
                   stage === "cutting" ? count : 0);
               }
+              if (printingIconsOnly) {
+                check(`${context}: print action is a compact icon with accessible label`,
+                  await evaluate(`[...document.querySelector(${jsLiteral(container)}).querySelectorAll('.roll-operator-action')].every(b=>{
+                    const r=b.getBoundingClientRect();return b.innerText.trim()===''&&!!b.querySelector('svg')&&
+                      b.getAttribute('aria-label')?.includes(${jsLiteral(lang==="ar"?"تسجيل الطباعة":"Record printing")})&&
+                      b.getAttribute('title')?.includes(${jsLiteral(lang==="ar"?"تسجيل الطباعة":"Record printing")})&&r.width>=43.5&&r.width<=45&&r.height<=45;
+                  })`));
+                check(`${context}: author/date retain values and use icons`,
+                  await evaluate(`[...document.querySelector(${jsLiteral(container)}).children].every(e=>
+                    !!e.querySelector('[data-roll-author] svg')&&!!e.querySelector('[data-roll-date] svg')&&
+                    e.querySelector('[data-roll-author]').innerText.includes(${jsLiteral(lang==="en"?"Creator Person":"منشئ الرول")})&&
+                    e.querySelector('[data-roll-date]').innerText.includes('2026'))`));
+                await evaluate(`document.querySelector(${jsLiteral(container)}).querySelector('.roll-operator-action').focus()`);
+                check(`${context}: icon action accepts keyboard focus`,
+                  await evaluate(`document.activeElement===document.querySelector(${jsLiteral(container)}).querySelector('.roll-operator-action')`));
+              }
               if (lang === "ar" && count === 9 && [390, 1280, 1440].includes(width)) {
                 const shot = await send("Page.captureScreenshot", { format: "png" });
                 await fs.writeFile(`/tmp/compact-rolls-${stage}-${width}.png`, Buffer.from(shot.data, "base64"));
@@ -927,6 +944,22 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         }
       }
       check("compact roll layout performs no writes", writes.length, 0);
+      if (printingIconsOnly) {
+        language = "ar";
+        state.rolls = structuredClone(originalRolls);
+        permissions = ["view_production"];
+        await navigate("/production/printing");
+        check("read-only printing icon action stays disabled",
+          await evaluate("[...document.querySelectorAll('.roll-operator-action')].every(b=>b.disabled)"));
+        await evaluate("document.querySelector('.roll-operator-action').click()");
+        check("read-only printing icon cannot record", writes.length, 0);
+        permissions = ["operate_printing"];
+        await navigate("/production/printing");
+        await evaluate("document.querySelector('[data-production-order-id=\"2\"] .roll-operator-action').click()");
+        await wait("!document.querySelector('.prod-loading')&&document.querySelector('[data-production-order-id=\"2\"] .roll-operator-action')&&!document.querySelector('[data-production-order-id=\"2\"] .roll-operator-action').disabled");
+        check("print icon preserves the original recording route", writes.at(-1)?.route, "/production/rolls/2/print");
+        check("print icon preserves selected machine", writes.at(-1)?.input?.machine_id, "P1");
+      }
       check("compact roll layout has no runtime errors", errors, []);
       console.log(`Verified ${passed} compact roll layout assertions with isolated API fixtures.`);
       return;

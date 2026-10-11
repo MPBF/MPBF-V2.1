@@ -1,4 +1,4 @@
-import { ChevronDown, CircleDot, Gauge, Layers3, Palette, Printer, Ruler, Scissors, Search } from "lucide-react";
+import { CalendarDays, ChevronDown, CircleDot, Gauge, Layers3, Palette, Printer, Ruler, Scissors, Search, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 
@@ -135,9 +135,10 @@ export default function RollOperatorOrders(props: Props) {
                 </div>
                 <div className="roll-operator-rolls">
                   {member.rolls.map(roll => <article
-                    className="roll-operator-roll"
+                    className={`roll-operator-roll${stage === "printing" ? " roll-operator-roll--printing" : ""}`}
                     key={roll.id}
                     data-production-roll-id={roll.id}
+                    data-roll-stage={stage}
                   >
                     <div className="roll-operator-roll-head">
                       <Link className="roll-operator-roll-link prod-number" href={`/production/rolls/${roll.id}`}>
@@ -146,8 +147,18 @@ export default function RollOperatorOrders(props: Props) {
                       <strong className="roll-operator-roll-weight"><bdi dir="ltr">{number(roll.weight_kg)} kg</bdi></strong>
                     </div>
                     <div className="roll-operator-roll-context">
-                      <div data-roll-author><span>{language === "en" ? "By" : "بواسطة"}</span><strong>{creatorName(roll)}</strong></div>
-                      <div data-roll-date><span>{language === "en" ? "Date" : "التاريخ"}</span><strong>{date(roll.created_at)}</strong></div>
+                      <div data-roll-author title={stage === "printing" ? (language === "en" ? "Author" : "المنشئ") : undefined}>
+                        {stage === "printing"
+                          ? <UserRound role="img" aria-label={language === "en" ? "Author" : "المنشئ"} />
+                          : <span>{language === "en" ? "By" : "بواسطة"}</span>}
+                        <strong>{creatorName(roll)}</strong>
+                      </div>
+                      <div data-roll-date title={stage === "printing" ? (language === "en" ? "Date" : "التاريخ") : undefined}>
+                        {stage === "printing"
+                          ? <CalendarDays role="img" aria-label={language === "en" ? "Date" : "التاريخ"} />
+                          : <span>{language === "en" ? "Date" : "التاريخ"}</span>}
+                        <strong>{date(roll.created_at)}</strong>
+                      </div>
                     </div>
                     {stage === "cutting" && <div className="prod-field roll-operator-net-field">
                       <label htmlFor={`net-${roll.id}`}>{text("netWeight")}</label>
@@ -165,12 +176,16 @@ export default function RollOperatorOrders(props: Props) {
                     </div>}
                     <button
                       type="button"
-                      className="prod-btn roll-operator-action"
+                      className={`prod-btn roll-operator-action${stage === "printing" ? " roll-operator-print-action" : ""}`}
                       disabled={!canOperate || saving || !selectedMachine}
                       onClick={() => onRecord(roll)}
+                      {...(stage === "printing" ? {
+                        title: `${text("printRoll")} ${roll.roll_number}`,
+                        "aria-label": `${text("printRoll")} ${roll.roll_number}`,
+                      } : {})}
                     >
                       {stage === "printing" ? <Printer aria-hidden="true" /> : <Scissors aria-hidden="true" />}
-                      {text(stage === "printing" ? "printRoll" : "cutRoll")}
+                      {stage === "cutting" && text("cutRoll")}
                     </button>
                   </article>)}
                 </div>
