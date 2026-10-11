@@ -556,19 +556,22 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            permissions = ["admin"];
            const label = `${lang} ${width}`;
            await navigate("/planning");
-           check(`${label}: main planning title localized`, await evaluate("document.querySelector('.prod-heading h2').textContent"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
-           check(`${label}: planning tabs only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(a=>a.getAttribute('href'))"), ["/planning", "/planning/monitoring"]);
-           check(`${label}: management active`, await evaluate("document.querySelector('.prod-view-nav a[aria-current=\"page\"]').getAttribute('href')"), "/planning");
+           check(`${label}: main planning title localized`, await evaluate("document.querySelector('.planning-header h1').textContent"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
+           check(`${label}: planning tabs only`, await evaluate("[...document.querySelectorAll('.planning-nav a')].map(a=>a.getAttribute('href'))"), ["/planning", "/planning/monitoring"]);
+           check(`${label}: management active`, await evaluate("document.querySelector('.planning-nav a[aria-current=\"page\"]').getAttribute('href')"), "/planning");
            check(`${label}: planning sidebar localized and selected`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/planning\"]').textContent.trim()"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
            check(`${label}: planning fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           const managementStyle = await evaluate("(()=>{const page=getComputedStyle(document.querySelector('.planning-page')),heading=getComputedStyle(document.querySelector('.planning-header h1')),refresh=getComputedStyle(document.querySelector('.planning-refresh')),card=getComputedStyle(document.querySelector('.prod-card'));return {page:[page.color,page.padding,page.maxWidth],heading:[heading.fontSize,heading.color,heading.lineHeight],refresh:[refresh.minHeight,refresh.fontSize,refresh.borderRadius,refresh.backgroundColor],card:[card.backgroundColor,card.borderColor]}})()");
            await fs.writeFile(`/tmp/planning-${lang}-${width}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
-           await evaluate("document.querySelector('.prod-view-nav a[href=\"/planning/monitoring\"]').click()");
+           await evaluate("document.querySelector('.planning-nav a[href=\"/planning/monitoring\"]').click()");
            await wait("!!document.querySelector('.pm-page')");
-           check(`${label}: monitoring main heading localized`, await evaluate("document.querySelector('.pm-page h2').textContent"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
-           check(`${label}: monitoring planning-only tabs`, await evaluate("[...document.querySelectorAll('.pm-page .raw-ops-nav a')].map(a=>a.getAttribute('href'))"), ["/planning", "/planning/monitoring"]);
-           check(`${label}: monitoring active`, await evaluate("document.querySelector('.pm-page .raw-ops-nav a[aria-current=\"page\"]').getAttribute('href')"), "/planning/monitoring");
+           check(`${label}: monitoring main heading localized`, await evaluate("document.querySelector('.planning-header h1').textContent"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
+           check(`${label}: monitoring planning-only tabs`, await evaluate("[...document.querySelectorAll('.planning-nav a')].map(a=>a.getAttribute('href'))"), ["/planning", "/planning/monitoring"]);
+           check(`${label}: monitoring active`, await evaluate("document.querySelector('.planning-nav a[aria-current=\"page\"]').getAttribute('href')"), "/planning/monitoring");
            check(`${label}: sidebar active across planning subtabs`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/planning\"]').classList.contains('active')"));
            check(`${label}: monitoring fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           check(`${label}: both tabs share computed presentation`, await evaluate("(()=>{const page=getComputedStyle(document.querySelector('.planning-page')),heading=getComputedStyle(document.querySelector('.planning-header h1')),refresh=getComputedStyle(document.querySelector('.planning-refresh')),card=getComputedStyle(document.querySelector('.raw-ops-card'));return {page:[page.color,page.padding,page.maxWidth],heading:[heading.fontSize,heading.color,heading.lineHeight],refresh:[refresh.minHeight,refresh.fontSize,refresh.borderRadius,refresh.backgroundColor],card:[card.backgroundColor,card.borderColor]}})()"), managementStyle);
+           await fs.writeFile(`/tmp/planning-monitoring-${lang}-${width}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
            await navigate("/production/monitoring");
            check(`${label}: old monitoring link redirects`, await evaluate("location.pathname"), "/planning/monitoring");
            await navigate("/production");
@@ -577,7 +580,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            for (const permission of ["manage_production", "view_production"]) {
              permissions = [permission];
              await navigate("/planning");
-             check(`${label}: ${permission} keeps management only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(a=>a.getAttribute('href'))"), ["/planning"]);
+             check(`${label}: ${permission} keeps management only`, await evaluate("[...document.querySelectorAll('.planning-nav a')].map(a=>a.getAttribute('href'))"), ["/planning"]);
              const before = stateScopes.length;
              await navigate("/planning/monitoring");
              await wait("!!document.querySelector('.pm-page .raw-ops-banner.error')");
@@ -763,7 +766,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            roleMetadata = { role_name: "Sales Representative", role_name_ar: "مندوب مبيعات" };
            permissions = ["view_production", "view_film_dashboard"];
            await navigate("/production");
-           check(`${lang} ${width}: Sales read grants are not misclassified as an operator`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), 4);
+           check(`${lang} ${width}: Sales read grants are not misclassified as an operator`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), 3);
            roleMetadata = {};
            for (const stage of ["film", "printing", "cutting"]) {
              permissions = [`operate_${stage}`, "view_production", "view_production_hall", "receive_production", "view_finished_inventory"];
@@ -1092,7 +1095,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     await clickText("Refresh data");await wait("!!document.querySelector('[data-film-order-id=\"2\"]')");await openFilmOrder(2);
     check("refresh and temporary eligibility changes retain per-order draft",await evaluate("document.querySelector('#weight-2').value"),"6.25");
     await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
-    await navigate("/production");
+    await navigate("/planning");
     check("historical records explicitly unrecorded", await evaluate("document.body.innerText.includes('Unrecorded')"));
     check("production history is not fetched before opening",historyCalls.filter(call=>!["inventory","receipts"].includes(call.kind)).length,0);
     await evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.trim()==='Order history').click()");
@@ -1112,7 +1115,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     await wait("!!document.querySelector('details[open] .prod-error')");
     await clickText("Retry");await wait("document.body.innerText.includes('PO-220')");
     check("failed history request can be retried",await evaluate("!document.querySelector('details[open] .prod-error')"));
-    await navigate("/production");
+    await navigate("/planning");
     await evaluate("document.querySelector('button[aria-label=\"Move down\"]').click()");
     await wait("!!document.querySelector('.prod-success')");
     check("queue reorder single atomic request with UUID", writes.at(-1).route, "/production/queues/reorder");
@@ -1149,7 +1152,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     await navigate("/production/rolls/2"); await wait("!!document.querySelector('.prod-qr img')");
     check("QR links to authenticated in-system roll route", await evaluate("document.querySelector('.prod-qr').innerText.includes('/production/rolls/2')"));
     permissions = ["view_production"];
-    await navigate("/production");
+    await navigate("/planning");
     check("read-only manager has no mutation buttons", await evaluate("![...document.querySelectorAll('.production-app button')].some(b=>/Start production|Add to queue|Remove/.test(b.textContent))"));
     await navigate("/production/film");
     check("read-only operator cannot register film", await evaluate("![...document.querySelectorAll('.production-app button')].some(b=>b.textContent.trim()==='Register roll'&&!b.disabled)"));
@@ -1193,7 +1196,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     check("hall viewer cannot save receipt", await evaluate("!document.querySelector('[data-receipt-launcher]')"));
     permissions = ["view_production"];
     failure = true;
-    await navigate("/production"); await wait("!!document.querySelector('.prod-error')");
+    await navigate("/planning"); await wait("!!document.querySelector('.prod-error')");
     failure = false;
     await clickText("Retry"); await wait("!document.querySelector('.prod-error')&&!document.querySelector('.prod-loading')&&document.querySelector('.production-app').innerText.includes('PO-2')");
     check("load failure retry restores data", await evaluate("document.querySelector('.production-app').innerText.includes('PO-2')"));
@@ -1202,7 +1205,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       language=lang;
       for(const width of [390,768,1440]){
         await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<500});
-        await navigate("/production");
+        await navigate("/planning");
         await evaluate(`[...document.querySelectorAll('summary')].find(item=>item.textContent.trim()===${jsLiteral(lang==="en"?"Order history":"تاريخ أوامر الإنتاج")}).click()`);
         await wait("document.body.innerText.includes('PO-220')");
         check(`${lang} ${width} expanded history fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));

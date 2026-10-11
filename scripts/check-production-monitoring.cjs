@@ -84,7 +84,7 @@ const WebSocket=require("ws");
       await send("Emulation.setDeviceMetricsOverride",{width,height:1000,deviceScaleFactor:1,mobile:false});
       await navigate();await wait("document.querySelectorAll('.pm-event').length===4");
       check(`${lang} ${width}: direction`,await evaluate("getComputedStyle(document.querySelector('.pm-page')).direction"),lang==="en"?"ltr":"rtl");
-      check(`${lang} ${width}: monitoring navigation appears once`,await evaluate("document.querySelectorAll('.raw-ops-nav a[href=\"/production/monitoring\"]').length"),1);
+      check(`${lang} ${width}: monitoring navigation appears once`,await evaluate("document.querySelectorAll('.planning-nav a[href=\"/planning/monitoring\"]').length"),1);
       const fits=await evaluate("document.documentElement.scrollWidth<=innerWidth+1");
       if(!fits)console.log(await evaluate("Array.from(document.querySelectorAll('.pm-page *')).map(e=>({c:e.className,x:e.getBoundingClientRect().left,w:e.getBoundingClientRect().width,s:e.scrollWidth})).filter(e=>e.x<0||e.x+e.w>innerWidth+1).slice(0,18)"));
       check(`${lang} ${width}: no page overflow`,fits);

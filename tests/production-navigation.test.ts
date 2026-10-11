@@ -55,7 +55,7 @@ describe("production operator tab boundaries", () =>
 ;
 
     expect(canOpenPlanningView(account, "management")).toBe(false);
-    for (const view of ["film", "printing", "cutting", "hall", "warehouse"] as const) 
+    for (const view of ["film", "printing", "cutting", "hall", "warehouse"] as const)
 {
 
       expect(canOpenProductionView(account, view)).toBe(view === stage)
