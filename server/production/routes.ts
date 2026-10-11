@@ -8,6 +8,8 @@ import { ProductionError, type ConnectionPool } from "./core";
 import { ProductionExecutionService } from "./execution";
 import { ProductionWarehouseService } from "./warehouse";
 import { ProductionReadService } from "./read";
+import { RawMixingService } from "./mixing";
+import { ProductionMonitoringService, monitoringPermission } from "./monitoring";
 
 const request = z.object({ request_id: z.string().uuid() }).strict();
 const id = z.coerce.number().int().positive().max(2147483647);
@@ -45,6 +47,59 @@ router.use(requireAuth);
 const execution = new ProductionExecutionService(connectionPool);
 const warehouse = new ProductionWarehouseService(connectionPool);
 const read = new ProductionReadService(connectionPool);
+const mixing = new RawMixingService(connectionPool);
+const monitoring = new ProductionMonitoringService(connectionPool);
+router.use("/monitoring", handler(async (req, res, next) => {
+  monitoringPermission(req.user!);
+  res.setHeader("Cache-Control","private, no-store");
+  next();
+}));
+const monitoringCursor = safeText(12000).optional();
+const monitoringFilters = z.object({
+  cursor: monitoringCursor, limit: z.coerce.number().int().min(1).max(100).optional(),
+  machine_id: machine.optional(), stage: z.enum(["film","printing","cutting"]).optional(),
+  from: z.string().date().optional(), to: z.string().date().optional(), search: safeText(120).optional(),
+}).strict().refine(f=>!f.from||!f.to||f.from<=f.to);
+router.get("/monitoring/log",handler(async(req,res)=>{res.json(await monitoring.log(req.user!,monitoringFilters.parse(req.query)));}));
+router.get("/monitoring/summary",handler(async(req,res)=>{z.object({}).strict().parse(req.query);res.json(await monitoring.summary(req.user!));}));
+router.get("/monitoring/mixes",handler(async(req,res)=>{
+  const filters=z.object({cursor:monitoringCursor,limit:z.coerce.number().int().min(1).max(100).optional(),machine_id:machine.optional()}).strict().parse(req.query);
+  res.json(await monitoring.mixes(req.user!,filters));
+}));
+router.get("/monitoring/mixes/:id",handler(async(req,res)=>{
+  const {cursor}=z.object({cursor:monitoringCursor}).strict().parse(req.query);
+  res.json(await monitoring.mix(req.user!,id.parse(req.params.id),cursor));
+}));
+router.get("/monitoring/rolls/:id",handler(async(req,res)=>{
+  const {cursor}=z.object({cursor:monitoringCursor}).strict().parse(req.query);
+  res.json(await monitoring.roll(req.user!,id.parse(req.params.id),cursor));
+}));
+router.get("/mixing", handler(async (req, res) => {
+  const { before } = z.object({ before: id.optional() }).strict().parse(req.query);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await mixing.state(req.user!, before));
+}));
+router.post("/mixing", handler(async (req, res) => {
+  const input = request.extend({
+    machine_id: machine, screw: z.enum(["A","B"]).optional(), notes: safeText(2000).optional(),
+    items: z.array(z.object({ material_id: id, quantity_kg: weight }).strict()).min(1).max(100)
+      .refine(items => new Set(items.map(i => i.material_id)).size === items.length),
+  }).parse(req.body);
+  res.json(await mixing.record(req.user!, input));
+}));
+router.post("/raw-materials", handler(async (req, res) => {
+  // Retire the old free-form definition endpoint rather than silently accepting
+  // stale editors. Catalogue definitions belong to the existing Items module.
+  res.status(410).json({ message:"اختر المواد من الأصناف المعرّفة مسبقًا؛ الإدخال الحر غير متاح", message_en:"Select predefined catalogue items. Free-form material creation is no longer available." });
+}));
+router.post("/raw-materials/movements", handler(async (req, res) => {
+  const input = request.extend({
+    kind: z.enum(["receipt","issue"]), notes:safeText(2000).optional(),
+    items:z.array(z.object({material_id:id,quantity_kg:weight}).strict()).min(1).max(100)
+      .refine(items => new Set(items.map(i => i.material_id)).size===items.length),
+  }).parse(req.body);
+  res.json(await mixing.movement(req.user!, input));
+}));
 router.get("/state", handler(async (req, res) => {
   const scope = z.enum(["management", "film", "printing", "cutting", "hall", "warehouse", "roll"]).default("management").parse(req.query.scope);
   res.setHeader("Cache-Control", "private, no-store");
@@ -106,9 +161,17 @@ router.post("/queues/reorder", handler(async (req, res) => { res.json(await exec
 }).parse(req.body))); }));
 router.post("/receipts", handler(async (req, res) => {
   const packaging = z.object({ roll_weight_grams: z.string().regex(/^\d{1,8}(?:\.\d{1,4})?$/), rolls_per_unit: z.number().int().min(1).max(1000000), units: z.number().int().min(1).max(1000000) }).strict();
+  const packing = z.object({
+    unit: z.enum(["kg","packet","roll","piece"]), method: z.enum(["unit_weight","piece_weight"]),
+    quantity: z.string().regex(/^\d{1,12}(?:\.\d{1,2})?$/),
+    unit_weight_kg: z.string().regex(/^\d{1,8}(?:\.\d{1,6})?$/).optional(),
+    pieces_per_unit: z.number().int().min(1).max(1000000).optional(),
+    piece_weight_grams: z.string().regex(/^\d{1,8}(?:\.\d{1,4})?$/).optional(),
+  }).strict();
   const input = request.extend({ notes: safeText(2000).optional(), items: z.array(z.object({
-    production_order_id: id, location_id: id, quantity_kg: weight, packaging: packaging.optional(),
-  }).strict()).min(1).max(100) }).parse(req.body);
+    production_order_id: id, location_id: id.optional(), quantity_kg: weight.optional(), packaging: packaging.optional(), packing: packing.optional(),
+  }).strict().refine(item => Boolean(item.packing || item.quantity_kg), "Receipt packing or weight is required")
+    .refine(item => !(item.packing && item.packaging), "Do not mix packing formats")).min(1).max(100) }).parse(req.body);
   res.json(await warehouse.receive(req.user!, input));
 }));
 const locationName = safeText(100).refine(value => value.length > 0);

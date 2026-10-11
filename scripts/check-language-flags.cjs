@@ -81,6 +81,11 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
         if (!saveFailure) preference = payload.preferred_language;
         data = saveFailure ? { message: "فشل الحفظ التجريبي" } : { preferred_language: preference };
       } else if (request.method !== "GET") throw Error(`Unexpected business write: ${request.method} ${route}`);
+      else if (route === "/machines") data = [
+        {id:"M1",name:"Extruder One",name_ar:"ماكينة الفيلم الأولى",type:"extruder",status:"active",manufacturer:"Fixture manufacturer",serial_number:"SERIAL-FIXTURE"},
+        {id:"M2",name:"Printer Two",name_ar:null,type:"printer",status:"active"},
+        {id:"M3",name:"",name_ar:"ماكينة قص",type:"cutter",status:"active"},
+      ];
       else if (route === "/dashboard") data = {};
       else if (route === "/customers/CID010/detail") data = { customer, products };
       else if (route === "/customers") data = [customer];
@@ -162,6 +167,39 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
       const result = await send("Page.captureScreenshot", { format: "png" });
       await fs.writeFile(`screenshots/language-flags/${name}.png`, Buffer.from(result.data, "base64"));
     };
+    if (process.argv.includes("--machine-table-only")) {
+      signedIn=true;
+      for(const width of [390,768,1280]){
+        useTouch=width<700;
+        await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<700});
+        for(const language of ["ar","en"]){
+          preference=language;
+          await navigate("/admin");
+          await wait(`document.documentElement.lang===${jsLiteral(language)}`);
+          await click("#admin-tab-machines");
+          await wait("!!document.querySelector('#admin-panel-machines tbody tr .cell-sub')");
+          const headers=await evaluate("[...document.querySelectorAll('#admin-panel-machines th')].map(e=>e.textContent.trim())");
+          check(`${language} ${width}: removed manufacturer and serial headers`,!headers.some(text=>/الشركة المصنعة|الرقم التسلسلي|Manufacturer|Serial number/.test(text)));
+          check(`${language} ${width}: single combined name header`,headers.filter(text=>text===(language==="ar"?"الاسم":"Name")).length,1);
+          check(`${language} ${width}: both machine names stacked`,await evaluate("(()=>{const cell=document.querySelector('#admin-panel-machines tbody tr td:nth-child(2)');return [cell.querySelector('strong').textContent,cell.querySelector('.cell-sub').textContent]})()"),["ماكينة الفيلم الأولى","Extruder One"]);
+          check(`${language} ${width}: missing Arabic name is not duplicated English`,await evaluate("document.querySelectorAll('#admin-panel-machines tbody tr')[1].querySelector('td:nth-child(2) strong').textContent"),"—");
+          check(`${language} ${width}: missing English name is not duplicated Arabic`,await evaluate("document.querySelectorAll('#admin-panel-machines tbody tr')[2].querySelector('td:nth-child(2) .cell-sub').textContent"),"—");
+          check(`${language} ${width}: no page overflow`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+          check(`${language} ${width}: removed values absent from cards and table`,await evaluate("!document.querySelector('#admin-panel-machines').innerText.includes('Fixture manufacturer')&&!document.querySelector('#admin-panel-machines').innerText.includes('SERIAL-FIXTURE')"));
+          if(width===1280&&language==="ar"){
+            const shot=await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});
+            await fs.writeFile("/tmp/machine-table-ar.png",Buffer.from(shot.data,"base64"));
+          }
+        }
+      }
+      await evaluate("document.querySelector('#admin-panel-machines tbody tr button[title=\"Edit\"]').click()");
+      await wait("!!document.querySelector('#field-manufacturer')");
+      check("manufacturer remains in edit form",await evaluate("document.querySelector('#field-manufacturer').value"),"Fixture manufacturer");
+      check("serial number remains in edit form",await evaluate("document.querySelector('#field-serial_number').value"),"SERIAL-FIXTURE");
+      check("no business writes during table verification",writes,[]);
+      check("no machine table runtime exceptions",errors,[]);
+      console.log(`Passed ${checks} machine table checks with intercepted APIs.`);return;
+    }
     for (const width of dialogsOnly || saveOnly ? [] : [390, 768, 1280]) {
       useTouch = width < 700;
       await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });

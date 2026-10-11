@@ -14,6 +14,7 @@
 - [Film dashboard visibility](film-dashboard-visibility.md) — film-operator order list must filter `production_stage='film'`; film_completed only set by Final Roll button, so quantity-complete orders otherwise linger.
 - [Roll-create stage trust](roll-create-stage-trust.md) — roll-create routes must force stage='film' & strip client transition fields; only server logic advances to printing (inline-printing bypass risk).
 - [Universal thickness film eligibility](universal-thickness-eligibility.md) — film machine min/max_thickness matches order universal_thickness (computed col), never raw thickness.
+- [Printing cylinder units](printing-cylinder-units.md) — legacy inch-marked cylinder values must work with numeric capability limits; preserve frozen snapshots and reject unknown units.
 - [Production queue estimates](production-queue-estimates.md) — finish estimate uses configured shift hours, per-order size-appropriate capacity (width buckets), and gates finish date on machine status.
 - [Machine type value inconsistency](machine-type-values.md) — machines.type holds mixed values ('Printer'/'Cutter' vs 'printing'/'cutting' vs 'extruder'); any type-keyed logic must normalize/lowercase and accept both variants.
 - [Zod empty-string coercion](zod-empty-string-coercion.md) — optional z.coerce.date()/number() 400 on blank "" form input; preprocess blanks to null/undefined; ".optional().nullable()" doesn't save you.
@@ -90,3 +91,8 @@
 - [Permission-scoped lookups](permission-scoped-lookups.md) — selectors need lookups under their owning module's read permission; test minimum-permission roles, not only admins.
 - [Bulk order deletion policy](order-bulk-deletion-policy.md) — user chose all-or-nothing deletion, not partial success.
 - [Static dictionary audits](static-dictionary-audits.md) — reject unsupported mutations explicitly; a static audit must not silently differ from runtime translations.
+- [Warehouse fixture parity](warehouse-fixture-parity.md) — types can pass with blank stock cards; verify empty snapshots, paginated feeds and visible unit-count cards together.
+- [Prospective mix accounting](production-mix-accounting.md) — machine-wide FIFO, shortages allowed without later reconciliation; no second raw deduction or inferred screw/layer dosing.
+- [Order status design](order-status-design.md) — user requires colored order states and approved combining status/actions into two rows to save table width.
+- [Operator roll card sizing](operator-roll-card-sizing.md) — user approved small fixed-width roll cards that wrap, never stretch or squeeze as counts change.
+- [Warehouse hall card sizing](warehouse-hall-card-sizing.md) — user approved six ready-order cards per desktop row, fewer on smaller screens; scoped to the production hall.

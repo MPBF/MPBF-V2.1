@@ -14,3 +14,12 @@ Keep localized display names separate from bilingual source objects used for edi
 **Why:** Replacing an Arabic source name with its English display value can cause the English name to persist into user state and remain there when switching back to Arabic.
 
 **How to apply:** Compute display labels independently. Pass the original bilingual user/entity object to preference updates and edit forms.
+
+The administration machine table is intentionally bilingual: the Arabic
+name above the English name in one column, even when the UI is English.
+
+**Why:** the user explicitly requested merging both names above one another,
+not choosing only the current-language name.
+
+**How to apply:** treat this as explicit bilingual content, not an Arabic
+fallback. Keep the surrounding labels localized and missing names neutral.

@@ -1,3 +1,5 @@
+import type { ProductionRoleBinding } from "./production-role";
+
 export type ProductionStage = "film" | "printing" | "cutting";
 export type ProductionStateScope = "management" | ProductionStage | "hall" | "warehouse" | "roll";
 export const productionPermissions = [
@@ -13,6 +15,7 @@ export const productionStageReadPermissions = {
 export type ProductionUser = {
   id: number; permissions: string[];
   role_name?: string | null; role_name_ar?: string | null;
+  production_role_binding?: ProductionRoleBinding;
 };
 export const hasProductionPermission = (user: ProductionUser, ...keys: string[]) =>
   user.permissions.includes("admin") || keys.some(key => user.permissions.includes(key));
@@ -89,6 +92,7 @@ export type StorageLocation = { id: number; name: string; name_ar: string; is_ac
 export type ReceiptItem = {
   id: number; production_order_id: number; customer_product_id: number; item_id: string | null;
   location_id: number; quantity_kg: string; packaging: PackagingInput | null;
+  line_number?: number | null; packing?: import("./production-packing").ReceiptPacking | null;
   production_order_number?: string; location_name?: string; location_name_ar?: string;
 };
 export type ProductionReceipt = {
@@ -100,6 +104,8 @@ export type InventoryRecord = {
   location_id: number; quantity_kg: string; production_order_number: string; batch_number: string | null;
   product: ProductSnapshot; location_name: string; location_name_ar: string;
   production_order_status?: string;
+  unit_balances?: import("./production-packing").InventoryUnitBalance[];
+  legacy_quantity_kg?: string;
 };
 export type InventoryMovement = {
   id: number; receipt_id: number; receipt_item_id: number; quantity_kg: string; created_at: string;
@@ -127,7 +133,8 @@ export type ProductionHistoryPage<K extends ProductionHistoryKind> = {
 export type PackagingInput = { roll_weight_grams: string; rolls_per_unit: number; units: number };
 export type ReceiptInput = {
   request_id: string; notes?: string;
-  items: { production_order_id: number; location_id: number; quantity_kg: string; packaging?: PackagingInput }[];
+  items: { production_order_id: number; location_id?: number; quantity_kg?: string; packaging?: PackagingInput;
+    packing?: import("./production-packing").ReceiptPacking }[];
 };
 export type FilmInput = {
   request_id: string; machine_id: string; weight_kg: string;

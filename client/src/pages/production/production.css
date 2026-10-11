@@ -18,8 +18,19 @@
 .production .prod-view-nav a { min-height:44px; }
 .production .prod-heading {
   display:flex; justify-content:space-between; align-items:flex-end; gap:20px;
-  margin: 5px 0 23px; animation: prod-rise .35s ease both;
+  margin: 5px 0 13px; animation: prod-rise .35s ease both;
 }
+.production .prod-heading-copy { min-width:0; }
+.production .prod-heading-controls { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:7px; min-width:0; }
+.production .prod-header-refresh { flex:none; min-height:44px; }
+.production .prod-header-machine-slot { display:flex; align-items:center; min-width:0; }
+.production .prod-header-machine-slot .prod-btn { min-height:44px; }
+.production .prod-header-machine-slot:empty { display:none; }
+.production .prod-header-machine-slot .prod-inline { flex-wrap:nowrap; }
+.production .prod-header-machine-slot .prod-chip { max-width:min(32vw,280px); overflow-wrap:anywhere; }
+.production .prod-header-machine-slot .prod-field { display:flex; align-items:center; gap:6px; }
+.production .prod-header-machine-slot .prod-field label { flex:none; }
+.production .prod-header-machine-slot .prod-field select { width:auto; min-width:120px; max-width:min(30vw,230px); min-height:44px; }
 .prod-heading h2 { font-size: clamp(25px, 3vw, 34px); line-height:1.12; letter-spacing:-1px; margin:5px 0 5px; }
 .prod-heading p { color:var(--prod-muted); margin:0; font-size:13px; }
 .prod-eyebrow { color:var(--prod-deep); font:700 10px "IBM Plex Mono", monospace; letter-spacing:1.6px; text-transform:uppercase; }
@@ -285,19 +296,20 @@
 .roll-operator .roll-operator-production-order { min-width:0; }
 .roll-operator .roll-operator-rolls {
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));
-  gap:8px;
+  grid-template-columns:repeat(8,minmax(0,1fr));
+  gap:6px;
   grid-column:1/-1;
   min-width:0;
 }
 .roll-operator .roll-operator-roll {
+  width:100%;
   display:grid;
   grid-template-columns:minmax(0,1fr);
   align-content:start;
   align-items:start;
-  gap:8px;
+  gap:6px;
   min-width:0;
-  padding:9px;
+  padding:7px;
   border:1px solid var(--prod-line);
   background:#f8fbf7;
 }
@@ -318,19 +330,88 @@
 .roll-operator .roll-operator-roll-context strong { color:var(--prod-ink); font-size:12px; overflow-wrap:anywhere; }
 .roll-operator .roll-operator-net-field { min-width:0; }
 .roll-operator .roll-operator-net-field input { min-height:44px; font-size:16px; }
-.roll-operator .roll-operator-action { min-height:44px; }
+.roll-operator .roll-operator-action { min-height:44px; white-space:normal; overflow-wrap:anywhere; justify-content:center; }
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing {
+  position:relative;
+  gap:5px;
+  padding:7px;
+  align-content:start;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-head {
+  gap:2px;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-link {
+  min-height:32px;
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-weight {
+  color:var(--prod-deep);
+  font-size:14px;
+  line-height:1.25;
+  font-weight:800;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-context {
+  gap:4px;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-context > div {
+  display:grid;
+  grid-template-columns:14px minmax(0,1fr);
+  align-items:start;
+  column-gap:5px;
+  min-width:0;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-context svg {
+  width:13px;
+  height:13px;
+  margin-top:2px;
+  color:var(--prod-muted);
+  stroke-width:1.8;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-roll-context strong {
+  min-width:0;
+  font-size:11px;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-print-action {
+  justify-self:end;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:44px;
+  min-width:44px;
+  height:44px;
+  min-height:44px;
+  padding:0;
+  white-space:nowrap;
+}
+.roll-operator[data-operator-stage="printing"] .roll-operator-roll--printing .roll-operator-print-action svg {
+  width:18px;
+  height:18px;
+  flex:none;
+}
   .film-recorded-rolls {
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));
+     display:grid;
+     grid-template-columns:repeat(8,minmax(0,1fr));
     grid-column:1/-1;
-    gap:8px;
+     gap:6px;
     min-width:0;
   }
-  .film-recorded-roll { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:7px; padding:9px; border:1px solid var(--prod-line); background:#f8fbf7; min-width:0; }
+   .film-recorded-roll { width:100%; display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:6px; padding:7px; border:1px solid var(--prod-line); background:#f8fbf7; min-width:0; }
  .film-recorded-roll > div { display:grid; gap:3px; min-width:0; overflow-wrap:anywhere; }
- .film-recorded-roll strong { font-size:13px; }
- .film-recorded-roll-link { display:inline-flex; align-items:center; min-height:44px; color:var(--prod-deep); }
+ .film-recorded-roll strong { font-size:13px; overflow-wrap:anywhere; }
+ .film-recorded-roll-link { display:inline-flex; align-items:center; min-height:44px; max-width:100%; color:var(--prod-deep); overflow-wrap:anywhere; }
  .film-recorded-roll-context { color:var(--prod-muted); font-size:12px; }
+@media(max-width:1099px) {
+  .roll-operator .roll-operator-rolls,
+  .film-recorded-rolls { grid-template-columns:repeat(6,minmax(0,1fr)); }
+}
+@media(max-width:899px) {
+  .roll-operator .roll-operator-rolls,
+  .film-recorded-rolls { grid-template-columns:repeat(4,minmax(0,1fr)); }
+}
 @keyframes prod-rise { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:translateY(0)} }
 @keyframes prod-shimmer { to{background-position:-200% 0} }
 @media(max-width:1000px) {
@@ -343,7 +424,20 @@
 }
 @media(max-width:700px) {
   .production { padding:18px 13px 40px; }
-  .production .prod-heading { align-items:flex-start; flex-direction:column; margin-bottom:17px; }
+  .production .prod-heading { align-items:flex-start; flex-direction:row; flex-wrap:wrap; gap:9px 12px; margin:2px 0 10px; }
+  .production .prod-heading-copy { flex:1 1 auto; min-width:0; }
+  .production .prod-heading h2 { margin:3px 0; font-size:clamp(18px,5.4vw,23px); }
+  .production .prod-heading-controls { display:contents; }
+  .production .prod-heading-controls > .prod-header-refresh { flex:none; white-space:nowrap; padding-inline:9px; font-size:12px; }
+  .production .prod-header-machine-slot { flex:1 0 100%; }
+  .production .prod-header-machine-slot .prod-inline { flex-wrap:wrap; }
+  .production .prod-header-machine-slot .prod-chip { max-width:100%; }
+  .production .prod-header-machine-slot .prod-field { flex:1 1 100%; }
+  .production .prod-header-machine-slot .prod-field select { flex:1; min-width:0; max-width:none; }
+  .production .prod-heading-controls > .prod-btn.secondary { flex:none; }
+  .production .operator-header .prod-eyebrow,
+  .production .operator-header .prod-heading-copy > p { display:none; }
+  .production .operator-header .prod-heading h2 { white-space:nowrap; }
   .prod-mark { display:none; }
   .prod-stat { grid-column:span 6; min-height:90px; padding:12px; }
   .prod-stat strong { font-size:22px; }
@@ -382,13 +476,91 @@
 @media(max-width:360px) {
   .production .prod-film-duration-item { grid-template-columns:1fr; }
   .production .prod-film-duration-times { grid-column:auto; }
-  .roll-operator .roll-operator-rolls,
-  .film-recorded-rolls { grid-template-columns:minmax(0,1fr); }
 }
 @media(max-width:420px) {
   .production .prod-film-duration-item { grid-template-columns:1fr; }
   .production .prod-film-duration-times { grid-column:auto; }
+  .roll-operator .roll-operator-rolls,
+  .film-recorded-rolls {
+    grid-template-columns:minmax(0,160px);
+    justify-content:start;
+  }
 }
 @media(prefers-reduced-motion:reduce) {
   .production *, .production *::before, .production *::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; scroll-behavior:auto!important; }
+}
+
+/* Cutting operator cards: keep the roll identity, date and one compact action row. */
+.roll-operator[data-operator-stage="cutting"] .roll-operator-roll--cutting {
+  grid-template-columns:minmax(0,1fr);
+  align-content:start;
+  gap:4px;
+  padding:6px;
+  background:#f8fbf7;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-roll--cutting .roll-operator-roll-head {
+  display:grid;
+  gap:2px;
+  min-width:0;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-roll--cutting .roll-operator-roll-link {
+  min-height:28px;
+  line-height:1.2;
+  font-size:12px;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-roll--cutting .roll-operator-roll-weight {
+  flex:none;
+  color:var(--prod-deep);
+  font-size:12px;
+  line-height:1.2;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-date {
+  min-width:0;
+  color:var(--prod-muted);
+  font-size:10px;
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-controls {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:5px;
+  min-width:0;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-controls input {
+  flex:1 1 65px;
+  width:100%;
+  min-width:0;
+  min-height:44px;
+  padding:7px 6px;
+  border:1px solid #cbd9d3;
+  border-radius:4px;
+  background:#fff;
+  color:var(--prod-ink);
+  font-size:16px;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-controls input:focus {
+  outline:2px solid rgba(216,120,78,.32);
+  border-color:var(--prod-accent);
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-action {
+  flex:0 0 44px;
+  margin-inline-start:auto;
+  grid-column:auto;
+  justify-self:stretch;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:44px;
+  min-width:44px;
+  height:44px;
+  min-height:44px;
+  padding:0;
+  white-space:nowrap;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-action svg {
+  width:18px;
+  height:18px;
+  flex:none;
 }

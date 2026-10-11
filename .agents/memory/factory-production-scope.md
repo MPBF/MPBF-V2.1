@@ -29,6 +29,17 @@ that roll as the last roll.
 **How to apply:** preserve these distinctions when adding labels, reports,
 scheduling, or warehouse extensions.
 
+المستودع صفحة رئيسية مستقلة تضم «صالة الإنتاج» و«مخزن المواد التامة».
+These are warehouse tabs, not production/operator tabs.
+
+**Why:** the user explicitly requested a new main Warehouse page and moving
+both tabs out of Production.
+
+**How to apply:** preserve the existing receiving/inventory permissions and
+business behavior, including private roll links and independent partial
+receipts. Do not grant warehouse access merely through an operational stage or
+general production permission.
+
 Future-stage queue planning must remain possible while film production is
 still open, even if there are no currently eligible rolls for that stage.
 
@@ -48,15 +59,82 @@ one another in wrapping cards, rather than one full-width row per roll.
 multiple columns where readable on phone/tablet/desktop and use one column only
 on very narrow screens.
 
-The approved warehouse scope is finished goods received from production with
-storage locations, not purchasing, transfers, raw materials, or customer
-delivery. Industrial hardware integration, automatic scheduling and public
-roll sharing need separate approval.
+The user requested extending Warehouse to four halls: raw materials,
+production, finished goods and delivery, each with incoming/outgoing vouchers.
+Raw materials receive from suppliers and supply production; production holds
+work in progress and cleared cutting quantities with completion indicators;
+finished goods receive output and hold it until customer delivery.
 
-**Why:** these extensions were explicitly outside the user's approved scope.
+**Why:** the user explicitly expanded the previous finished-goods-only scope.
 
-**How to apply:** do not infer permission to add them from the presence of
-production inventory or QR traceability.
+**How to apply:** preserve historical balances and vouchers while designing
+the interconnected flows. This does not authorize changing the published
+database without separate approval.
+
+Raw-material mixing belongs in a new Production and Operation tab visible
+to film operators. Record actual quantities of each material, the mixer
+operator, time and destination machine. Mixed quantities deduct from raw
+inventory, with negative raw balances allowed.
+
+**Why:** the user explicitly requested actual mixing records and negative
+raw balances so stock constraints do not prevent recording mixes.
+
+**How to apply:** do not block mixing for insufficient raw stock; do not
+infer that finished-goods or delivery balances may also become negative.
+Mixing directly deducts raw inventory without creating a raw issue voucher
+or a corresponding production-hall receipt voucher.
+
+**Why:** the user explicitly corrected the design: «لا يحتاج ربط الخلطة
+بسند صرف خام وسند إدخال مقابل».
+
+**How to apply:** retain the mixing record as the traceable source of its
+stock deduction; keep independent hall vouchers separate from mixing.
+
+All warehouse and mixing material identities must be selected from predefined
+items; raw selections must be items in the raw category. Do not introduce
+free-form material definitions in operational screens.
+
+**Why:** the user corrected the separate raw-material editor: «ويتم اختيار
+المواد من قائمة وليس ادخال حر وهي الاصناف التي من فئة خام المعرفة مسبقا»
+and «لا اريد اي ادخال حر لاي من المواد او الخام».
+
+**How to apply:** keep quantities editable, but select material identities from
+the existing catalogue and validate raw eligibility on the server as well.
+Show hall contents as cards; the production hall shows actual cut quantities
+immediately, including incomplete production orders. The raw hall has separate
+«إدخال مواد خام» and «صرف مواد خام» actions.
+Industrial hardware integration, automatic scheduling and public roll
+sharing still require separate approval.
+
+The production-hall receipt form should open as a formal finished-goods
+receipt voucher through a button, rather than remaining expanded in the hall.
+
+**Why:** the user selected «زر يفتح سند الاستلام في نافذة (موصى به)».
+
+**How to apply:** preserve partial receiving and existing stock safeguards;
+closing the window must not itself submit or discard the draft.
+
+Warehouse-page tabs must remain scoped to the warehouse: production hall,
+finished inventory and raw inventory, never manufacturing-operation tabs.
+
+**Why:** the user corrected the raw inventory navigation: «فقط صالة الانتاج
+والمخزون التام ومخزون الخام من يجب ان يظهر».
+
+**How to apply:** apply this module boundary even for administrators or users
+with both production and warehouse grants; still filter tabs by permission.
+
+Production-hall balances are cumulative ready kilograms. Selected orders
+become numbered receipt lines, and finished stock is tracked by actual packing
+units while retaining equivalent kg. One order may be received in several units.
+The exact units are «كيلو-باكت-رول-قطعة»; support both unit-weight and
+piece-content/weight calculations per receipt line.
+
+**Why:** the user explicitly confirmed both calculation methods and these
+four units when redefining the warehouse receiving workflow.
+
+**How to apply:** never combine dissimilar units or packing weights as one
+count. Keep partial remaining kg in the hall, validate all lines together, and
+do not infer historical units from old kg-only balances.
 
 Order release is a focused transition to ready for production, not a general
 status editor or automatic manufacturing start.
@@ -153,3 +231,21 @@ all customer-order groups expanded.
 
 **How to apply:** preserve this phone-oriented disclosure preference when
 changing the film board; do not expand all requests by default.
+
+صالة الإنتاج هي الموقع، ولا توجد مواقع متعددة داخلها.
+
+**Why:** the user corrected the storage-location assumption: «الصحيح انه لا يوجد مواقع متعددة في الصاله وان صاله الانتاج هي الموقع».
+
+**How to apply:** do not require creating or selecting an internal storage
+location in the production hall. Keep this rule scoped to the production hall;
+do not infer multiple sublocations there from the existing warehouse data model.
+
+Receipt source is fixed «صالة الإنتاج» and destination is fixed «صالة المواد
+التامة», without choosing sublocations.
+
+**Why:** the user explicitly approved these fixed source/destination halls when
+correcting the unnecessary storage-location prerequisite.
+
+**How to apply:** receipt creation must work without manually creating any
+location. Keep existing historical stock and vouchers; do not reinterpret old
+locations or consolidate their balances as part of this correction.

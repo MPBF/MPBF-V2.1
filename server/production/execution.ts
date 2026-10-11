@@ -5,6 +5,7 @@ import {
 import { available, execution, lockOrders, mutate, one, permission, productSnapshot, ProductionError, rows, type Connection, type ConnectionPool, type LockedOrder } from "./core";
 import { machine } from "./machines";
 import { productionRollNumber } from "../order-number";
+import { consumeMixes, lockMixMachine } from "./mix-consumption";
 
 export class ProductionExecutionService {
   constructor(readonly pool: ConnectionPool) {}
@@ -28,6 +29,7 @@ export class ProductionExecutionService {
   film(actor: ProductionUser, id: number, input: FilmInput) {
     permission(actor, "operate_film");
     return mutate(this.pool, actor, `film:${id}`, input, async tx => {
+      await lockMixMachine(tx, input.machine_id);
       const [order] = await lockOrders(tx, [id]);
       const exec = await execution(tx, id);
       if (exec.film_closed_at) throw new ProductionError("الفيلم مغلق؛ لا يمكن إضافة رولات", "Film is closed. No more rolls can be added.");
@@ -44,7 +46,9 @@ export class ProductionExecutionService {
         printerId = (await machine(tx, filmMachine.inline_printer_id, "printing", exec.product)).id;
       }
       const seq = (await one<{ next: number }>(tx, "SELECT COALESCE(max(sequence),0)+1 next FROM factory_rolls WHERE production_order_id=$1", [id])).next;
-      const { at } = await one<{ at: Date }>(tx, "SELECT clock_timestamp() at");
+      // Keep PostgreSQL microseconds rather than round-tripping through JS Date:
+      // an earlier committed mix in the same millisecond must remain eligible.
+      const { at } = await one<{ at: string }>(tx, "SELECT clock_timestamp()::text at");
       const roll = await one<ProductionRollRecord>(tx, `INSERT INTO factory_rolls
         (production_order_id,sequence,roll_number,weight_kg,stage,film_machine_id,created_by,is_last_roll,
           printing_machine_id,printed_by,printed_at,created_at)
@@ -52,9 +56,10 @@ export class ProductionExecutionService {
       [id, seq, productionRollNumber(order.production_order_number, seq, order.compact_roll_numbering === true), kgString(amount),
         stageAfterFilm(exec.is_printed, exec.is_roll_product, !!printerId), filmMachine.id, actor.id,
         isLastRoll, printerId, printerId ? actor.id : null, at]);
+      const mix_tracking = await consumeMixes(tx, roll.id, filmMachine.id, kgString(amount));
       if (isLastRoll) await this.close(tx, id, actor.id);
       await recompute(tx, order);
-      return roll;
+      return { ...roll, mix_tracking };
     });
   }
   closeFilm(actor: ProductionUser, id: number, input: { request_id: string }) {
