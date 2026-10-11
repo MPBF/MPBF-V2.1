@@ -888,7 +888,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
               const e=document.querySelector('.warehouse-hall-grid'),r=e.getBoundingClientRect(),s=getComputedStyle(e);
               return {left:r.left,right:r.right,columns:s.gridTemplateColumns.split(' ').length,
                 track:parseFloat(s.gridTemplateColumns),cards:[...e.children].map(n=>{
-                  const b=n.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,width:b.width};
+                  const b=n.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,width:b.width,height:b.height};
                 })};
             })()`);
             if(count===1) singleWidth=geometry.cards[0].width;
@@ -897,6 +897,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             check(`${context}: cards remain contained`,geometry.cards.every(c=>c.left>=geometry.left-1&&c.right<=geometry.right+1));
             check(`${context}: cards start at logical edge`,lang==="ar"?Math.abs(geometry.cards[0].right-geometry.right)<1:Math.abs(geometry.cards[0].left-geometry.left)<1);
             check(`${context}: rows fill before wrapping`,geometry.cards.every((c,i)=>i<geometry.columns?Math.abs(c.top-geometry.cards[0].top)<1:c.top>geometry.cards[0].top));
+            check(`${context}: long-name cards stay compact`,geometry.cards.every(c=>c.height<=290));
+            if(count===7) check(`${context}: regular ready card stays short`,geometry.cards[6].height<=235);
             check(`${context}: long content does not overflow`,await evaluate("[...document.querySelectorAll('.warehouse-order-card,.warehouse-order-card header,.warehouse-order-product,.warehouse-order-metrics,.warehouse-order-metrics>div')].every(e=>e.scrollWidth<=e.clientWidth+1)&&document.documentElement.scrollWidth<=innerWidth+1"));
             check(`${context}: quantities and identity retained`,await evaluate(`(()=>{
               const c=document.querySelector('.warehouse-order-card'),values=[...c.querySelectorAll('.warehouse-order-metrics strong')].map(e=>e.innerText.replaceAll(',','').replace(/\\s+/g,''));
@@ -906,6 +908,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             })()`));
             check(`${context}: quantity digits remain on a single line`,await evaluate("[...document.querySelectorAll('.warehouse-order-metrics strong')].every(e=>{const r=document.createRange();r.selectNodeContents(e.firstChild);return [...r.getClientRects()].filter(b=>b.width>1).length===1;})"));
             check(`${context}: production status retained`,await evaluate("document.querySelectorAll('.warehouse-order-state').length"),count);
+            check(`${context}: compact status has full accessible meaning`,await evaluate("[...document.querySelectorAll('.warehouse-order-state')].every(e=>e.innerText.length<=12&&!!e.getAttribute('title')&&e.getAttribute('aria-label')===e.getAttribute('title'))"));
             check(`${context}: selection targets remain usable`,await evaluate("[...document.querySelectorAll('.warehouse-order-select')].every(e=>e.getBoundingClientRect().height>=43.5&&!e.querySelector('input').disabled)"));
             await evaluate("document.querySelector('[data-hall-select=\"8000\"]').click()");
             await wait("document.querySelector('[data-hall-select=\"8000\"]').checked&&!document.querySelector('[data-hall-receive-selected]').disabled");
