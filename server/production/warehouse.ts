@@ -60,9 +60,14 @@ export class ProductionWarehouseService {
         await tx.query("UPDATE factory_locations SET is_active=true WHERE id=$1", [destination.id]);
       // Sequence value and voucher are server-generated; gaps after rollback are normal.
       const { id } = await one<{ id: number }>(tx, "SELECT nextval(pg_get_serial_sequence('factory_receipts','id'))::int id");
+      // The hall advisory lock serializes new receipts. Historical prefixes are
+      // preserved; the FP-Rec series starts independently and cannot collide.
+      const { receipt_sequence } = await one<{ receipt_sequence: string }>(tx,
+        `SELECT (COALESCE(MAX(substring(voucher_number FROM '^FP-Rec([0-9]+)$')::bigint),0)+1)::text receipt_sequence
+         FROM factory_receipts WHERE voucher_number ~ '^FP-Rec[0-9]+$'`);
       const receipt = await one<{ id: number; voucher_number: string }>(tx,
         "INSERT INTO factory_receipts(id,voucher_number,created_by,notes) VALUES($1,$2,$3,$4) RETURNING *",
-        [id, `FR-${String(id).padStart(8, "0")}`, actor.id, input.notes ?? null]);
+        [id, `FP-Rec${receipt_sequence.padStart(4, "0")}`, actor.id, input.notes ?? null]);
       const savedItems = [];
       for (const [index, item] of items.entries()) {
         const exec = await execution(tx, item.production_order_id);

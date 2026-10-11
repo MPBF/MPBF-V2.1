@@ -25,7 +25,7 @@ import "../warehouse/warehouse-cards.css";
 import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
 import { ReceiptVoucherModal, type ReceiptDraft } from "../warehouse/ReceiptVoucherModal";
-import { calculatePacking, type ReceiptPacking } from "../../../../shared/production-packing";
+import { deriveReceiptPacking } from "../../../../shared/receipt-draft";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
 export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" | "planning" };
@@ -433,10 +433,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
     const normalized=drafts.map(row=>({...row,count:latinDigits(row.count),unitWeight:latinDigits(row.unitWeight),pieces:latinDigits(row.pieces),pieceWeight:latinDigits(row.pieceWeight)}));
     const calculated=normalized.map(row=>{
       try {
-        const packing:ReceiptPacking=row.unit==="kg"?{unit:"kg",method:"unit_weight",quantity:row.count}
-          :row.method==="unit_weight"?{unit:row.unit,method:row.method,quantity:row.count,unit_weight_kg:row.unitWeight}
-          :{unit:row.unit,method:row.method,quantity:row.count,pieces_per_unit:Number(row.pieces),piece_weight_grams:row.pieceWeight};
-        return {packing,result:calculatePacking(packing)};
+        return deriveReceiptPacking(row);
       } catch { return null; }
     });
     const invalidLine=normalized.findIndex((row,index)=>!row.orderId||!calculated[index]);
