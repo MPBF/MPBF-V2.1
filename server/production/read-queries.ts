@@ -68,6 +68,7 @@ export const rollSelect = `SELECT r.*,p.production_order_number,p.batch_number,p
   JOIN orders o ON o.id=p.order_id JOIN factory_execution e ON e.production_order_id=r.production_order_id
   LEFT JOIN users roll_creator ON roll_creator.id=r.created_by`;
 export const receiptSelect = `SELECT r.*,COALESCE((SELECT jsonb_agg(to_jsonb(ri)||jsonb_build_object(
+  'quantity_kg',ri.quantity_kg::text,
   'production_order_number',p.production_order_number,'location_name',l.name,'location_name_ar',l.name_ar) ORDER BY ri.id)
   FROM factory_receipt_items ri JOIN production_orders p ON p.id=ri.production_order_id
   JOIN factory_locations l ON l.id=ri.location_id WHERE ri.receipt_id=r.id),'[]'::jsonb) items

@@ -53,4 +53,22 @@ describe("receipt printing", () => {
     expect(html).toContain(language==="ar"?'dir="rtl"':'dir="ltr"');
     expect(html).toContain("table-header-group");
   });
+  test.each(["ar","en"])("prints numeric history quantities and mixed response formats in %s", language => {
+    // Reproduce JSONB aggregation: PostgreSQL numeric becomes a JSON number.
+    const historyReceipt = JSON.parse(JSON.stringify({
+      ...receipt,
+      items: [0.1, "0.20", 10, "1.05"].map((quantity_kg, index) => ({
+        ...receipt.items[0], id:index+1, quantity_kg,
+      })),
+    })) as ProductionReceipt;
+    const html = receiptPrintHtml(historyReceipt, language);
+    expect(html).toContain("<bdi>11.35 kg</bdi>");
+    expect((html.match(/<tr><td>/g) ?? []).length).toBe(4);
+  });
+  test.each([null, undefined, "invalid", -1, 1.234])("rejects invalid receipt weight %s rather than inventing a total", quantity_kg => {
+    const invalidReceipt = JSON.parse(JSON.stringify({
+      ...receipt, items: [{...receipt.items[0], quantity_kg}],
+    })) as ProductionReceipt;
+    expect(() => receiptPrintHtml(invalidReceipt,"en")).toThrow("Invalid quantity");
+  });
 });

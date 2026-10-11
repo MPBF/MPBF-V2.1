@@ -1,4 +1,5 @@
 import type { ProductionReceipt } from "../../../shared/production";
+import { kgHundredths } from "../../../shared/production";
 import { receiptUnitLabel } from "../../../shared/production-packing";
 
 const escape = (value: unknown) => String(value ?? "—").replace(/[&<>"']/g, char =>
@@ -10,10 +11,9 @@ export function receiptPrintHtml(receipt: ProductionReceipt, language: string) {
     { maximumFractionDigits: digits }).format(Number(value ?? 0)));
   const date = new Intl.DateTimeFormat(en ? "en-GB" : "ar-SA-u-ca-gregory-nu-latn",
     { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" }).format(new Date(receipt.created_at));
-  const total = receipt.items.reduce((sum, item) => {
-    const [whole, fraction = ""] = item.quantity_kg.split(".");
-    return sum + BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
-  }, 0n);
+  // Historical JSON aggregates can contain numeric weights, unlike direct
+  // PostgreSQL numeric columns. Accept both without floating-point summation.
+  const total = receipt.items.reduce((sum, item) => sum + kgHundredths(String(item.quantity_kg)), 0n);
   const rows = receipt.items.map((item, index) => {
     const packing = item.packing;
     const specification = packing ? packing.method === "unit_weight"
