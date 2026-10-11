@@ -21,6 +21,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const monitoringWarningOnly = process.argv.includes("--monitoring-warning-only");
    const operatorLayoutOnly = process.argv.includes("--operator-layout-only");
   const operatorNavigationOnly = process.argv.includes("--operator-navigation-only");
+  const planningNavigationOnly = process.argv.includes("--planning-navigation-only");
   const compactControlsOnly = process.argv.includes("--compact-controls-only");
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
   const rawMixingOnly = process.argv.includes("--raw-mixing-only");
@@ -120,6 +121,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         let body = [], status = 200;
         if (route === "/me") body = { user: { id: 42, username: "fixture", display_name: "Fixture user", display_name_ar: "مستخدم الاختبار", permissions, preferred_language: language, ...roleMetadata } };
         else if (route === "/public-branding") body = { companyNameEn: "MPBF Factory", companyNameAr: "مصنع MPBF", logoSrc: null };
+        else if (route === "/production/monitoring/summary") body = { activated_at: null, machines: [], production_machines: [] };
+        else if (route === "/production/monitoring/log" || route === "/production/monitoring/mixes") body = { records: [], next: null };
         else if (request.method !== "GET") {
           const input = JSON.parse(request.postData || "{}");
           writes.push({ route, input });
@@ -293,7 +296,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       await send("Page.navigate", { url: origin + route }); await loaded;
       await wait("!!document.querySelector('.production-app,.raw-ops')");
       await wait("!document.querySelector('.prod-loading')");
-       if (operatorNavigationOnly || warehouseNavigationOnly || rawMixingOnly) return;
+       if (operatorNavigationOnly || planningNavigationOnly || warehouseNavigationOnly || rawMixingOnly) return;
        if(["/production/film","/production/printing","/production/cutting"].includes(route)){
          check(`${language} ${route}: all orders initially collapsed`,await evaluate("document.querySelectorAll('[data-film-order-id][aria-expanded=\"true\"],[data-operator-order-id][aria-expanded=\"true\"]').length"),0);
        }
@@ -544,6 +547,63 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
        console.log(`Raw mixing browser verification passed: ${passed} assertions.`);
        return;
      }
+     if (planningNavigationOnly) {
+       for (const lang of ["ar", "en"]) {
+         language = lang;
+         for (const width of [390, 768, 1440]) {
+           await send("Emulation.setDeviceMetricsOverride", { width, height: 950, deviceScaleFactor: 1, mobile: width < 500 });
+           roleMetadata = {};
+           permissions = ["admin"];
+           const label = `${lang} ${width}`;
+           await navigate("/planning");
+           check(`${label}: main planning title localized`, await evaluate("document.querySelector('.prod-heading h2').textContent"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
+           check(`${label}: planning tabs only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(a=>a.getAttribute('href'))"), ["/planning", "/planning/monitoring"]);
+           check(`${label}: management active`, await evaluate("document.querySelector('.prod-view-nav a[aria-current=\"page\"]').getAttribute('href')"), "/planning");
+           check(`${label}: planning sidebar localized and selected`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/planning\"]').textContent.trim()"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
+           check(`${label}: planning fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           await fs.writeFile(`/tmp/planning-${lang}-${width}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+           await evaluate("document.querySelector('.prod-view-nav a[href=\"/planning/monitoring\"]').click()");
+           await wait("!!document.querySelector('.pm-page')");
+           check(`${label}: monitoring main heading localized`, await evaluate("document.querySelector('.pm-page h2').textContent"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
+           check(`${label}: monitoring planning-only tabs`, await evaluate("[...document.querySelectorAll('.pm-page .raw-ops-nav a')].map(a=>a.getAttribute('href'))"), ["/planning", "/planning/monitoring"]);
+           check(`${label}: monitoring active`, await evaluate("document.querySelector('.pm-page .raw-ops-nav a[aria-current=\"page\"]').getAttribute('href')"), "/planning/monitoring");
+           check(`${label}: sidebar active across planning subtabs`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/planning\"]').classList.contains('active')"));
+           check(`${label}: monitoring fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           await navigate("/production/monitoring");
+           check(`${label}: old monitoring link redirects`, await evaluate("location.pathname"), "/planning/monitoring");
+           await navigate("/production");
+           check(`${label}: operations landing is film`, await evaluate("location.pathname"), "/production/film");
+           check(`${label}: no planning tabs in operations`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(a=>a.getAttribute('href'))"), ["/production/film", "/production/printing", "/production/cutting", "/production/mixing"]);
+           for (const permission of ["manage_production", "view_production"]) {
+             permissions = [permission];
+             await navigate("/planning");
+             check(`${label}: ${permission} keeps management only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(a=>a.getAttribute('href'))"), ["/planning"]);
+             const before = stateScopes.length;
+             await navigate("/planning/monitoring");
+             await wait("!!document.querySelector('.pm-page .raw-ops-banner.error')");
+             check(`${label}: ${permission} monitoring denied`, await evaluate("!!document.querySelector('.pm-page .raw-ops-banner.error')"));
+             check(`${label}: denied monitoring does not load production state`, stateScopes.length, before);
+           }
+           permissions = ["view_production", "view_film_dashboard", "view_mixing", "operate_film"];
+           roleMetadata = { production_role_binding: { mode: "operator", stages: ["film"] }, is_role_preview: true };
+           const before = stateScopes.length;
+           await navigate("/planning");
+           check(`${label}: bound film preview denied management`, await evaluate("document.querySelector('.production-app').innerText.includes(" + jsLiteral(lang === "ar" ? "لا تتوفر صلاحية لهذا العرض." : "You do not have permission to view this page.") + ")"));
+           check(`${label}: denied management fetches no production data`, stateScopes.length, before);
+           check(`${label}: operator preview has no planning sidebar`, await evaluate("!document.querySelector('.sidebar .nav a[href=\"/planning\"]')"));
+           await navigate("/production/mixing");
+           await wait("!!document.querySelector('.raw-ops-nav')");
+           check(`${label}: mixing stays with own operations only`, await evaluate("[...document.querySelectorAll('.raw-ops-nav a')].map(a=>a.getAttribute('href'))"), ["/production/film", "/production/mixing"]);
+           roleMetadata = {};
+           permissions = ["receive_production"];
+           await navigate("/production");
+           check(`${label}: legacy receiving landing preserved`, await evaluate("location.pathname"), "/warehouse/hall");
+         }
+       }
+       check("planning navigation does not write business data", writes, []);
+       check("planning pages have no browser exceptions", errors, []);
+       console.log(`Verified ${passed} planning-navigation assertions with isolated API fixtures.`);return;
+     }
      if (warehouseNavigationOnly) {
        for (const lang of ["ar", "en"]) {
          language = lang;
@@ -553,7 +613,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            permissions = ["admin"];
            await navigate("/production");
            check(`${lang} ${width}: production contains manufacturing tabs only`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"),
-             ["/production", "/production/film", "/production/printing", "/production/cutting", "/production/mixing"]);
+             ["/production/film", "/production/printing", "/production/cutting", "/production/mixing"]);
            check(`${lang} ${width}: warehouse is a separate sidebar entry`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/warehouse\"]').innerText"), lang === "ar" ? "المستودع" : "Warehouse");
            await navigate("/warehouse/raw-materials");
            await wait("!!document.querySelector('.raw-ops-nav')");
@@ -731,8 +791,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            for (const grants of [["admin", "operate_film"], ["manage_production", "operate_film"], ["view_production"]]) {
              permissions = grants;
              await navigate("/production");
-             check(`${lang} ${width}: management navigation unchanged for ${grants}`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"),
-               ["/production", "/production/film", "/production/printing", "/production/cutting", "/production/mixing"]);
+             check(`${lang} ${width}: operation tabs exclude planning for ${grants}`, await evaluate("[...document.querySelectorAll('.prod-view-nav a')].map(link=>link.getAttribute('href'))"),
+               grants.includes("view_production") ? ["/production/film", "/production/printing", "/production/cutting"] : ["/production/film", "/production/printing", "/production/cutting", "/production/mixing"]);
            }
          }
        }
@@ -747,7 +807,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
          language=lang;
          for (const width of [390,768,1440]) {
            await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<500});
-           for (const route of ["/production","/production/film","/production/printing","/production/cutting"]) {
+           for (const route of ["/planning","/production/film","/production/printing","/production/cutting"]) {
              await navigate(route);
              await wait("!!document.querySelector('.roll-label-option')");
              check(`${lang} ${width} ${route}: labels initially collapsed`,await evaluate("!document.querySelector('details.roll-label-controls').open"));
@@ -847,7 +907,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       language = lang;
       for (const width of [320, 390, 430, 768, 1440]) {
         await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
-         for (const route of (operatorLayoutOnly ? ["/production/film", "/production/printing", "/production/cutting"] : ["/production", "/production/film", "/production/printing", "/production/cutting", "/production/hall", "/production/warehouse", "/production/rolls/2", "/production/rolls/3"])) {
+         for (const route of (operatorLayoutOnly ? ["/production/film", "/production/printing", "/production/cutting"] : ["/planning", "/production/film", "/production/printing", "/production/cutting", "/production/hall", "/production/warehouse", "/production/rolls/2", "/production/rolls/3"])) {
           permissions=route==="/production/film"?["operate_film"]:route==="/production/printing"?["operate_printing"]:route==="/production/cutting"?["operate_cutting"]:["admin"];
           await navigate(route);
           check(`${lang} ${width} ${route} fits viewport`, await evaluate("document.documentElement.scrollWidth <= innerWidth + 1"));
@@ -975,7 +1035,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           if(route==="/production/rolls/3"){
             check(`${lang} ${width} absent stage actors not guessed`,await evaluate(`document.querySelector('.prod-roll-detail').innerText.includes(${jsLiteral(lang==="en"?"Not recorded":"غير مسجل")})`));
           }
-          if (lang === "en" && route === "/production" && [390, 1440].includes(width)) {
+          if (lang === "en" && route === "/planning" && [390, 1440].includes(width)) {
             const shot = await send("Page.captureScreenshot", { format: "png" });
             await fs.writeFile(path.join(profile,`factory-production-${width}.png`), Buffer.from(shot.data, "base64"));
           }
