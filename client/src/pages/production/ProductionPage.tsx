@@ -25,7 +25,8 @@ import "../warehouse/warehouse-cards.css";
 import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
 import { ReceiptVoucherModal, type ReceiptDraft } from "../warehouse/ReceiptVoucherModal";
-import { calculatePacking, type ReceiptPacking } from "../../../../shared/production-packing";
+import { deriveReceiptPacking } from "../../../../shared/receipt-draft";
+import { printReceipt } from "../../lib/receipt-print";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
 export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" | "planning" };
@@ -187,17 +188,20 @@ function useWrite(reload: () => Promise<void>, language: string) {
   return { saving, error, success, warning, perform, retry, fail, uncertain };
 }
 
-function OrderSummary({ order, language, showFilmDuration = true }: { order: ProductionOrderRecord; language: string; showFilmDuration?: boolean }) {
+function OrderSummary({ order, language, showFilmDuration = true, compactDuration = false }: { order: ProductionOrderRecord; language: string; showFilmDuration?: boolean; compactDuration?: boolean }) {
   return <>
     <div className="prod-order-main">
     <h3><span className="prod-number">{order.production_order_number}</span></h3>
     <div className="prod-order-meta">{text("customerOrder", language)} <span className="prod-number">{order.order_number}</span> · {customerName(order, language)} · {orderProduct(order, language)}</div>
     <div className="prod-chips" style={{ marginTop: 8 }}>
-      <span className="prod-chip">{text("customerStatus", language)}: {text(order.order_status,language)}</span>
-      <span className="prod-chip warm">{text("productionStatus", language)}: {text(order.status,language)}</span>
-      {order.stage && <span className="prod-chip muted">{text("stage", language)}: {text(order.stage,language)}</span>}
+      <span className="prod-chip" title={`${text("customerStatus",language)}: ${text(order.order_status,language)}`}>{!compactDuration&&`${text("customerStatus", language)}: `}{text(order.order_status,language)}</span>
+      <span className="prod-chip warm" title={`${text("productionStatus",language)}: ${text(order.status,language)}`}>{!compactDuration&&`${text("productionStatus", language)}: `}{text(order.status,language)}</span>
+      {order.stage && <span className="prod-chip muted" title={`${text("stage",language)}: ${text(order.stage,language)}`}>{!compactDuration&&`${text("stage", language)}: `}{text(order.stage,language)}</span>}
     </div>
-    {showFilmDuration && <FilmDurationSummary durations={order.film_durations} language={language} />}
+    {showFilmDuration && (compactDuration ? <details className="prod-management-duration">
+      <summary>{language==="en"?"Film production duration":"مدة إنتاج الفيلم"}</summary>
+      <FilmDurationSummary durations={order.film_durations} language={language} />
+    </details> : <FilmDurationSummary durations={order.film_durations} language={language} />)}
     </div>
   </>;
 }
@@ -264,7 +268,7 @@ function Management({ state, user, language, reload }: { state: ProductionState;
     <div className="prod-section-title"><h3>{text("started", language)} · {text("order", language)}</h3></div>
     <div className="prod-list prod-management-list">
       {activeOrders.length ? activeOrders.map(order => <article className="prod-order prod-management-order prod-management-active" key={order.id}>
-        <OrderSummary order={order} language={language} />
+        <OrderSummary order={order} language={language} compactDuration />
         <div className="prod-management-metrics">
           <OrderActuals order={order} language={language} />
           <div className="prod-measure"><span>{text("filmClosed", language)}</span><strong>{order.film_closed_at ? text("completed", language) : text("running", language)}</strong><small className="prod-muted">{date(order.film_closed_at, language, true)}</small></div>
@@ -275,8 +279,7 @@ function Management({ state, user, language, reload }: { state: ProductionState;
     <div className="prod-section-title"><h3>{text("start", language)} · {text("order", language)}</h3></div>
     <div className="prod-list prod-management-list">
       {unrecorded.length ? unrecorded.map(order => <article className="prod-order prod-management-order prod-management-unstarted" key={order.id}>
-        <OrderSummary order={order} language={language} />
-        <OrderActuals order={order} language={language} />
+        <OrderSummary order={order} language={language} compactDuration />
         <div className="prod-management-metrics">
           <div className="prod-measure"><span>{text("planned", language)}</span><strong>{number(order.final_quantity_kg, language)} kg</strong></div>
           <div className="prod-measure"><span>{text("produced", language)}</span><strong>{text("unrecorded", language)}</strong></div>
@@ -433,10 +436,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
     const normalized=drafts.map(row=>({...row,count:latinDigits(row.count),unitWeight:latinDigits(row.unitWeight),pieces:latinDigits(row.pieces),pieceWeight:latinDigits(row.pieceWeight)}));
     const calculated=normalized.map(row=>{
       try {
-        const packing:ReceiptPacking=row.unit==="kg"?{unit:"kg",method:"unit_weight",quantity:row.count}
-          :row.method==="unit_weight"?{unit:row.unit,method:row.method,quantity:row.count,unit_weight_kg:row.unitWeight}
-          :{unit:row.unit,method:row.method,quantity:row.count,pieces_per_unit:Number(row.pieces),piece_weight_grams:row.pieceWeight};
-        return {packing,result:calculatePacking(packing)};
+        return deriveReceiptPacking(row);
       } catch { return null; }
     });
     const invalidLine=normalized.findIndex((row,index)=>!row.orderId||!calculated[index]);
@@ -498,6 +498,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
       {canReceive ? <>{eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}</>:<div className="prod-muted">{text("readonly",language)}</div>}
     </Card>
     {canReceive&&receiptOpen&&<ReceiptVoucherModal
+      onPrint={receipt=>printReceipt(receipt,language)}
       language={language}
       eligible={eligible}
       drafts={drafts}
