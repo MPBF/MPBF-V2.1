@@ -556,7 +556,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
      if (planningNavigationOnly) {
        for (const lang of ["ar", "en"]) {
          language = lang;
-         for (const width of [390, 768, 1440]) {
+         for (const width of [320, 390, 768, 1280, 1440]) {
            await send("Emulation.setDeviceMetricsOverride", { width, height: 950, deviceScaleFactor: 1, mobile: width < 500 });
            roleMetadata = {};
            permissions = ["admin"];
@@ -567,6 +567,34 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            check(`${label}: management active`, await evaluate("document.querySelector('.planning-nav a[aria-current=\"page\"]').getAttribute('href')"), "/planning");
            check(`${label}: planning sidebar localized and selected`, await evaluate("document.querySelector('.sidebar .nav a[href=\"/planning\"]').textContent.trim()"), lang === "ar" ? "التخطيط والمراقبة" : "Planning and monitoring");
            check(`${label}: planning fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+           const compactOrders = await evaluate(`(()=>{
+             const lists=[...document.querySelectorAll('.planning-page .prod-list')].slice(0,2);
+             return lists.map(list=>{
+               const cards=[...list.querySelectorAll(':scope > .prod-order')];
+               const bounds=list.getBoundingClientRect();
+               const rects=cards.map(card=>{const r=card.getBoundingClientRect();return {width:r.width,height:r.height,top:r.top,left:r.left,right:r.right}});
+               return {count:cards.length,columns:getComputedStyle(list).gridTemplateColumns.split(' ').length,
+                 widths:rects.map(r=>r.width),heights:rects.map(r=>r.height),
+                 contained:rects.every(r=>r.left>=bounds.left-1&&r.right<=bounds.right+1),
+                 contentFits:cards.every(card=>card.scrollWidth<=card.clientWidth+1),
+                 firstRow:rects.filter(r=>Math.abs(r.top-rects[0].top)<1).length,
+                 actionsFit:cards.every(card=>[...card.querySelectorAll('button,summary')].every(control=>{const r=control.getBoundingClientRect();return r.width>=24&&r.height>=43})),
+                 text:cards.map(card=>card.innerText)};
+             });
+           })()`);
+           const tracks = width >= 1100 ? 3 : width >= 700 ? 2 : 1;
+           check(`${label}: compact order columns`, compactOrders.map(list=>list.columns), [tracks,tracks]);
+           check(`${label}: active and unstarted orders retained`, compactOrders.map(list=>list.count), [7,2]);
+           check(`${label}: compact orders contained without overflow`, compactOrders.every(list=>list.contained&&list.contentFits));
+           check(`${label}: cards remain compact without clipping`, compactOrders.every(list=>list.heights.every(height=>height<=470)));
+           check(`${label}: same-width cards fill rows`, compactOrders.every(list=>list.firstRow===Math.min(list.count,tracks)&&Math.max(...list.widths)-Math.min(...list.widths)<1));
+           check(`${label}: start and history remain usable`, compactOrders.every(list=>list.actionsFit));
+           check(`${label}: order and product identity visible`, compactOrders[0].text.some(text=>text.includes("PO-9")&&text.includes("ORDER-2")&&text.includes(lang==="en"?"Special plastic bag":"كيس بلاستيك خاص")));
+           const beforeHistory=historyCalls.length;
+           await evaluate("document.querySelector('.planning-page .prod-list .prod-order .prod-history summary').click()");
+           await wait("!!document.querySelector('.planning-page .prod-list .prod-order .prod-history[open] .prod-field')");
+           check(`${label}: compact order still loads its own rolls`, historyCalls.slice(beforeHistory).some(call=>call.kind==="rolls"&&call.params.order_id==="2"));
+           await evaluate("document.querySelector('.planning-page .prod-list .prod-order .prod-history summary').click()");
            const managementStyle = await evaluate("(()=>{const page=getComputedStyle(document.querySelector('.planning-page')),heading=getComputedStyle(document.querySelector('.planning-header h1')),refresh=getComputedStyle(document.querySelector('.planning-refresh')),card=getComputedStyle(document.querySelector('.prod-card'));return {page:[page.color,page.padding,page.maxWidth],heading:[heading.fontSize,heading.color,heading.lineHeight],refresh:[refresh.minHeight,refresh.fontSize,refresh.borderRadius,refresh.backgroundColor],card:[card.backgroundColor,card.borderColor]}})()");
            await fs.writeFile(`/tmp/planning-${lang}-${width}.png`, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
            await evaluate("document.querySelector('.planning-nav a[href=\"/planning/monitoring\"]').click()");

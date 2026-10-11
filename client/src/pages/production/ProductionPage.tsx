@@ -262,21 +262,26 @@ function Management({ state, user, language, reload }: { state: ProductionState;
       <Metric label={text("queue", language)} value={number(state.queues.length, language, 0)} unit={text("queueEntries",language)} />
     </div>
     <div className="prod-section-title"><h3>{text("started", language)} · {text("order", language)}</h3></div>
-    <div className="prod-list">
-      {activeOrders.length ? activeOrders.map(order => <article className="prod-order" key={order.id}>
+    <div className="prod-list prod-management-list">
+      {activeOrders.length ? activeOrders.map(order => <article className="prod-order prod-management-order prod-management-active" key={order.id}>
         <OrderSummary order={order} language={language} />
-        <OrderActuals order={order} language={language} />
-        <div className="prod-measure"><span>{text("filmClosed", language)}</span><strong>{order.film_closed_at ? text("completed", language) : text("running", language)}</strong><small className="prod-muted">{date(order.film_closed_at, language, true)}</small></div>
+        <div className="prod-management-metrics">
+          <OrderActuals order={order} language={language} />
+          <div className="prod-measure"><span>{text("filmClosed", language)}</span><strong>{order.film_closed_at ? text("completed", language) : text("running", language)}</strong><small className="prod-muted">{date(order.film_closed_at, language, true)}</small></div>
+        </div>
         <ProductionHistory kind="rolls" title={`${text("allRolls",language)} · ${number(order.roll_count??0,language,0)}`} orderId={order.id} language={language} refresh={state}/>
       </article>) : <Empty title={text("noRows", language)} />}
     </div>
     <div className="prod-section-title"><h3>{text("start", language)} · {text("order", language)}</h3></div>
-    <div className="prod-list">
-      {unrecorded.length ? unrecorded.map(order => <article className="prod-order" key={order.id}>
+    <div className="prod-list prod-management-list">
+      {unrecorded.length ? unrecorded.map(order => <article className="prod-order prod-management-order prod-management-unstarted" key={order.id}>
         <OrderSummary order={order} language={language} />
-        <div className="prod-measure"><span>{text("planned", language)}</span><strong>{number(order.final_quantity_kg, language)} kg</strong></div>
-        <div className="prod-measure"><span>{text("produced", language)}</span><strong>{text("unrecorded", language)}</strong></div>
-        <div className="prod-measure"><span>{text("productionStatus", language)}</span><strong>{text(order.status,language)}</strong></div>
+        <OrderActuals order={order} language={language} />
+        <div className="prod-management-metrics">
+          <div className="prod-measure"><span>{text("planned", language)}</span><strong>{number(order.final_quantity_kg, language)} kg</strong></div>
+          <div className="prod-measure"><span>{text("produced", language)}</span><strong>{text("unrecorded", language)}</strong></div>
+          <div className="prod-measure"><span>{text("productionStatus", language)}</span><strong>{text(order.status,language)}</strong></div>
+        </div>
         {canManage && canStartFilmProductionOrder(order) && <button className="prod-btn" disabled={write.saving} onClick={() => start(order)}><Factory />{text("start", language)}</button>}
       </article>) : <Empty title={text("noRows", language)} />}
     </div>
