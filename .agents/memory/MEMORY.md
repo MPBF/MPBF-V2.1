@@ -96,3 +96,5 @@
 - [Order status design](order-status-design.md) — user requires colored order states and approved combining status/actions into two rows to save table width.
 - [Operator roll card sizing](operator-roll-card-sizing.md) — user approved small fixed-width roll cards that wrap, never stretch or squeeze as counts change.
 - [Warehouse hall card sizing](warehouse-hall-card-sizing.md) — user approved six ready-order cards per desktop row, fewer on smaller screens; scoped to the production hall.
+- [Planning order cards](planning-order-card-sizing.md) — user approved three compact desktop cards, not the warehouse six-card rule; preserve details and actions.
+- [Finished receipt workflow](finished-receipt-workflow.md) — requested kg drives derived unit weight; compact form, automatic date and FP-Rec numbering, saved-only A4 printing.

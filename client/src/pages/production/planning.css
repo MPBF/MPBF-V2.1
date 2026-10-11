@@ -237,6 +237,14 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
+.planning-page .prod-management-duration summary {
+  min-height: 44px;
+  padding: 9px 0;
+  color: var(--planning-muted);
+  cursor: pointer;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
 .planning-page .prod-management-order .prod-film-duration {
   margin-top: 7px;
   padding-top: 7px;
