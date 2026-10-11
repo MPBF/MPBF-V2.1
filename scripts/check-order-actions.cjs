@@ -7,7 +7,8 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
-const outputDir = path.join("screenshots", "order-signatures");
+const compactOnly = process.argv.includes("--compact-actions-only");
+const outputDir = compactOnly ? "/tmp/order-compact-actions" : path.join("screenshots", "order-signatures");
 const releaseOnly = process.argv.includes("--production-release-only");
 
 (async () => {
@@ -121,7 +122,12 @@ const releaseOnly = process.argv.includes("--production-release-only");
         status=route==="/public/orders/7/print"&&new URL(request.url).searchParams.get("key")===publicKey?200:404;
         body=status===200?{...detail(),public_print_path:publicPath}:{message:"الطلب غير موجود",message_en:"Order not found."};
       }
-      else if (route === "/orders") body = [{ ...order, customer_name_ar: "عميل تجريبي", production_orders_summary: [] }];
+      else if (route === "/orders") body = compactOnly
+        ? ["waiting", "in_production", "completed", "cancelled", "unknown_test"].map((status, index) => ({
+          ...order, id: 7 + index, order_number: `O-TEST-${index + 1}`, status,
+          customer_name_ar: "عميل تجريبي", customer_name: "Test customer", production_orders_summary: [],
+        }))
+        : [{ ...order, customer_name_ar: "عميل تجريبي", production_orders_summary: [] }];
       else if (route === "/orders/display-folders") body = { counts: { new: 1, production: 0, urgent: 0, archive: 0 }, total: 1 };
       else if (route === "/master-batch-colors") body = palette;
       else if (route === "/customer-products") body = paletteProducts();
@@ -177,6 +183,59 @@ const releaseOnly = process.argv.includes("--production-release-only");
       const shot = await send("Page.captureScreenshot", { format: "png" });
       await fs.writeFile(path.join(outputDir, `${name}.png`), Buffer.from(shot.data, "base64"));
     };
+    if (compactOnly) {
+      const visibleRoot = (width) => width < 701 ? ".mobile-cards" : ".table-wrap table";
+      for (const lang of ["ar", "en"]) {
+        language = lang;
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 1100, deviceScaleFactor: 1, mobile: false });
+          for (const grants of [["admin"], ["view_orders"]]) {
+            permissions = grants;
+            const admin = grants.includes("admin");
+            const context = `${lang} ${width}px ${admin ? "admin" : "read-only"}`;
+            await navigate("/orders");
+            await wait(`document.querySelectorAll('${visibleRoot(width)} .order-row-tools').length===5`);
+            const root = visibleRoot(width);
+            const scoped = (selector) => JSON.stringify(`${root} ${selector}`);
+            check(`${context}: exactly two lines per order, one status badge`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-row-tools")})].every(e=>e.children.length===2&&e.querySelectorAll('.order-status').length===1&&e.children[1].getBoundingClientRect().top>=e.children[0].getBoundingClientRect().bottom)`));
+            check(`${context}: requested colors and neutral unknown status`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-status")})].map(e=>getComputedStyle(e).backgroundColor)`),
+              ["rgb(225, 242, 232)", "rgb(251, 240, 201)", "rgb(248, 228, 215)", "rgb(249, 226, 223)", "rgb(237, 241, 239)"]);
+            check(`${context}: new status label localized`,
+              await evaluate(`document.querySelector(${scoped(".order-status--new")}).textContent`), lang === "ar" ? "جديد" : "New");
+            check(`${context}: status labels remain accessible`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-status")})].every(e=>e.getAttribute('aria-label').includes(e.textContent)&&e.textContent.trim().length>0)`));
+            check(`${context}: existing permitted controls retained`,
+              await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-row-tools")});return {view:e.querySelectorAll('button:has(svg)').length,print:e.querySelectorAll('a[href$="/print"]').length,menu:e.querySelectorAll('details').length};})()`),
+              { view: admin ? 3 : 1, print: 1, menu: admin ? 1 : 0 });
+            check(`${context}: no page-wide overflow`,
+              await evaluate(`document.documentElement.scrollWidth<=${width}+1`));
+            check(`${context}: controls fit their two lines without wrapping`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-row-tools__line")})].every(e=>{const p=e.getBoundingClientRect();return [...e.children].every(c=>{const r=c.getBoundingClientRect();return r.left>=p.left-1&&r.right<=p.right+1&&r.bottom<=p.bottom+1;});})`));
+            if (width >= 701) {
+              check(`${context}: no separate status column`,
+                await evaluate(`document.querySelectorAll('th.order-tools-column').length===1&&![...document.querySelectorAll('thead th')].some(e=>e.textContent.trim()===${JSON.stringify(lang === "ar" ? "الحالة" : "Status")})`));
+            }
+            if (admin) {
+              await click(`${root} .order-row-menu summary`);
+              check(`${context}: original menu opens with all three actions`,
+                await evaluate(`document.querySelector(${scoped(".order-row-menu")}).open&&document.querySelectorAll(${scoped(".order-row-menu__items button")}).length===15`));
+              await click(`${root} .order-row-menu summary`);
+              await capture(`orders-${lang}-${width}`);
+            }
+            await click(`${root} .order-row-tools__line > button`);
+            await wait("!!document.querySelector('.odm-summary-strip')");
+            check(`${context}: view still opens actual order-details component`,
+              await evaluate("!!document.querySelector('.odm-summary-strip')"));
+          }
+        }
+      }
+      check("compact design never writes real or fixture data", requests.every((r) => r.method === "GET"));
+      check("compact design has no browser exceptions", errors, []);
+      console.log(`Compact order actions passed ${passed} browser checks with isolated fixtures.`);
+      return;
+    }
     if (releaseOnly) {
       const open = async (details = false) => {
         const loaded = new Promise((resolve,reject)=>{
