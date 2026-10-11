@@ -33,7 +33,6 @@
 - [WhatsApp 24h window & templates](whatsapp-24h-window-templates.md) — business-initiated sends MUST use approved templates; free-form text outside 24h logs "sent" but never delivers; no text fallback on template failure (kills SMS fallback).
 - [Multer fileFilter error handling](multer-filefilter-errors.md) — multer fileFilter/limit errors fire in middleware before the route try/catch; wrap upload.single in a callback to return a clean 400 instead of crashing.
 - [Worker-thread offload](worker-thread-offload.md) — offload CPU parsing via inline eval Worker (not a separate file); esbuild won't copy a worker file into dist; transfer ArrayBuffer, terminate on timeout.
-- [i18n duplicate translation blocks](i18n-duplicate-keys.md) — ar.json/en.json have duplicate sibling keys (e.g. two warehouse.print blocks); only the LAST wins, edit that one or new keys silently don't resolve.
 - [Literal-colon labels](i18n-literal-colons.md) — single-word colon labels can disappear through namespace parsing; check actual label text in both languages.
 - [gpt-5 temperature constraint](gpt5-temperature.md) — gpt-5 family 400s on any custom temperature (only default 1); gate the param on model, and the agent model lives in a DB row not just code defaults.
 - [OpenAI org header](openai-org-header.md) — new OpenAI clients must pass `organization: null`; SDK auto-sends OPENAI_ORG_ID env → 401 mismatched_organization against the Replit AI proxy key.

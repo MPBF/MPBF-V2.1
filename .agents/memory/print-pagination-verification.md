@@ -38,3 +38,14 @@ which an exact leading-digit assertion rejected.
 
 **How to apply:** combine a bounded size tolerance with the page-content and
 pagination checks above; do not accept a different paper format.
+
+Arabic PDF text extraction is not a verbatim DOM string: bidirectional runs
+can move punctuation around numeric totals, lam-alef glyphs can change extracted
+character order, and wrapped headings can interleave neighbouring columns.
+
+**Why:** exact string matching initially rejected visually complete Arabic
+receipt PDFs, even though all content was present.
+
+**How to apply:** account narrowly for extraction differences, check totals on
+their actual PDF line, and use glyph coordinates to verify each header in its
+own column. Do not weaken checks to document-wide word presence alone.
