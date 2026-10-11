@@ -135,7 +135,7 @@ export default function RollOperatorOrders(props: Props) {
                 </div>
                 <div className="roll-operator-rolls">
                   {member.rolls.map(roll => <article
-                    className={`roll-operator-roll${stage === "printing" ? " roll-operator-roll--printing" : ""}`}
+                    className={`roll-operator-roll${stage === "printing" ? " roll-operator-roll--printing" : " roll-operator-roll--cutting"}`}
                     key={roll.id}
                     data-production-roll-id={roll.id}
                     data-roll-stage={stage}
@@ -146,47 +146,54 @@ export default function RollOperatorOrders(props: Props) {
                       </Link>
                       <strong className="roll-operator-roll-weight"><bdi dir="ltr">{number(roll.weight_kg)} kg</bdi></strong>
                     </div>
-                    <div className="roll-operator-roll-context">
-                      <div data-roll-author title={stage === "printing" ? (language === "en" ? "Author" : "المنشئ") : undefined}>
-                        {stage === "printing"
-                          ? <UserRound role="img" aria-label={language === "en" ? "Author" : "المنشئ"} />
-                          : <span>{language === "en" ? "By" : "بواسطة"}</span>}
-                        <strong>{creatorName(roll)}</strong>
+                    {stage === "printing"
+                      ? <div className="roll-operator-roll-context">
+                        <div data-roll-author title={language === "en" ? "Author" : "المنشئ"}>
+                          <UserRound role="img" aria-label={language === "en" ? "Author" : "المنشئ"} />
+                          <strong>{creatorName(roll)}</strong>
+                        </div>
+                        <div data-roll-date title={language === "en" ? "Date" : "التاريخ"}>
+                          <CalendarDays role="img" aria-label={language === "en" ? "Date" : "التاريخ"} />
+                          <strong>{date(roll.created_at)}</strong>
+                        </div>
                       </div>
-                      <div data-roll-date title={stage === "printing" ? (language === "en" ? "Date" : "التاريخ") : undefined}>
-                        {stage === "printing"
-                          ? <CalendarDays role="img" aria-label={language === "en" ? "Date" : "التاريخ"} />
-                          : <span>{language === "en" ? "Date" : "التاريخ"}</span>}
-                        <strong>{date(roll.created_at)}</strong>
+                      : <>
+                        <div className="roll-operator-cut-date" data-roll-date>{date(roll.created_at)}</div>
+                        <div className="roll-operator-cut-controls">
+                          <input
+                            id={`net-${roll.id}`}
+                            type="number"
+                            inputMode="decimal"
+                            min="0.01"
+                            max={roll.weight_kg}
+                            step="0.01"
+                            value={weights[roll.id] ?? ""}
+                            disabled={!canOperate}
+                            aria-label={`${text("netWeight")} ${roll.roll_number}`}
+                            onChange={event => onWeight(roll.id, event.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="prod-btn roll-operator-action roll-operator-cut-action"
+                            disabled={!canOperate || saving || !selectedMachine}
+                            onClick={() => onRecord(roll)}
+                            title={language === "en" ? "Record cutting" : "تسجيل القص"}
+                            aria-label={`${language === "en" ? "Record cutting" : "تسجيل القص"} ${roll.roll_number}`}
+                          >
+                            <Scissors aria-hidden="true" />
+                          </button>
                       </div>
-                    </div>
-                    {stage === "cutting" && <div className="prod-field roll-operator-net-field">
-                      <label htmlFor={`net-${roll.id}`}>{text("netWeight")}</label>
-                      <input
-                        id={`net-${roll.id}`}
-                        type="number"
-                        inputMode="decimal"
-                        min="0.01"
-                        max={roll.weight_kg}
-                        step="0.01"
-                        value={weights[roll.id] ?? ""}
-                        disabled={!canOperate}
-                        onChange={event => onWeight(roll.id, event.target.value)}
-                      />
-                    </div>}
-                    <button
+                    </>}
+                    {stage === "printing" && <button
                       type="button"
-                      className={`prod-btn roll-operator-action${stage === "printing" ? " roll-operator-print-action" : ""}`}
+                      className="prod-btn roll-operator-action roll-operator-print-action"
                       disabled={!canOperate || saving || !selectedMachine}
                       onClick={() => onRecord(roll)}
-                      {...(stage === "printing" ? {
-                        title: `${text("printRoll")} ${roll.roll_number}`,
-                        "aria-label": `${text("printRoll")} ${roll.roll_number}`,
-                      } : {})}
+                      title={`${text("printRoll")} ${roll.roll_number}`}
+                      aria-label={`${text("printRoll")} ${roll.roll_number}`}
                     >
-                      {stage === "printing" ? <Printer aria-hidden="true" /> : <Scissors aria-hidden="true" />}
-                      {stage === "cutting" && text("cutRoll")}
-                    </button>
+                      <Printer aria-hidden="true" />
+                    </button>}
                   </article>)}
                 </div>
               </article>;
