@@ -94,3 +94,4 @@
 - [Warehouse fixture parity](warehouse-fixture-parity.md) — types can pass with blank stock cards; verify empty snapshots, paginated feeds and visible unit-count cards together.
 - [Prospective mix accounting](production-mix-accounting.md) — machine-wide FIFO, shortages allowed without later reconciliation; no second raw deduction or inferred screw/layer dosing.
 - [Order status design](order-status-design.md) — user requires colored order states and approved combining status/actions into two rows to save table width.
+- [Operator roll card sizing](operator-roll-card-sizing.md) — user approved small fixed-width roll cards that wrap, never stretch or squeeze as counts change.
