@@ -9,6 +9,7 @@ const path = require("node:path");
 const WebSocket = require("ws");
 const XLSX = require("xlsx");
 const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-budget.cjs");
+const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pagination.cjs");
 
 (async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "deferred-loading-"));
@@ -59,7 +60,10 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       const url = new URL(request.url, "http://fixture.test");
       if (url.pathname === "/fixture-receipt") {
         response.writeHead(200, { "Content-Type": "text/html" });
-        response.end(receiptPrintHtml(receiptFixture, url.searchParams.get("lang") === "ar" ? "ar" : "en")); return;
+        const lang = (url.searchParams.get("language") ?? url.searchParams.get("lang")) === "ar" ? "ar" : "en";
+        const receipt = url.searchParams.has("lines")
+          ? makeReceiptFixture(Number(url.searchParams.get("lines")), lang) : receiptFixture;
+        response.end(receiptPrintHtml(receipt, lang)); return;
       }
       if (url.pathname.startsWith("/api/")) {
         apiRequests.push(url.pathname);
@@ -185,6 +189,7 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       throw Error(`Timed out: ${expression}`);
     };
     const open = async route => { assets.length = 0; await send("Page.navigate", { url: origin + route }); };
+    await checkReceiptPagination({ temp, open, wait, evaluate, send });
     const click = async selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
     const adminChunks = /(?:UsersAdmin|RolesAdmin|SettingsAdmin)-.*\.js$/;
     const deferred = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|HumanResources|UserDashboard|ProductionPage|OrderPrintPage|OrderCreateModal|CustomerProductModal|CustomerModal|ProductionOrderModal|OrderDetailsModal|OrderWorkspaceControls|xlsx|jspdf|html2canvas)[-.]/;
