@@ -93,3 +93,4 @@
 - [Static dictionary audits](static-dictionary-audits.md) — reject unsupported mutations explicitly; a static audit must not silently differ from runtime translations.
 - [Warehouse fixture parity](warehouse-fixture-parity.md) — types can pass with blank stock cards; verify empty snapshots, paginated feeds and visible unit-count cards together.
 - [Prospective mix accounting](production-mix-accounting.md) — machine-wide FIFO, shortages allowed without later reconciliation; no second raw deduction or inferred screw/layer dosing.
+- [Order status design](order-status-design.md) — user requires colored order states and approved combining status/actions into two rows to save table width.
