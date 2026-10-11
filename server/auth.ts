@@ -1,10 +1,12 @@
-import type { NextFunction, Request, Response } from "express";
+import { roles, users } from "@shared/schema";
 import bcrypt from "bcrypt";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db } from "./db";
-import { roles, users } from "@shared/schema";
+
 import type { RolePreviewState } from "../shared/role-preview";
+import type { NextFunction, Request, Response } from "express";
+
 
 export type AuthenticatedUser = {
   id: number;
@@ -161,16 +163,61 @@ export function requirePermission(...required: string[]) {
 export const requireAnyPermission = (...permissions: string[]) =>
   requirePermission(...permissions);
 
+function isLegacyHashError(error: unknown): boolean {
+  const message = String((error as { message?: unknown })?.message ?? "");
+  return /invalid salt|invalid hash|unknown salt revision/i.test(message);
+}
+
+function constantTimeEquals(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return diff === 0;
+}
+
+async function verifyPassword(inputPassword: string, storedPassword: string): Promise<boolean> {
+  try {
+    return await bcrypt.compare(inputPassword, storedPassword);
+  } catch (error) {
+    if (!isLegacyHashError(error)) throw error;
+    return constantTimeEquals(inputPassword, storedPassword);
+  }
+}
+
 export async function authenticate(identifier: string, password: string) {
-  const result = await db
+  const byUsername = await db
     .select({ user: users, role: roles })
     .from(users)
     .leftJoin(roles, eq(users.role_id, roles.id))
-    .where(or(eq(users.username, identifier), eq(users.national_id, identifier)))
+    .where(eq(users.username, identifier))
     .limit(1);
-  const row = result[0];
+
+  let row = byUsername[0];
+
+  if (!row) {
+    const looksLikeNationalId = /^\d+$/.test(identifier);
+    if (looksLikeNationalId) {
+      try {
+        const byNationalId = await db
+          .select({ user: users, role: roles })
+          .from(users)
+          .leftJoin(roles, eq(users.role_id, roles.id))
+          .where(eq(users.national_id, identifier))
+          .limit(1);
+        row = byNationalId[0];
+      } catch (error) {
+        const dbError = error as { code?: string; message?: string };
+        const missingNationalId = dbError?.code === "42703" &&
+          dbError?.message?.includes("national_id");
+        if (!missingNationalId) throw error;
+      }
+    }
+  }
+
   if (!row?.user.password || row.user.status !== "active") return null;
-  if (!(await bcrypt.compare(password, row.user.password))) return null;
+  if (!(await verifyPassword(password, row.user.password))) return null;
   return resolveUser(row.user.id);
 }
 
