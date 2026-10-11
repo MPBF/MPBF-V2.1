@@ -434,6 +434,14 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       await send("Page.enable",{},printSession);
       const {frameTree}=await send("Page.getFrameTree",{},printSession);
       const savedPrintReceipt=[...committed.values()].find(write=>write.route==="/production/receipts").body;
+      const numericHistoryReceipt={...savedPrintReceipt,items:savedPrintReceipt.items.map(item=>({...item,quantity_kg:Number(item.quantity_kg)}))};
+      await evaluate(`(()=>{
+        window.__receiptPrintCalled=false;
+        document.querySelectorAll('[data-receipt-print-frame]').forEach(frame=>frame.remove());
+        return import('/src/lib/receipt-print.ts').then(module=>module.printReceipt(${jsLiteral(numericHistoryReceipt)},"en"));
+      })()`);
+      await wait("window.__receiptPrintCalled===true");
+      check("numeric receipt history prints without crashing and retains exact total",await evaluate("document.querySelector('[data-receipt-print-frame]').contentDocument.querySelector('.total').textContent.includes('41 kg')"));
       const arabicPrintedHtml=await evaluate(`import('/src/lib/receipt-print.ts').then(module=>module.receiptPrintHtml(${jsLiteral(savedPrintReceipt)},"ar"))`);
       for(const [printLanguage,sourceHtml] of [["en",printedHtml],["ar",arabicPrintedHtml]]) for(const count of [3,24,100]){
         const boundaryHtml=sourceHtml.replace(/<tbody>[\s\S]*?<\/tbody>/,()=>{
