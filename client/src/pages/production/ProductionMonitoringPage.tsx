@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "wouter";
 import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import type { ProductionStage, ProductionUser } from "../../../../shared/production";
 import {
@@ -13,11 +12,13 @@ import {
   type RollMixDetail,
 } from "../../../../shared/production-monitoring";
 import { availablePlanningViews } from "../../lib/planning-navigation";
+import { PlanningHeader, PlanningNavigation } from "./PlanningChrome";
 import { monitoringApi } from "../../lib/production-monitoring-api";
 import { formatNumber } from "../../lib/format-number";
 import "./production.css";
 import "./raw-operations.css";
 import "./production-monitoring.css";
+import "./planning.css";
 
 export type ProductionMonitoringPageProps = { user: ProductionUser };
 
@@ -406,22 +407,13 @@ export default function ProductionMonitoringPage({ user }: ProductionMonitoringP
   const machineLabel = (machine: ProductionMachineOption) => localized(machine.machine_name_ar, machine.machine_name, en, machine.machine_id);
   const pageIndex = (previous: string[]) => previous.length + 1;
 
-  return <main className="raw-ops production pm-page" dir={en ? "ltr" : "rtl"}>
-    <header className="raw-ops-header">
-      <div className="raw-ops-heading">
-        <div className="raw-ops-kicker">MPBF / PLANNING &amp; MONITORING</div>
-        <h1>{tr("planning", en)}</h1>
-        <p>{tr("intro", en)}</p>
-      </div>
-      <div className="raw-ops-actions">
-        {permitted && <button className="raw-btn quiet" type="button" onClick={() => refreshLatest.current()}><RefreshCw />{tr("refresh", en)}</button>}
-        <div className="raw-ops-mark" aria-hidden="true"><i /><span>TRACE<br />/ 03</span></div>
-      </div>
-    </header>
-
-    <nav className="raw-ops-nav" aria-label={tr("planning", en)}>
-      {views.map(view => <Link key={view.view} href={view.href} aria-current={view.view === "monitoring" ? "page" : undefined}>{viewLabels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
-    </nav>
+  return <main className="raw-ops production pm-page planning-page" dir={en ? "ltr" : "rtl"}>
+    <PlanningHeader title={tr("planning", en)} description={tr("intro", en)} refreshLabel={tr("refresh", en)} onRefresh={() => refreshLatest.current()} showRefresh={permitted} />
+    <PlanningNavigation label={tr("planning", en)} tabs={views.map(view => ({
+      href: view.href,
+      label: viewLabels[view.view]?.[en ? 1 : 0] ?? view.view,
+      active: view.view === "monitoring",
+    }))} />
     {!permitted ? <div className="raw-ops-banner error" role="alert">{tr("permission", en)}</div> : <>
       <div className="pm-tabs" aria-label={tr("title", en)}>
         <button type="button" aria-pressed={section === "log"} className={section === "log" ? "active" : ""} onClick={() => setSection("log")}>{tr("log", en)}</button>

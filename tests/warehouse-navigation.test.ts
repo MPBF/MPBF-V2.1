@@ -7,7 +7,7 @@ const tabs = (account: ProductionUser) => availableWarehouseViews(account).map(t
 
 describe("separate warehouse navigation with existing access boundaries", () => {
   it("gives administrators production/mixing and finished/raw warehouse tabs", () => {
-    expect(availableProductionViews(user("admin")).map(tab => tab.view)).toEqual(["management", "film", "printing", "cutting", "mixing"]);
+    expect(availableProductionViews(user("admin")).map(tab => tab.view)).toEqual(["film", "printing", "cutting", "mixing"]);
     expect(tabs(user("admin"))).toEqual(["hall", "warehouse", "raw"]);
     expect(initialWarehousePath(user("admin"))).toBe("/warehouse/hall");
   });

@@ -58,3 +58,18 @@ controls at the top of the operator page, rather than a separate machine card.
 **How to apply:** preserve one live picker, immediate saved selection, a
 continued Change action, and operational drafts when refreshing or moving the
 controls. Keep the title and refresh in the same row on phones.
+
+Production management and production monitoring belong to the separate main
+page «التخطيط والمراقبة», not the operations tab group. This is a relocation,
+not a change to effective-role permissions or business behavior. Operations
+retain film, printing, cutting and raw mixing; the warehouse remains separate.
+The two planning tabs must share a consistent presentation without changing
+the appearance of unrelated operations or warehouse screens.
+
+**Why:** the user requested the separate page, approved preserving permissions
+and operating tabs, then explicitly requested a consistent design for its two tabs.
+
+**How to apply:** interpret earlier instructions to preserve management
+navigation as preserving its authority and functionality, not its former
+placement inside operations. Continue testing effective role previews and
+bound operators, including direct URLs, after navigation or layout changes.
