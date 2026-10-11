@@ -489,3 +489,78 @@
 @media(prefers-reduced-motion:reduce) {
   .production *, .production *::before, .production *::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; scroll-behavior:auto!important; }
 }
+
+/* Cutting operator cards: keep the roll identity, date and one compact action row. */
+.roll-operator[data-operator-stage="cutting"] .roll-operator-roll--cutting {
+  grid-template-columns:minmax(0,1fr);
+  align-content:start;
+  gap:4px;
+  padding:6px;
+  background:#f8fbf7;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-roll--cutting .roll-operator-roll-head {
+  display:grid;
+  gap:2px;
+  min-width:0;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-roll--cutting .roll-operator-roll-link {
+  min-height:28px;
+  line-height:1.2;
+  font-size:12px;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-roll--cutting .roll-operator-roll-weight {
+  flex:none;
+  color:var(--prod-deep);
+  font-size:12px;
+  line-height:1.2;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-date {
+  min-width:0;
+  color:var(--prod-muted);
+  font-size:10px;
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-controls {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:5px;
+  min-width:0;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-controls input {
+  flex:1 1 65px;
+  width:100%;
+  min-width:0;
+  min-height:44px;
+  padding:7px 6px;
+  border:1px solid #cbd9d3;
+  border-radius:4px;
+  background:#fff;
+  color:var(--prod-ink);
+  font-size:16px;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-controls input:focus {
+  outline:2px solid rgba(216,120,78,.32);
+  border-color:var(--prod-accent);
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-action {
+  flex:0 0 44px;
+  margin-inline-start:auto;
+  grid-column:auto;
+  justify-self:stretch;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:44px;
+  min-width:44px;
+  height:44px;
+  min-height:44px;
+  padding:0;
+  white-space:nowrap;
+}
+.roll-operator[data-operator-stage="cutting"] .roll-operator-cut-action svg {
+  width:18px;
+  height:18px;
+  flex:none;
+}

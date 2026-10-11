@@ -22,7 +22,9 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
    const operatorLayoutOnly = process.argv.includes("--operator-layout-only");
   const operatorNavigationOnly = process.argv.includes("--operator-navigation-only");
   const printingIconsOnly = process.argv.includes("--printing-icons-only");
-  const compactRollsOnly = process.argv.includes("--compact-rolls-only") || printingIconsOnly;
+  const cuttingActionOnly = process.argv.includes("--cutting-action-only");
+  const cuttingCompactOnly = process.argv.includes("--cutting-compact-only") || cuttingActionOnly;
+  const compactRollsOnly = process.argv.includes("--compact-rolls-only") || printingIconsOnly || cuttingCompactOnly;
   const planningNavigationOnly = process.argv.includes("--planning-navigation-only");
   const compactControlsOnly = process.argv.includes("--compact-controls-only");
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
@@ -306,7 +308,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       if(route==="/production/printing")await openStageOrder(2);
       if(route==="/production/cutting")await openStageOrder(3);
        if(!filmReadyOnly && ["/production/film","/production/printing","/production/cutting"].includes(route)){
-         check(`${language} ${route}: rolls show creator name`,await evaluate(`(()=>{const nodes=[...document.querySelectorAll('[data-roll-author]')];return nodes.length>0&&nodes.every(node=>node.innerText.includes(${jsLiteral(language==="en"?"Creator Person":"منشئ الرول")}))})()`));
+         if(route==="/production/cutting") check(`${language} ${route}: compact cutting cards omit creator`,await evaluate("document.querySelectorAll('[data-roll-author]').length"),0);
+         else check(`${language} ${route}: rolls show creator name`,await evaluate(`(()=>{const nodes=[...document.querySelectorAll('[data-roll-author]')];return nodes.length>0&&nodes.every(node=>node.innerText.includes(${jsLiteral(language==="en"?"Creator Person":"منشئ الرول")}))})()`));
          check(`${language} ${route}: roll dates omit time`,await evaluate("[...document.querySelectorAll('[data-roll-date]')].every(node=>!/\\d{1,2}:\\d{2}/.test(node.innerText))"));
        }
     };
@@ -862,11 +865,11 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     }
     if (compactRollsOnly) {
       const originalRolls = structuredClone(state.rolls);
-      for (const lang of ["ar", "en"]) {
+      for (const lang of (cuttingActionOnly ? [] : ["ar", "en"])) {
         language = lang;
         for (const width of [320, 390, 768, 1280, 1440]) {
           await send("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });
-          for (const stage of (printingIconsOnly ? ["printing"] : ["film", "printing", "cutting"])) {
+          for (const stage of (printingIconsOnly ? ["printing"] : cuttingCompactOnly ? ["cutting"] : ["film", "printing", "cutting"])) {
             permissions = [`operate_${stage}`];
             const orderId = stage === "cutting" ? 3 : 2;
             const container = `[data-production-order-id="${orderId}"] ${stage === "film" ? ".film-recorded-rolls" : ".roll-operator-rolls"}`;
@@ -935,6 +938,25 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
                 check(`${context}: icon action accepts keyboard focus`,
                   await evaluate(`document.activeElement===document.querySelector(${jsLiteral(container)}).querySelector('.roll-operator-action')`));
               }
+              if (cuttingCompactOnly) {
+                check(`${context}: only five requested elements remain visible`,
+                  await evaluate(`[...document.querySelector(${jsLiteral(container)}).children].every(e=>
+                    e.querySelectorAll('a').length===1&&e.querySelectorAll('input').length===1&&e.querySelectorAll('button').length===1&&
+                    !!e.querySelector('.roll-operator-roll-weight')&&!!e.querySelector('[data-roll-date]')&&
+                    !e.querySelector('[data-roll-author]')&&[...e.querySelectorAll('label')].every(l=>l.innerText.trim()===''))`));
+                check(`${context}: cut icon is compact and accessible`,
+                  await evaluate(`[...document.querySelector(${jsLiteral(container)}).querySelectorAll('.roll-operator-action')].every(b=>{
+                    const r=b.getBoundingClientRect();return b.innerText.trim()===''&&!!b.querySelector('svg')&&
+                      b.getAttribute('aria-label')?.includes(${jsLiteral(lang==="ar"?"تسجيل القص":"Record cutting")})&&
+                      b.getAttribute('title')?.includes(${jsLiteral(lang==="ar"?"تسجيل القص":"Record cutting")})&&r.width>=43.5&&r.width<=45&&r.height<=45;
+                  })`));
+                check(`${context}: compact cards avoid excessive height`,
+                  await evaluate(`[...document.querySelector(${jsLiteral(container)}).children].every(e=>e.getBoundingClientRect().height<=195)`));
+                check(`${context}: weight field keeps its accessible name and limits`,
+                  await evaluate(`[...document.querySelector(${jsLiteral(container)}).querySelectorAll('input')].every(e=>
+                    e.type==='number'&&e.min==='0.01'&&e.step==='0.01'&&Number(e.max)>0&&
+                    (!!e.getAttribute('aria-label')||!!document.querySelector('label[for="'+e.id+'"]')))`));
+              }
               if (lang === "ar" && count === 9 && [390, 1280, 1440].includes(width)) {
                 const shot = await send("Page.captureScreenshot", { format: "png" });
                 await fs.writeFile(`/tmp/compact-rolls-${stage}-${width}.png`, Buffer.from(shot.data, "base64"));
@@ -959,6 +981,33 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         await wait("!document.querySelector('.prod-loading')&&document.querySelector('[data-production-order-id=\"2\"] .roll-operator-action')&&!document.querySelector('[data-production-order-id=\"2\"] .roll-operator-action').disabled");
         check("print icon preserves the original recording route", writes.at(-1)?.route, "/production/rolls/2/print");
         check("print icon preserves selected machine", writes.at(-1)?.input?.machine_id, "P1");
+      }
+      if (cuttingCompactOnly) {
+        language = "ar";
+        state.rolls = structuredClone(originalRolls);
+        permissions = ["view_production"];
+        await navigate("/production/cutting");
+        check("read-only cutting input and action stay disabled",
+          await evaluate("[...document.querySelectorAll('input[id^=\"net-\"],.roll-operator-action')].every(e=>e.disabled)"));
+        await evaluate("document.querySelector('.roll-operator-action').click()");
+        check("read-only cutting action cannot record", writes.length, 0);
+        permissions = ["operate_cutting"];
+        await navigate("/production/cutting");
+        await setInput("#net-3", "0");
+        await evaluate("document.querySelector('[data-production-roll-id=\"3\"] .roll-operator-action').click()");
+        check("zero net weight remains rejected", writes.length, 0);
+        await setInput("#net-3", "999");
+        await evaluate("document.querySelector('[data-production-roll-id=\"3\"] .roll-operator-action').click()");
+        check("net weight above original weight remains rejected", writes.length, 0);
+        await setInput("#net-3", "8.5");
+        await evaluate("document.querySelector('[data-production-roll-id=\"3\"] .roll-operator-action').focus()");
+        check("cut icon accepts keyboard focus",
+          await evaluate("document.activeElement===document.querySelector('[data-production-roll-id=\"3\"] .roll-operator-action')"));
+        await evaluate("document.querySelector('[data-production-roll-id=\"3\"] .roll-operator-action').click()");
+        await wait("document.querySelector('#net-3')?.value===''");
+        check("cut icon preserves original recording route", writes.at(-1)?.route, "/production/rolls/3/cut");
+        check("cut icon preserves selected machine", writes.at(-1)?.input?.machine_id, "C1");
+        check("cut icon submits entered net weight", writes.at(-1)?.input?.net_weight_kg, "8.5");
       }
       check("compact roll layout has no runtime errors", errors, []);
       console.log(`Verified ${passed} compact roll layout assertions with isolated API fixtures.`);
