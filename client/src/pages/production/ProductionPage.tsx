@@ -477,7 +477,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
         {readyOrders.map(order=>{
           const complete=Boolean(order.completed_at);
           return <article className="warehouse-order-card" key={order.id}>
-            <header><div><span className="warehouse-order-number">{order.production_order_number}</span><small>{text("customerOrder",language)} · {order.order_number}</small></div><span className={`warehouse-order-state${complete?" complete":""}`}><small>{text("productionStatus",language)}</small>{text(complete?"productionComplete":"productionIncomplete",language)}</span></header>
+            <header><div><span className="warehouse-order-number">{order.production_order_number}</span><small>{order.order_number}</small></div><span className={`warehouse-order-state${complete?" complete":""}`} title={`${text("productionStatus",language)}: ${text(complete?"productionComplete":"productionIncomplete",language)}`} aria-label={`${text("productionStatus",language)}: ${text(complete?"productionComplete":"productionIncomplete",language)}`}>{text(complete?"completed":"incomplete",language)}</span></header>
             <div className="warehouse-order-product"><strong>{orderProduct(order,language)}</strong><span>{customerName(order,language)}</span></div>
             {canReceive&&<label className="warehouse-order-select"><input type="checkbox" data-hall-select={order.id} checked={selected.includes(order.id)} disabled={write.saving||lockReceipt} onChange={event=>setSelectedOrder(order.id,event.target.checked)}/><span>{language==="en"?"Select for receipt":"تحديد للاستلام"}</span></label>}
             <div className="warehouse-order-metrics">
