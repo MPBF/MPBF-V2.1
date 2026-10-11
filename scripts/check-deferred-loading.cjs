@@ -40,9 +40,27 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
     totals: { requested_kg: "100.00", planned_kg: "105.00", production_order_count: 1, by_status: {} },
     actual_production: { available: false, message: "" }, public_print_path: publicPath };
   const state = { orders: [], rolls: [], machines: [], queues: [], locations: [], inventory: [], movements: [], receipts: [] };
+  let productionFailure = false;
+  const mixingState = { materials: [], machines: [], latest_mixes: [], records: [], next_before: null, raw_vouchers: [] };
+  const receiptFixture = { id: 1, voucher_number: "FP-Rec0001", created_at: "2026-10-11T06:00:00Z", created_by: 42, notes: null,
+    items: [
+      { production_order_id: 8, production_order_number: "JO0008", item_id: "ITM01", quantity_kg: "10.00",
+        packing: { unit: "packet", quantity: "5", method: "unit_weight", unit_weight_kg: "2" } },
+      { production_order_id: 9, production_order_number: "JO0009", item_id: "ITM02", quantity_kg: "10.00",
+        packing: { unit: "piece", quantity: "2", method: "piece_weight", pieces_per_unit: 100, piece_weight_grams: "50" } },
+      { production_order_id: 10, production_order_number: "JO0010", item_id: "ITM03", quantity_kg: "5.00" },
+    ] };
+  // Bundle into a disposable directory, never into the application's initial assets.
+  await require("esbuild").build({ entryPoints: ["client/src/lib/receipt-print.ts"], bundle: true,
+    platform: "node", format: "esm", outfile: path.join(temp, "receipt-print.mjs") });
+  const { receiptPrintHtml } = await import(require("node:url").pathToFileURL(path.join(temp, "receipt-print.mjs")).href);
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://fixture.test");
+      if (url.pathname === "/fixture-receipt") {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end(receiptPrintHtml(receiptFixture, "en")); return;
+      }
       if (url.pathname.startsWith("/api/")) {
         apiRequests.push(url.pathname);
         assert.equal(request.method, "GET", "No business writes permitted in this fixture");
@@ -62,6 +80,11 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
           daysWorked: 1, absentDays: 2, overtimeMinutes: 30, incompleteDays: 3 }] };
         else if (url.pathname === "/api/hr/self-service-admin") data = { requests: [], users: [employee] };
         else if (url.pathname === "/api/production/state") data = state;
+        else if (url.pathname === "/api/production/mixing") data = mixingState;
+        else if (url.pathname === "/api/production/monitoring/summary") data = {
+          activated_at: "2026-10-01T06:00:00Z", machines: [], production_machines: [],
+        };
+        else if (url.pathname.startsWith("/api/production/monitoring/")) data = { records: [], next: null };
         else if (url.pathname.startsWith("/api/production/history/")) data = {
           records: url.pathname.endsWith("/inventory") ? [{
             id: 1, production_order_number: "PO-FIXTURE", quantity_kg: "100",
@@ -80,6 +103,11 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
           withinShiftWindow: false, serverNow: "2026-10-09T06:00:00Z",
           workedSeconds: 0, sessionStartedAt: null, actionTimes: {},
         };
+        if (productionFailure && /^\/api\/production\/(?:mixing|monitoring)/.test(url.pathname)) {
+          status = 503;
+          // Deliberately omit message_en: Arabic backend errors must not leak.
+          data = { message: "تعذر تحميل بيانات الاختبار" };
+        }
         response.writeHead(status, { "Content-Type": "application/json" });
         response.end(JSON.stringify(data));
         return;
@@ -328,6 +356,77 @@ const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-
       await open("/production/film"); await wait("!!document.querySelector('.production-app .prod-empty')");
       check(`${lang} revocation removes every production tab`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), 0);
       check(`${lang} revoked Film route never requests production data`, apiRequests.slice(beforeRevocation).includes("/api/production/state"), false);
+      if (lang === "en") {
+        permissions = ["admin"]; productionBinding = undefined;
+        const body = () => evaluate("document.body.innerText");
+        const englishOnly = async name => check(name, !/[\u0600-\u06ff]/.test(await body()));
+        await open("/production/mixing");
+        await wait("document.body.innerText.includes('No mixes have been recorded yet.') && document.body.innerText.includes('There are no raw materials in the catalog.')");
+        check("English mixing empty materials", (await body()).includes("There are no raw materials in the catalog."));
+        check("English mixing empty machines", (await body()).includes("No film machines are available."));
+        await englishOnly("English mixing empty state has no Arabic");
+        productionFailure = true;
+        await open("/production/mixing");
+        await wait("!!document.querySelector('[role=alert]')");
+        check("English mixing backend error fallback", (await body()).includes("The operation could not be completed."));
+        await englishOnly("English mixing error has no Arabic");
+        productionFailure = false;
+        await open("/warehouse/raw-materials");
+        await wait("document.body.innerText.includes('No movements recorded yet.') && document.body.innerText.includes('No approved raw materials are available.')");
+        check("English inventory empty catalog", (await body()).includes("No approved raw materials are available."));
+        await englishOnly("English inventory empty state has no Arabic");
+        productionFailure = true;
+        await open("/warehouse/raw-materials");
+        await wait("!!document.querySelector('[role=alert]')");
+        check("English inventory backend error fallback", (await body()).includes("The operation could not be completed."));
+        await englishOnly("English inventory error has no Arabic");
+        productionFailure = false;
+        await open("/production/monitoring");
+        await wait("document.body.innerText.includes('No production events match these filters.')");
+        await englishOnly("English production monitoring empty state has no Arabic");
+        await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Mix monitoring').click()");
+        await wait("document.body.innerText.includes('No mixes are recorded for this machine.')");
+        await englishOnly("English mix monitoring empty state has no Arabic");
+        productionFailure = true;
+        await open("/production/monitoring");
+        await wait("!!document.querySelector('[role=alert]')");
+        await englishOnly("English monitoring errors have no Arabic");
+        productionFailure = false;
+        await open("/warehouse/hall");
+        await wait("!!document.querySelector('[data-receipt-launcher]')");
+        await click("[data-receipt-launcher]");
+        await wait("!!document.querySelector('[role=dialog]')");
+        check("English receipt dialog quantity label", (await body()).includes("Quantity to receive (kg)"));
+        await evaluate("(()=>{const s=document.querySelector('[data-receipt-unit]');s.value='packet';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+        await wait("!!document.querySelector('[data-receipt-unit-weight]')");
+        check("English receipt dialog derived weight label", (await body()).includes("Derived unit weight (kg)"));
+        await evaluate("(()=>{const s=document.querySelector('[data-receipt-method]');s.value='piece_weight';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+        await wait("!!document.querySelector('[data-receipt-piece-weight]')");
+        check("English receipt dialog derived piece label", (await body()).includes("Derived piece weight (grams)"));
+        await englishOnly("English receipt dialog has no Arabic");
+        await evaluate("document.querySelector('[role=dialog] form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))");
+        await wait("document.body.innerText.includes('Complete every field in line 1 before saving.')");
+        await englishOnly("English receipt validation has no Arabic");
+        await open("/fixture-receipt");
+        await wait("document.querySelectorAll('tbody tr').length===3");
+        check("English receipt print direction", await evaluate("document.documentElement.dir"), "ltr");
+        check("English receipt print legacy specification", (await body()).includes("Not recorded historically"));
+        check("English receipt print exact total", (await body()).includes("Voucher total: 25 kg"));
+        await englishOnly("English receipt A4 print has no Arabic");
+        const pdf = await send("Page.printToPDF", { preferCSSPageSize: true, printBackground: true });
+        const receiptPdf = path.join(temp, "receipt-en.pdf");
+        await fs.writeFile(receiptPdf, Buffer.from(pdf.data, "base64"));
+        check("English receipt generates a real PDF", Buffer.from(pdf.data, "base64").subarray(0, 5).toString(), "%PDF-");
+        const receiptInfo = execFileSync("pdfinfo", [receiptPdf], { encoding: "utf8" });
+        check("English receipt PDF is one portrait A4 page",
+          /Pages:\s+1\b/.test(receiptInfo) && /Page size:\s+59[45]\.\d+ x 84[12]\.\d+ pts \(A4\)/.test(receiptInfo));
+        const receiptText = execFileSync("pdftotext", ["-layout", receiptPdf, "-"], { encoding: "utf8" });
+        check("English receipt PDF retains every fixture line",
+          ["JO0008", "JO0009", "JO0010", "2 kg", "100 × 50 g", "Not recorded historically"].every(text => receiptText.includes(text)));
+        check("English receipt PDF retains total and signatures",
+          ["Voucher total: 25 kg", "Released by · production hall", "Received by · finished-goods hall"].every(text => receiptText.includes(text)));
+        check("English receipt PDF text has no Arabic", !/[\u0600-\u06ff]/.test(receiptText));
+      }
       permissions = ["admin"]; productionBinding = undefined; roleName = "Administrator";
     }
     check("No unexpected browser or fixture errors", errors, []);
