@@ -26,6 +26,7 @@ import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
 import { ReceiptVoucherModal, type ReceiptDraft } from "../warehouse/ReceiptVoucherModal";
 import { deriveReceiptPacking } from "../../../../shared/receipt-draft";
+import { printReceipt } from "../../lib/receipt-print";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
 export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" | "planning" };
@@ -495,6 +496,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
       {canReceive ? <>{eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}</>:<div className="prod-muted">{text("readonly",language)}</div>}
     </Card>
     {canReceive&&receiptOpen&&<ReceiptVoucherModal
+      onPrint={receipt=>printReceipt(receipt,language)}
       language={language}
       eligible={eligible}
       drafts={drafts}

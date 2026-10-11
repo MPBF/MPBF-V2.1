@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import type { ProductionHistoryKind, ProductionHistoryFilter, ProductionHistoryRecords, StorageLocation } from "../../../../shared/production";
 import { productionApi } from "../../lib/production-api";
+import { printReceipt } from "../../lib/receipt-print";
 import { FilmDurationSummary } from "./FilmDurationSummary";
 import { receiptUnitLabel } from "../../../../shared/production-packing";
 
@@ -70,6 +71,7 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
       const receipt = record as ProductionHistoryRecords["receipts"];
       if (presentation === "cards") return <article className="warehouse-receipt-history-card" key={receipt.id}>
         <header><div><strong>{receipt.voucher_number}</strong><time dateTime={receipt.created_at}>{date(receipt.created_at)}</time></div><bdi>{n(receipt.items.reduce((sum, item) => sum + Number(item.quantity_kg), 0))} kg</bdi></header>
+        <button type="button" className="prod-btn secondary" data-print-receipt={receipt.id} onClick={()=>printReceipt(receipt,language)}>{label("طباعة A4", "Print A4")}</button>
         {receipt.notes && <p>{receipt.notes}</p>}
         <div className="warehouse-receipt-items">{receipt.items.map((item, index) => <div className="warehouse-receipt-history-line" key={item.id}>
           <span>{String(item.line_number ?? index + 1).padStart(2, "0")}</span>
@@ -84,6 +86,7 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
         </div>)}</div>
       </article>;
       return <details className="prod-voucher" key={receipt.id}><summary><strong className="prod-number">{receipt.voucher_number}</strong> · {date(receipt.created_at)} · {n(receipt.items.length)} {label("بنود", "lines")}</summary>
+        <button type="button" className="prod-btn secondary" data-print-receipt={receipt.id} onClick={()=>printReceipt(receipt,language)}>{label("طباعة A4", "Print A4")}</button>
         {receipt.notes && <p>{receipt.notes}</p>}
          {receipt.items.map((item, index) => <div className="prod-measure" key={item.id}>
            <span>{String(item.line_number ?? index + 1).padStart(2, "0")} · {item.production_order_number} · #{item.customer_product_id} · {item.item_id} · {local(item.location_name_ar, item.location_name)}</span>

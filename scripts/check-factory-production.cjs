@@ -202,7 +202,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
               if([...requested].some(([id,kg])=>kg>Number(state.orders.find(order=>order.id===id)?.remaining_kg||0))){
                 status=409;body={message:"كمية الاستلام تتجاوز المتاح",message_en:"Receipt exceeds available stock."};
               }else{
-                body={id:99+committed.size,voucher_number:"FR-00000099",created_at:"2026-10-10T08:30:00Z",created_by:42,notes:input.notes||null,items:lines};
+                body={id:99+committed.size,voucher_number:"FP-Rec0001",created_at:"2026-10-10T08:30:00Z",created_by:42,notes:input.notes||null,items:lines.map(line=>({...line,production_order_number:state.orders.find(order=>order.id===line.production_order_id)?.production_order_number}))};
                 for(const line of lines){
                   const target=state.orders.find(order=>order.id===line.production_order_id);
                   target.received_kg=(Number(target.received_kg)+Number(line.quantity_kg)).toFixed(2);
@@ -350,15 +350,20 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           check(`${lang} ${width} no sublocation selection or prerequisite`,await evaluate("!document.querySelector('[id^=\"receipt-location-\"]')&&!document.querySelector('.receipt-voucher-alert')&&!document.querySelector('[data-receipt-submit]').disabled"));
           await setInput("#receipt-unit-0","packet");
           await setInput("#receipt-unit-quantity-0","2");
-          await setInput("#receipt-unit-weight-0","5");
-          await setInput("#receipt-unit-quantity-1","1");
+          await setInput("#receipt-quantity-0","10.00");
+          await setInput("#receipt-quantity-1","1");
           await clickText(lang==="ar"?"إضافة سطر تعبئة":"Add packing line");
           await setInput("#receipt-order-2","4");
           await setInput("#receipt-unit-2","roll");await setInput("#receipt-unit-quantity-2","3");
-          await setInput("#receipt-method-2","piece_weight");await setInput("#receipt-pieces-2","20");await setInput("#receipt-piece-weight-2","500");
+          await setInput("#receipt-method-2","piece_weight");await setInput("#receipt-pieces-2","20");await setInput("#receipt-quantity-2","30.00");
           await setInput("#receipt-notes","Retained voucher draft");
           check(`${lang} ${width} fixed four units`,await evaluate("[...document.querySelector('#receipt-unit-0').options].map(option=>option.value)"),["kg","packet","roll","piece"]);
           check(`${lang} ${width} both automatic conversions`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-quantity-2').value]"),["10.00","30.00"]);
+          check(`${lang} ${width} weight per unit and piece is automatically derived`,await evaluate("[document.querySelector('#receipt-unit-weight-0').value,document.querySelector('#receipt-piece-weight-2').value]"),["5.000000","500.0000"]);
+          check(`${lang} ${width} requested kg editable and derived weights locked`,await evaluate("!document.querySelector('#receipt-quantity-0').readOnly&&document.querySelector('#receipt-unit-weight-0').readOnly&&document.querySelector('#receipt-piece-weight-2').readOnly"));
+          check(`${lang} ${width} date automatic and pending print disabled`,await evaluate("document.querySelector('[data-receipt-created-at]').textContent!=='—'&&document.querySelector('.receipt-voucher-print').disabled"));
+          check(`${lang} ${width} notes stay compact`,await evaluate("document.querySelector('#receipt-notes').getBoundingClientRect().height<=75"));
+          if(width===1440) check(`${lang} ${width} desktop rows stay short`,await evaluate("[...document.querySelectorAll('.receipt-voucher-table tbody tr')].every(row=>row.getBoundingClientRect().height<=160)"));
           check(`${lang} ${width} correct voucher total`,await evaluate("Number(document.querySelector('[data-receipt-total]').dataset.receiptTotal)"),41);
           check(`${lang} ${width} selected predefined product and customer`,await evaluate("document.querySelector('#receipt-order-0').selectedOptions[0].textContent.includes('PO-4')"));
           await evaluate("document.querySelector('.receipt-voucher-close').focus()");
@@ -379,24 +384,24 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       }
       language="en";await navigate("/warehouse/hall");await openReceipt();
       await setInput("#receipt-order-0","4");
-      await setInput("#receipt-unit-quantity-0","48");
+      await setInput("#receipt-quantity-0","48");
       const beforeInvalid=writes.length;
       await clickText("Save receipt voucher");
       await wait("!!document.querySelector('.receipt-voucher-error')");
       check("over-available computed quantity is blocked",writes.length,beforeInvalid);
-      await setInput("#receipt-unit-quantity-0","24");
+      await setInput("#receipt-quantity-0","24");
       await clickText("Add packing line");
       await clickText("Save receipt voucher");
       check("incomplete line is not silently dropped",writes.length,beforeInvalid);
-      await setInput("#receipt-order-1","4");await setInput("#receipt-unit-quantity-1","24");
+      await setInput("#receipt-order-1","4");await setInput("#receipt-quantity-1","24");
       await clickText("Save receipt voucher");
       await wait("!!document.querySelector('.receipt-voucher-error')");
       check("aggregate same-order over-receipt is blocked",writes.length,beforeInvalid);
       await evaluate("document.querySelector('[aria-label=\"Remove line 2\"]').click()");
-      await setInput("#receipt-unit-0","packet");await setInput("#receipt-unit-quantity-0","2");await setInput("#receipt-unit-weight-0","5");
-      await clickText("Add packing line");await setInput("#receipt-order-1","8");await setInput("#receipt-unit-quantity-1","1");
+      await setInput("#receipt-unit-0","packet");await setInput("#receipt-unit-quantity-0","2");await setInput("#receipt-quantity-0","10.00");
+      await clickText("Add packing line");await setInput("#receipt-order-1","8");await setInput("#receipt-quantity-1","1");
       await clickText("Add packing line");await setInput("#receipt-order-2","4");
-      await setInput("#receipt-unit-2","roll");await setInput("#receipt-unit-quantity-2","3");await setInput("#receipt-method-2","piece_weight");await setInput("#receipt-pieces-2","20");await setInput("#receipt-piece-weight-2","500");
+      await setInput("#receipt-unit-2","roll");await setInput("#receipt-unit-quantity-2","3");await setInput("#receipt-method-2","piece_weight");await setInput("#receipt-pieces-2","20");await setInput("#receipt-quantity-2","30.00");
       await setInput("#receipt-notes","Fixture voucher retry");
       failWrite=true;await clickText("Save receipt voucher");
       await wait("!!document.querySelector('.receipt-voucher-error')");
@@ -408,7 +413,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       check("retry uses identical receipt request",receiptWrites[0].input,receiptWrites[1].input);
       check("receipt request does not select a sublocation",receiptWrites[0].input.items.every(line=>!("location_id" in line)));
       check("retry commits only one voucher",[...committed.values()].filter(write=>write.route==="/production/receipts").length,1);
-      check("saved voucher number comes from server",await evaluate("document.querySelector('[data-receipt-voucher-number]').textContent"),"FR-00000099");
+      check("saved voucher number comes from server",await evaluate("document.querySelector('[data-receipt-voucher-number]').textContent"),"FP-Rec0001");
+      check("saved receipt supports A4 printing",await evaluate("!document.querySelector('.receipt-voucher-print').disabled"));
       check("saved voucher timestamp comes from server",await evaluate("document.querySelector('[data-receipt-created-at]').dataset.receiptCreatedAt"),"2026-10-10T08:30:00Z");
       check("success clears submitted draft",await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-notes').value]"),["","",""]);
       await setInput("#receipt-notes","New unsaved voucher");
@@ -584,7 +590,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            })()`);
            const tracks = width >= 1100 ? 3 : width >= 700 ? 2 : 1;
            check(`${label}: compact order columns`, compactOrders.map(list=>list.columns), [tracks,tracks]);
-           check(`${label}: active and unstarted orders retained`, compactOrders.map(list=>list.count), [7,2]);
+           check(`${label}: active and unstarted orders retained`, compactOrders.map(list=>list.count), [7,1]);
            check(`${label}: compact orders contained without overflow`, compactOrders.every(list=>list.contained&&list.contentFits));
            check(`${label}: cards remain compact without clipping`, compactOrders.every(list=>list.heights.every(height=>height<=470)));
            check(`${label}: same-width cards fill rows`, compactOrders.every(list=>list.firstRow===Math.min(list.count,tracks)&&Math.max(...list.widths)-Math.min(...list.widths)<1));

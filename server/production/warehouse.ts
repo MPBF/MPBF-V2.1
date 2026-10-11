@@ -88,7 +88,7 @@ export class ProductionWarehouseService {
           quantity_kg=factory_inventory_units.quantity_kg+excluded.quantity_kg`,
         [inventory.id,item.calculated.packing_key,JSON.stringify(item.calculated.specification),item.calculated.unit_quantity,weight]);
         await tx.query("INSERT INTO factory_movements(receipt_id,receipt_item_id,quantity_kg) VALUES($1,$2,$3)", [id, saved.id, weight]);
-        savedItems.push(saved);
+        savedItems.push({ ...saved, production_order_number: orders.find(order=>order.id===item.production_order_id)!.production_order_number });
       }
       return { ...receipt, items: savedItems };
     });

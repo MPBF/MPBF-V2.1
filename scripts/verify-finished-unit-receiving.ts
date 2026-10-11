@@ -31,7 +31,10 @@ export async function verifyFinishedUnitReceiving(pool: ConnectionPool, query: Q
   assert.deepEqual(receipt.items.map((line:any)=>line.line_number),[1,2,3,4]);
   assert.deepEqual(receipt.items.map((line:any)=>line.quantity_kg),["40.00","3.00","2.00","1.23"]);
   assert.deepEqual(receipt.items.map((line:any)=>line.packing.unit),["packet","roll","piece","kg"]);
-  assert.ok(receipt.voucher_number.startsWith("FR-"));
+  assert.match(receipt.voucher_number,/^FP-Rec\d{4,}$/);
+  assert.equal(BigInt(receipt.voucher_number.slice(6)),BigInt(legacy.voucher_number.slice(6))+1n);
+  assert.ok(receipt.created_at);
+  assert.equal(receipt.items[0].production_order_number,"UNIT-PO-901");
   const replay=await warehouse.receive(actor,request);
   assert.deepEqual(JSON.parse(JSON.stringify(replay)),JSON.parse(JSON.stringify(receipt)));
   const counts=await query("SELECT count(*)::int n FROM factory_receipt_items WHERE receipt_id=$1",[receipt.id]);

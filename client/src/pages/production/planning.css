@@ -305,11 +305,11 @@
   min-width: 112px;
   min-height: 44px;
 }
-.planning-page .prod-management-order .prod-roll-trace {
+.planning-page .prod-management-order .prod-history {
   grid-column: 1 / -1;
   min-width: 0;
 }
-.planning-page .prod-management-order .prod-roll-trace summary {
+.planning-page .prod-management-order .prod-history summary {
   min-height: 44px;
   display: flex;
   align-items: center;
