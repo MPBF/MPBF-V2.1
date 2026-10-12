@@ -438,7 +438,7 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         check("English receipt dialog quantity label", (await body()).includes("Quantity to receive (kg)"));
         await evaluate("(()=>{const s=document.querySelector('[data-receipt-unit]');s.value='packet';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
         await wait("!!document.querySelector('[data-receipt-unit-weight]')");
-        check("English receipt dialog derived weight label", (await body()).includes("Derived unit weight (kg)"));
+        check("English receipt dialog derived weight label", await evaluate("document.querySelector('[data-receipt-unit-weight]').title"), "Derived unit weight (kg)");
         await evaluate("(()=>{const s=document.querySelector('[data-receipt-method]');s.value='piece_weight';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
         await wait("!!document.querySelector('[data-receipt-piece-weight]')");
         check("English receipt dialog derived piece label", (await body()).includes("Derived piece weight (grams)"));
