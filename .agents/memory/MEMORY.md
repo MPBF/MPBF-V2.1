@@ -98,3 +98,4 @@
 - [Planning order cards](planning-order-card-sizing.md) — user approved three compact desktop cards, not the warehouse six-card rule; preserve details and actions.
 - [Finished receipt workflow](finished-receipt-workflow.md) — requested kg drives derived unit weight; compact form, automatic date and FP-Rec numbering, saved-only A4 printing.
 - [Decimal JSON boundaries](postgres-json-decimal-boundary.md) — PostgreSQL NUMERIC becomes a JS number inside JSONB; preserve text at nested API boundaries and tolerate older numeric reads.
+- [Transient UI checks](transient-ui-verification.md) — capture loading text while detecting the element; a later browser call may run after it has disappeared.

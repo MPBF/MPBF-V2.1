@@ -1,4 +1,5 @@
-import i18n, { intlLocale, translate, translateError } from "../i18n";
+import i18n, { intlLocale, translate } from "../i18n";
+import { hrApi } from "../lib/hr-api";
 import { AlertTriangle, CalendarDays, Check, Download, Edit3, FileDown, Plus, Printer, Search, ShieldAlert, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
@@ -60,17 +61,6 @@ const actionLabels: Record<AttendanceAction, string> = new Proxy(rawActionLabels
     return value ? translate(value) : value;
   },
 });
-
-const hrApi = async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
-  const response = await fetch(`/api/hr${path}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(translateError(body.message || "تعذر تنفيذ الطلب"));
-  return body as T;
-};
 
 const employeeName = (employee: HrEmployee) => (i18n.language === "en" ? employee.display_name || employee.display_name_ar : employee.display_name_ar || employee.display_name) || employee.username || `${translate("مستخدم")} ${employee.id}`;
 const reportArabicName = (employee: HrEmployee) => employee.display_name_ar || "—";

@@ -1,4 +1,5 @@
-import i18n, { intlLocale, translate, translateError } from "../i18n";
+import i18n, { intlLocale, translate } from "../i18n";
+import { hrApi as api } from "../lib/hr-api";
 import { Check, ClipboardList, Clock3, Edit3, FileSpreadsheet, LocateFixed, MapPin, Plus, Search, ShieldAlert, Trash2, UserRoundCheck, UsersRound, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
@@ -28,17 +29,6 @@ const emptyShift: Shift = {
   early_checkin_minutes: 15, late_checkout_minutes: 15, break_minutes: 30,
   geofence_enabled: true, geofence_center_lat: null, geofence_center_lng: null,
   geofence_radius_meters: 200, is_active: true, assigned_users: 0,
-};
-
-const api = async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
-  const response = await fetch(`/api/hr${path}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(translateError(body.message || "تعذر تنفيذ الطلب"));
-  return body as T;
 };
 
 const employeeName = (employee: Employee) => (i18n.language === "en" ? employee.display_name || employee.display_name_ar : employee.display_name_ar || employee.display_name) || employee.username || `${translate("مستخدم")} ${employee.id}`;

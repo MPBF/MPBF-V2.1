@@ -48,15 +48,6 @@ function toId(value: unknown): string | null {
   return String(value);
 }
 
-function firstLabel(...values: unknown[]): string | null {
-  for (const value of values) {
-    if (value !== null && value !== undefined && String(value).trim() !== "") {
-      return String(value);
-    }
-  }
-  return null;
-}
-
 function hslToHex(hue: number, saturation: number, lightness: number): string {
   const normalizedHue = ((hue % 360) + 360) % 360;
   const s = saturation / 100;

@@ -8,6 +8,7 @@ import { hasProductionPermission, type ProductionUser } from "../../../../shared
 import { availableProductionViews } from "../../lib/production-navigation";
 import { confirmedProductionRejection } from "../../lib/production-api";
 import { rawMixingApi } from "../../lib/raw-mixing-api";
+import { normalizeRawNumber as latin, rawQuantityValue as quantityValue } from "../../lib/raw-quantity";
 import { formatNumber, formatWholeNumber } from "../../lib/format-number";
 import { mixingComposition, type CompositionLine } from "../../lib/raw-mixing-composition";
 import "./production.css";
@@ -60,11 +61,6 @@ const messages: Record<string, [string, string]> = {
   unavailableComposition: ["تعذر احتساب التركيبة بسبب أوزان غير صالحة.", "Composition unavailable because saved weights are invalid."],
 };
 const tx = (key: string, en: boolean) => messages[key]?.[en ? 1 : 0] ?? key;
-const latin = (raw: string) => raw.replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[۰-۹]/g, d => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/٫/g, ".").replace(/٬/g, ",").trim();
-const quantityValue = (raw: string) => {
-  const value = latin(raw);
-  return /^\d{1,12}(?:\.\d{1,2})?$/.test(value) && Number(value) > 0 ? value : null;
-};
 const dateTime = (raw: string, en: boolean) => {
   const value = new Date(raw);
   return Number.isNaN(value.getTime()) ? "—" : new Intl.DateTimeFormat(en ? "en-GB" : "ar-SA-u-ca-gregory-nu-latn", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" }).format(value);

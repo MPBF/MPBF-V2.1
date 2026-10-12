@@ -87,7 +87,7 @@ router.post("/mixing", handler(async (req, res) => {
   }).parse(req.body);
   res.json(await mixing.record(req.user!, input));
 }));
-router.post("/raw-materials", handler(async (req, res) => {
+router.post("/raw-materials", handler(async (_req, res) => {
   // Retire the old free-form definition endpoint rather than silently accepting
   // stale editors. Catalogue definitions belong to the existing Items module.
   res.status(410).json({ message:"اختر المواد من الأصناف المعرّفة مسبقًا؛ الإدخال الحر غير متاح", message_en:"Select predefined catalogue items. Free-form material creation is no longer available." });
