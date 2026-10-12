@@ -547,7 +547,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            if(lang==="ar")await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false}).then(image=>fs.writeFile(`/tmp/warehouse-hall-${width}.png`,Buffer.from(image.data,"base64")));
            permissions=["view_finished_inventory"];
            await navigate("/warehouse/finished-inventory");
-           await wait("!!document.querySelector('.warehouse-finished-view .prod-record')");
+           await wait("!!document.querySelector('.warehouse-finished-view .warehouse-inventory-card')");
            check(`${lang} ${width}: finished contents shown immediately as cards`,await evaluate("getComputedStyle(document.querySelector('.warehouse-finished-view .prod-list')).display==='grid'"));
            check(`${lang} ${width}: finished inventory fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
          }

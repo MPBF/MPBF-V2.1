@@ -188,6 +188,13 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       }
       throw Error(`Timed out: ${expression}`);
     };
+    const loadingText = async selector => {
+      // Capture text in the same evaluation that observes the transient loader.
+      // A later CDP call can run after the chunk has replaced that DOM node.
+      await wait(`(()=>{const node=document.querySelector(${JSON.stringify(selector)});
+        if(!node)return false;window.__observedLoadingText=node.textContent;return true})()`);
+      return evaluate("window.__observedLoadingText");
+    };
     const open = async route => { assets.length = 0; await send("Page.navigate", { url: origin + route }); };
     await checkReceiptPagination({ temp, open, wait, evaluate, send });
     const click = async selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
@@ -215,8 +222,7 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       await open("/customers"); await wait("!!document.querySelector('a[href=\"/hr\"]')");
       check(`${lang} customer navigation does not load administration`, assets.filter(value => adminChunks.test(value)), []);
       await click('a[href="/hr"]');
-      await wait("!!document.querySelector('[role=\"status\"][aria-busy=\"true\"]')");
-      check(`${lang} translated loading state`, await evaluate("document.querySelector('[role=\"status\"]').textContent"), lang === "ar" ? "جارٍ التحميل…" : "Loading…");
+      check(`${lang} translated loading state`, await loadingText('[role="status"][aria-busy="true"]'), lang === "ar" ? "جارٍ التحميل…" : "Loading…");
       await wait("!!document.querySelector('.hr-tabs')");
       check(`${lang} HR chunk requested on navigation`, assets.some(value => /HumanResources-.*\.js/.test(value)));
       await click('.hr-tabs button:nth-child(3)'); await wait("document.querySelectorAll('.hr-report-sheet tbody tr').length===1");
@@ -299,9 +305,10 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       check(`${lang} customer editor not loaded by list`, assets.some(value => /CustomerModal-.*\.js/.test(value)), false);
       await click(".page-heading .btn-primary"); await wait("!!document.querySelector('.customer-modal')");
       check(`${lang} customer editor loaded by create action`, assets.some(value => /CustomerModal-.*\.js/.test(value)));
-      await open("/admin"); await wait("!!document.querySelector('#admin-panel-users [role=\"status\"][aria-busy=\"true\"]')");
+      await open("/admin");
+      const usersLoadingText = await loadingText('#admin-panel-users [role="status"][aria-busy="true"]');
       check(`${lang} admin tabs stay visible while users load`, await evaluate("document.querySelector('#admin-tab-users').getAttribute('aria-selected')"), "true");
-      check(`${lang} users translated loading state`, await evaluate("document.querySelector('#admin-panel-users [role=\"status\"]').textContent"), lang === "ar" ? "جارٍ التحميل…" : "Loading…");
+      check(`${lang} users translated loading state`, usersLoadingText, lang === "ar" ? "جارٍ التحميل…" : "Loading…");
       await wait("document.querySelectorAll('.users-table tbody tr').length===1");
       check(`${lang} admin initially loads only the users tab`, assets.filter(value => adminChunks.test(value)).map(value => value.match(/(UsersAdmin|RolesAdmin|SettingsAdmin)-/)[1]), ["UsersAdmin"]);
       check(`${lang} users list retains fixture identity`, await evaluate("document.querySelector('.users-table').textContent.includes('Fixture Employee')"));
@@ -327,8 +334,8 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       check(`${lang} editor supports multiple stages`, await evaluate("[...document.querySelectorAll('fieldset input')].map(input=>input.checked)"), [true, false, true]);
       await click(".role-modal footer button[type=button]");
       check(`${lang} cancelling never changes stored role binding`, filmRole.production_role_binding.stages, ["film"]);
-      await click("#admin-tab-settings"); await wait("!!document.querySelector('#admin-panel-settings [role=\"status\"][aria-busy=\"true\"]')");
-      check(`${lang} settings translated loading state`, await evaluate("document.querySelector('#admin-panel-settings [role=\"status\"]').textContent"), lang === "ar" ? "جارٍ التحميل…" : "Loading…");
+      await click("#admin-tab-settings");
+      check(`${lang} settings translated loading state`, await loadingText('#admin-panel-settings [role="status"][aria-busy="true"]'), lang === "ar" ? "جارٍ التحميل…" : "Loading…");
       await wait("document.querySelector('#profile-name')?.value==='Fixture Factory'");
       check(`${lang} settings chunk loaded by tab click`, assets.some(value => /SettingsAdmin-.*\.js$/.test(value)));
       check(`${lang} settings retain profile and operation values`, await evaluate("[document.querySelector('#default-language').value, document.querySelector('#factory-timezone').value, document.querySelector('#work-hours-day').value]"), [lang, "Asia/Riyadh", "8"]);

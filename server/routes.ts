@@ -54,7 +54,7 @@ import { deliveryDateFromDays, orderDateInRiyadh } from "./order-delivery";
 import { getOrderDetails } from "./order-details";
 import { createPublicOrderPrintRouter, publicOrderPrintPath } from "./public-order-print";
 import { customerProductFacingNotice, deriveCustomerProductFields, PRINTING_CYLINDERS } from "@shared/customer-product-fields";
-import { authenticate, hashPassword, requireAnyPermission, requireAuth, requirePermission, resolveUser } from "./auth";
+import { authenticate, hashPassword, requireAnyPermission, requireAuth, requirePermission } from "./auth";
 import rolePreviewRouter from "./role-preview";
 import { canGrantPermissions, isProtectedProductionOrder, plannedFinalQuantity } from "./audit-rules";
 import { categoryProductionPlan } from "./category-production-plan";

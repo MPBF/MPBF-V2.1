@@ -1,14 +1,11 @@
 import i18n, { translate, translateError } from "../i18n";
 import { fetchAllPages, LIST_PAGE_SIZE } from "./listing";
 import type { OrderDisplayFolder } from "./order-workspace";
+import { latinDigits } from "./number-input";
 
 export type Row = Record<string, any>;
 
-export const latinDigits = (value: string) => value
-  .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
-  .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
-  .replace(/٫/g, ".")
-  .replace(/٬/g, ",");
+export { latinDigits } from "./number-input";
 
 export const normalizePayload = (value: any): any => {
   if (typeof value === "string") return latinDigits(value);
