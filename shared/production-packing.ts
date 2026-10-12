@@ -65,3 +65,16 @@ export function receiptUnitLabel(unit: ReceiptUnit, language: string) {
   };
   return labels[unit]?.[language === "en" ? 1 : 0] ?? "—";
 }
+
+/** Display the derived kg per packing unit without changing the stored calculation. */
+export function packingUnitWeightKg(specification: PackingSpecification): string {
+  if (specification.method === "unit_weight") {
+    // kg is always one kg per unit; other units retain their validated precision.
+    return decimal(scaled(specification.unit_weight_kg ?? (specification.unit === "kg" ? "1" : ""), 6, 8), 6);
+  }
+  if (!Number.isSafeInteger(specification.pieces_per_unit) || specification.pieces_per_unit! <= 0 ||
+    specification.pieces_per_unit! > 1000000) throw invalid();
+  const pieceGrams = scaled(specification.piece_weight_grams ?? "", 4, 8);
+  // Four fractional gram digits become seven fractional kg digits.
+  return decimal(pieceGrams * BigInt(specification.pieces_per_unit!), 7);
+}

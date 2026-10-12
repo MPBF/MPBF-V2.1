@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ChangeEvent,
   type FormEvent,
   type MutableRefObject,
@@ -11,7 +12,9 @@ import { createPortal } from "react-dom";
 
 import type { ProductionOrderRecord, ProductionReceipt } from "../../../../shared/production";
 import { deriveReceiptPacking, type ReceiptDraft } from "../../../../shared/receipt-draft";
-import { ReceiptUnit, receiptUnitLabel } from "../../../../shared/production-packing";
+import { packingUnitWeightKg, receiptUnitLabel } from "../../../../shared/production-packing";
+import { ReceiptVoucherPreview } from "./ReceiptVoucherPreview";
+import { receiptVoucherCopy } from "./receipt-voucher-copy";
 import "./receipt-voucher.css";
 
 export type { ReceiptDraft } from "../../../../shared/receipt-draft";
@@ -39,86 +42,6 @@ type Props = {
   number: (value: string | number | null | undefined, language: string, digits?: number) => string;
 };
 
-// 1. نقل النصوص خارج الكومبوننت لتجنب إنشائها مع كل Render
-const TRANSLATIONS = {
-  en: {
-    title: "Finished goods receipt voucher",
-    subtitle: "Transfer between the halls.",
-    source: "Source · production hall",
-    destination: "Destination · finished-goods hall",
-    sourceName: "Production hall",
-    destName: "Finished goods",
-    order: "Production order · product · customer",
-    line: "Line",
-    choose: "Choose an order",
-    quantity: "Quantity to receive (kg)",
-    available: "Available",
-    unit: "Packing unit",
-    count: "Packing-unit quantity",
-    method: "Calculation method",
-    unitWeight: "Derived unit weight (kg)",
-    pieces: "Pieces per unit",
-    pieceWeight: "Derived piece weight (grams)",
-    notes: "Voucher notes",
-    addLine: "Add packing line",
-    remove: "Remove line",
-    total: "Voucher total",
-    save: "Save receipt voucher",
-    saving: "Saving voucher…",
-    close: "Close voucher",
-    closeBtn: "Close",
-    retry: "Retry exact same operation",
-    saved: "Voucher saved",
-    voucher: "Voucher number",
-    time: "Recorded at",
-    print: "Print A4",
-    assignedOnSave: "Assigned on save · FP-Rec0001…",
-    date: "Date",
-    calculated: "Calculated",
-    units: ["kg", "packet", "roll", "piece"] as ReceiptUnit[],
-    modeUnit: "Count × unit weight",
-    modePiece: "Count × pieces × piece weight",
-  },
-  ar: {
-    title: "سند استلام مواد تامة",
-    subtitle: "نقل بين الصالتين.",
-    source: "المصدر · صالة الإنتاج",
-    destination: "الوجهة · صالة المواد التامة",
-    sourceName: "صالة الإنتاج",
-    destName: "المواد التامة",
-    order: "أمر الإنتاج · المنتج · العميل",
-    line: "السطر",
-    choose: "اختر أمراً",
-    quantity: "الكمية المطلوب استلامها (كجم)",
-    available: "المتاح",
-    unit: "وحدة التعبئة",
-    count: "عدد وحدات التعبئة",
-    method: "طريقة الحساب",
-    unitWeight: "وزن الوحدة المحسوب (كجم)",
-    pieces: "عدد القطع في الوحدة",
-    pieceWeight: "وزن القطعة المحسوب (جرام)",
-    notes: "ملاحظات السند",
-    addLine: "إضافة سطر تعبئة",
-    remove: "إزالة السطر",
-    total: "إجمالي السند",
-    save: "حفظ سند الاستلام",
-    saving: "جارٍ حفظ السند…",
-    close: "إغلاق السند",
-    closeBtn: "إغلاق",
-    retry: "إعادة محاولة العملية نفسها",
-    saved: "تم حفظ السند",
-    voucher: "رقم السند",
-    time: "وقت التسجيل",
-    print: "طباعة A4",
-    assignedOnSave: "يُخصص عند الحفظ · FP-Rec0001…",
-    date: "التاريخ",
-    calculated: "المحسوب",
-    units: ["kg", "packet", "roll", "piece"] as ReceiptUnit[],
-    modeUnit: "العدد × وزن الوحدة",
-    modePiece: "العدد × القطع × وزن القطعة",
-  },
-};
-
 const parseCents = (weight: string) => {
   const [whole = "0", fraction = ""] = weight.split(".");
   return BigInt(whole || "0") * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
@@ -131,9 +54,15 @@ export function ReceiptVoucherModal(props: Props) {
     onPrint, orderLabel, customerLabel, number,
   } = props;
 
-  const t = language === "en" ? TRANSLATIONS.en : TRANSLATIONS.ar;
+  const t = receiptVoucherCopy(language);
   const dialogRef = useRef<HTMLElement | null>(null);
+  const previewRef = useRef<HTMLElement | null>(null);
+  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const previewOpenRef = useRef(false);
+  const wasPreviewOpen = useRef(false);
   const openedAt = useRef(new Date());
+  const [previewOpen, setPreviewOpen] = useState(false);
+  previewOpenRef.current = previewOpen;
   const editable = !saving && !locked;
 
   // إدارة التركيز والـ Keyboard Trap
@@ -145,32 +74,33 @@ export function ReceiptVoucherModal(props: Props) {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const getFocusable = () =>
-      [...dialog.querySelectorAll<HTMLElement>(
+    const within = (root: ParentNode) =>
+      [...root.querySelectorAll<HTMLElement>(
         'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       )].filter((el) => el.offsetParent !== null);
-
-    (getFocusable()[0] ?? dialog).focus();
+    (within(dialog)[0] ?? dialog).focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        if (previewOpenRef.current) setPreviewOpen(false);
+        else onClose();
         return;
       }
 
       if (event.key === "Tab") {
-        const items = getFocusable();
+        const activeDialog = (previewOpenRef.current ? previewRef.current : dialog) ?? dialog;
+        const items = within(activeDialog ?? dialog);
         if (!items.length) {
           event.preventDefault();
-          dialog.focus();
+          (activeDialog ?? dialog).focus();
         } else if (event.shiftKey && document.activeElement === items[0]) {
           event.preventDefault();
           items.at(-1)?.focus();
         } else if (!event.shiftKey && document.activeElement === items.at(-1)) {
           event.preventDefault();
           items[0]?.focus();
-        } else if (!dialog.contains(document.activeElement)) {
+        } else if (!(activeDialog ?? dialog).contains(document.activeElement)) {
           event.preventDefault();
           (event.shiftKey ? items.at(-1) : items[0])?.focus();
         }
@@ -185,6 +115,12 @@ export function ReceiptVoucherModal(props: Props) {
     };
   }, [onClose, openerRef]);
 
+  useEffect(() => {
+    if (previewOpen) previewRef.current?.focus();
+    else if (wasPreviewOpen.current) previewTriggerRef.current?.focus();
+    wasPreviewOpen.current = previewOpen;
+  }, [previewOpen]);
+
   // 2. استخدام useMemo لتفادي إعادة الحسابات مع كتابة الملاحظات
   const derived = useMemo(() => {
     return drafts.map((row) => {
@@ -196,6 +132,16 @@ export function ReceiptVoucherModal(props: Props) {
     });
   }, [drafts]);
 
+  // Display the coefficient from the same validated specification used by the receipt calculation.
+  const factors = useMemo(() => derived.map((item) => {
+    if (!item) return null;
+    try {
+      return packingUnitWeightKg(item.result.specification);
+    } catch {
+      return null;
+    }
+  }), [derived]);
+
   // حساب المجموع الكلي
   const total = useMemo(() => {
     const clearDraft = drafts.length === 1 && !drafts[0].orderId && !drafts[0].count;
@@ -203,7 +149,7 @@ export function ReceiptVoucherModal(props: Props) {
 
     let centsTotal: bigint | null = null;
     if (clearDraft && savedReceipt) {
-      centsTotal = savedReceipt.items.reduce((sum, item) => sum + parseCents(item.quantity_kg), 0n);
+      centsTotal = savedReceipt.items.reduce((sum, item) => sum + parseCents(String(item.quantity_kg)), 0n);
     } else if (validRows) {
       centsTotal = derived.reduce((sum, item) => sum + parseCents(item!.result.quantity_kg), 0n);
     }
@@ -212,12 +158,25 @@ export function ReceiptVoucherModal(props: Props) {
     return `${centsTotal / 100n}.${String(centsTotal % 100n).padStart(2, "0")}`;
   }, [drafts, derived, savedReceipt]);
 
+  const previewTotal = useMemo(() => {
+    if (!derived.length || derived.some((item) => item === null)) return null;
+    const cents = derived.reduce((sum, item) => sum + parseCents(item!.result.quantity_kg), 0n);
+    return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
+  }, [derived]);
+
   // تجهيز التاريخ المنسق
+  const draftDateTime = useMemo(() => {
+    return new Intl.DateTimeFormat(
+      language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB",
+      { dateStyle: "medium", timeZone: "Asia/Riyadh" }
+    ).format(openedAt.current);
+  }, [language]);
+
   const dateTime = useMemo(() => {
     const shownDate = savedReceipt?.created_at ? new Date(savedReceipt.created_at) : openedAt.current;
     return new Intl.DateTimeFormat(
       language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB",
-      { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" }
+      { dateStyle: "medium", timeZone: "Asia/Riyadh" }
     ).format(shownDate);
   }, [savedReceipt?.created_at, language]);
 
@@ -267,18 +226,6 @@ export function ReceiptVoucherModal(props: Props) {
           </div>
         </header>
 
-        <div className="receipt-voucher-route" aria-label={`${t.source} → ${t.destination}`}>
-          <div>
-            <small>{t.source}</small>
-            <strong>{t.sourceName}</strong>
-          </div>
-          <span aria-hidden="true">→</span>
-          <div>
-            <small>{t.destination}</small>
-            <strong>{t.destName}</strong>
-          </div>
-        </div>
-
         <section
           className={`receipt-voucher-saved${savedReceipt ? "" : " is-pending"}`}
           role={savedReceipt ? "status" : undefined}
@@ -292,7 +239,8 @@ export function ReceiptVoucherModal(props: Props) {
               : undefined
           }
         >
-          <div>
+          <div className="receipt-voucher-metadata-grid">
+          <div className="receipt-voucher-meta-item" data-receipt-meta="number">
             {savedReceipt && <strong>{t.saved}</strong>}
             <small>{t.voucher}</small>
             {savedReceipt ? (
@@ -301,9 +249,16 @@ export function ReceiptVoucherModal(props: Props) {
               <span className="receipt-voucher-pending-number">{t.assignedOnSave}</span>
             )}
           </div>
-          <div>
-            <small>{savedReceipt ? t.time : t.date}</small>
+          <div className="receipt-voucher-meta-item" data-receipt-meta="date">
+            <small>{t.date}</small>
             <bdi data-receipt-created-at={savedReceipt?.created_at}>{dateTime}</bdi>
+          </div>
+          <div className="receipt-voucher-meta-item" data-receipt-meta="source">
+            <small>{t.source}</small><bdi>{t.sourceName}</bdi>
+          </div>
+          <div className="receipt-voucher-meta-item" data-receipt-meta="destination">
+            <small>{t.destination}</small><bdi>{t.destName}</bdi>
+          </div>
           </div>
         </section>
 
@@ -314,9 +269,10 @@ export function ReceiptVoucherModal(props: Props) {
                 <tr>
                   <th scope="col">{t.line}</th>
                   <th scope="col">{t.order}</th>
-                  <th scope="col">{t.available} (kg)</th>
+                  <th scope="col">{t.availableColumn}</th>
                   <th scope="col">{t.unit}</th>
-                  <th scope="col">{t.count} · {t.method}</th>
+                  <th scope="col">{t.factor}</th>
+                  <th scope="col">{t.count}</th>
                   <th scope="col">{t.quantity}</th>
                 </tr>
               </thead>
@@ -324,7 +280,6 @@ export function ReceiptVoucherModal(props: Props) {
                 {drafts.map((row, index) => {
                   const order = eligible.find((item) => String(item.id) === row.orderId);
                   const packing = derived[index]?.packing;
-                  const result = derived[index]?.result;
 
                   const handleFieldChange =
                     (field: keyof ReceiptDraft) =>
@@ -368,17 +323,10 @@ export function ReceiptVoucherModal(props: Props) {
                               </option>
                             ))}
                           </select>
-                          {order && (
-                            <small className="receipt-voucher-order-context">
-                              <bdi>{order.production_order_number}</bdi>
-                              <strong>{orderLabel(order)}</strong>
-                              <span>{customerLabel(order)}</span>
-                            </small>
-                          )}
                         </div>
                       </td>
 
-                      <td data-label={`${t.available} (kg)`}>
+                      <td data-label={t.availableColumn}>
                         <bdi className="receipt-voucher-available">
                           {order ? number(order.remaining_kg, language) : "—"} kg
                         </bdi>
@@ -403,11 +351,32 @@ export function ReceiptVoucherModal(props: Props) {
                         </div>
                       </td>
 
-                      <td data-label={`${t.count} · ${t.method}`}>
+                      <td data-label={t.factor}>
+                        <div className="receipt-voucher-factor">
+                          {row.unit !== "kg" && row.method === "unit_weight" ? (
+                            <input
+                              id={`receipt-unit-weight-${index}`}
+                              data-receipt-unit-weight={index}
+                              data-receipt-factor={index}
+                              type="text"
+                              inputMode="decimal"
+                              value={factors[index] ?? ""}
+                              readOnly
+                              aria-readonly="true"
+                              disabled={!editable}
+                              aria-label={t.factor}
+                              title={t.unitWeight}
+                            />
+                          ) : <output data-receipt-factor={index} title={t.unitWeight}>{factors[index] ?? "—"}</output>}
+                          <small>kg / {receiptUnitLabel(row.unit, language)}</small>
+                        </div>
+                      </td>
+
+                      <td data-label={t.count}>
                         <div className="receipt-voucher-packing-cell">
                           <div className="receipt-voucher-packing-controls">
                             <div className="receipt-voucher-control">
-                              <label htmlFor={`receipt-unit-quantity-${index}`}>{t.count}</label>
+                              <label className="sr-only" htmlFor={`receipt-unit-quantity-${index}`}>{t.count}</label>
                               <input
                                 id={`receipt-unit-quantity-${index}`}
                                 data-receipt-unit-quantity={index}
@@ -453,22 +422,6 @@ export function ReceiptVoucherModal(props: Props) {
                               </div>
                             )}
 
-                            {row.unit !== "kg" && row.method === "unit_weight" && (
-                              <div className="receipt-voucher-control">
-                                <label htmlFor={`receipt-unit-weight-${index}`}>{t.unitWeight}</label>
-                                <input
-                                  id={`receipt-unit-weight-${index}`}
-                                  data-receipt-unit-weight={index}
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={packing?.unit_weight_kg ?? ""}
-                                  readOnly
-                                  aria-readonly="true"
-                                  disabled={!editable}
-                                />
-                              </div>
-                            )}
-
                             {row.unit !== "kg" && row.method === "piece_weight" && (
                               <div className="receipt-voucher-control">
                                 <label htmlFor={`receipt-piece-weight-${index}`}>{t.pieceWeight}</label>
@@ -501,9 +454,6 @@ export function ReceiptVoucherModal(props: Props) {
                           aria-label={t.quantity}
                           onChange={handleFieldChange("quantity")}
                         />
-                        <small className="receipt-voucher-derived-total">
-                          {result ? `${t.calculated}: ${number(result.quantity_kg, language)} kg` : ""}
-                        </small>
                       </td>
                     </tr>
                   );
@@ -556,6 +506,24 @@ export function ReceiptVoucherModal(props: Props) {
 
           <footer className="receipt-voucher-footer">
             <button
+              className="prod-btn secondary"
+              type="button"
+              ref={previewTriggerRef}
+              data-receipt-preview-trigger
+              onClick={() => setPreviewOpen(true)}
+            >
+              {t.preview}
+            </button>
+            <button
+              className="prod-btn"
+              data-receipt-submit
+              type="submit"
+              disabled={saving || locked || !eligible.length}
+              aria-busy={saving}
+            >
+              {t.save}
+            </button>
+            <button
               className="prod-btn quiet"
               type="button"
               disabled={saving}
@@ -563,16 +531,27 @@ export function ReceiptVoucherModal(props: Props) {
             >
               {t.closeBtn}
             </button>
-            <button
-              className="prod-btn"
-              data-receipt-submit
-              type="submit"
-              disabled={saving || locked || !eligible.length}
-            >
-              {saving ? t.saving : t.save}
-            </button>
           </footer>
         </form>
+        {previewOpen && (
+          <ReceiptVoucherPreview
+            language={language}
+            copy={t}
+            eligible={eligible}
+            drafts={drafts}
+            derived={derived}
+            factors={factors}
+            savedReceipt={savedReceipt}
+            dateTime={dateTime}
+            draftDateTime={draftDateTime}
+            notes={notes}
+            total={previewTotal}
+            previewRef={previewRef}
+            onClose={() => setPreviewOpen(false)}
+            orderLabel={orderLabel}
+            number={number}
+          />
+        )}
       </section>
     </div>,
     document.body
