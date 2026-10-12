@@ -335,7 +335,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       };
       for (const lang of ["ar","en"]) {
         language=lang;
-        for (const width of [390,768,1440]) {
+        for (const width of [390,768,920,1440]) {
           await send("Emulation.setDeviceMetricsOverride",{width,height:844,deviceScaleFactor:1,mobile:width===390});
           await navigate("/warehouse/hall");
           check(`${lang} ${width} receipt initially collapsed`,await evaluate("!document.querySelector('[data-receipt-voucher]')"));
@@ -345,6 +345,11 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           check(`${lang} ${width} voucher uses numbered table`,await evaluate("!!document.querySelector('.receipt-voucher-table thead')&&document.querySelectorAll('.receipt-voucher-table tbody tr').length===2"));
           check(`${lang} ${width} accessible voucher`,await evaluate("document.querySelector('[data-receipt-voucher]').getAttribute('aria-modal')"),"true");
           check(`${lang} ${width} receipt fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1 && document.querySelector('[data-receipt-voucher]').getBoundingClientRect().width<=innerWidth"));
+          check(`${lang} ${width} compact receipt has no internal horizontal overflow`,await evaluate("document.querySelector('[data-receipt-voucher]').scrollWidth<=document.querySelector('[data-receipt-voucher]').clientWidth+1&&document.querySelector('.receipt-voucher-table-wrap').scrollWidth<=document.querySelector('.receipt-voucher-table-wrap').clientWidth+1"));
+          if(width===1440) {
+            check(`${lang} ${width} smaller desktop voucher`,await evaluate("document.querySelector('[data-receipt-voucher]').getBoundingClientRect().width<=960.5"));
+            check(`${lang} ${width} order columns remain adjacent`,await evaluate("getComputedStyle(document.querySelector('.receipt-voucher-table')).display==='table'&&new Set([...document.querySelectorAll('.receipt-voucher-table tbody tr:first-child > td')].map(cell=>Math.round(cell.getBoundingClientRect().top))).size===1"));
+          }
           check(`${lang} ${width} correct language direction`,await evaluate("document.querySelector('[data-receipt-voucher]').dir"),lang==="ar"?"rtl":"ltr");
           check(`${lang} ${width} source and destination`,await evaluate(`document.querySelector('[data-receipt-voucher]').innerText.includes(${jsLiteral(lang==="ar"?"صالة الإنتاج":"Production hall")})&&document.querySelector('[data-receipt-voucher]').innerText.includes(${jsLiteral(lang==="ar"?"المواد التامة":"Finished goods")})`));
           check(`${lang} ${width} no sublocation selection or prerequisite`,await evaluate("!document.querySelector('[id^=\"receipt-location-\"]')&&!document.querySelector('.receipt-voucher-alert')&&!document.querySelector('[data-receipt-submit]').disabled"));
@@ -360,6 +365,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           check(`${lang} ${width} fixed four units`,await evaluate("[...document.querySelector('#receipt-unit-0').options].map(option=>option.value)"),["kg","packet","roll","piece"]);
           check(`${lang} ${width} both automatic conversions`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-quantity-2').value]"),["10.00","30.00"]);
           check(`${lang} ${width} weight per unit and piece is automatically derived`,await evaluate("[document.querySelector('#receipt-unit-weight-0').value,document.querySelector('#receipt-piece-weight-2').value]"),["5.000000","500.0000"]);
+          check(`${lang} ${width} packing controls align in two columns`,await evaluate("(()=>{const quantity=document.querySelector('#receipt-unit-quantity-2').getBoundingClientRect(),method=document.querySelector('#receipt-method-2').getBoundingClientRect(),pieces=document.querySelector('#receipt-pieces-2').getBoundingClientRect(),weight=document.querySelector('#receipt-piece-weight-2').getBoundingClientRect();return Math.abs(quantity.top-method.top)<1&&Math.abs(pieces.top-weight.top)<1&&pieces.top>quantity.bottom})()"));
           check(`${lang} ${width} requested kg editable and derived weights locked`,await evaluate("!document.querySelector('#receipt-quantity-0').readOnly&&document.querySelector('#receipt-unit-weight-0').readOnly&&document.querySelector('#receipt-piece-weight-2').readOnly"));
           check(`${lang} ${width} date automatic and pending print disabled`,await evaluate("document.querySelector('.receipt-voucher-saved > div:last-child bdi').textContent!=='—'&&document.querySelector('.receipt-voucher-print').disabled"));
           check(`${lang} ${width} notes stay compact`,await evaluate("document.querySelector('#receipt-notes').getBoundingClientRect().height<=75"));
@@ -375,6 +381,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           check(`${lang} ${width} closing restores selection button focus`,await evaluate("document.activeElement.matches('[data-hall-receive-selected]')"));
           await openReceipt();
           check(`${lang} ${width} closing preserves unsaved draft`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-notes').value]"),["10.00","Retained voucher draft"]);
+          await evaluate("document.querySelector('[data-receipt-voucher]').scrollTop=0");
+          check(`${lang} ${width} save action remains visible with multiple lines`,await evaluate("(()=>{const button=document.querySelector('[data-receipt-submit]'),rect=button.getBoundingClientRect(),dialog=document.querySelector('[data-receipt-voucher]').getBoundingClientRect();return rect.top>=dialog.top&&rect.bottom<=Math.min(dialog.bottom,innerHeight)+1&&document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2)?.closest('[data-receipt-submit]')===button})()"));
           if(lang==="ar"&&width===390){
             const shot=await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});
             await fs.writeFile("/tmp/unit-receipt-phone.png",Buffer.from(shot.data,"base64"));
