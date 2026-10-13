@@ -49,3 +49,14 @@ receipt PDFs, even though all content was present.
 **How to apply:** account narrowly for extraction differences, check totals on
 their actual PDF line, and use glyph coordinates to verify each header in its
 own column. Do not weaken checks to document-wide word presence alone.
+
+RTL PDF extraction can move parentheses away from their unit label even
+when the rendered heading is correct. Inspect a rendered PDF page before
+treating extraction differences as missing content.
+
+**Why:** a visually complete Arabic kg heading was rejected because its
+closing parenthesis was extracted before the heading rather than after it.
+
+**How to apply:** normalize that punctuation narrowly while retaining all
+label/unit letters and independently checking the glyphs above the first
+row in the correct physical column.

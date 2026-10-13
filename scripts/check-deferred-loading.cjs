@@ -89,6 +89,21 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
           activated_at: "2026-10-01T06:00:00Z", machines: [], production_machines: [],
         };
         else if (url.pathname.startsWith("/api/production/monitoring/")) data = { records: [], next: null };
+        else if (url.pathname === "/api/production/delivery-stock") data = { records:[{
+          id:1,production_order_id:1,customer_product_id:product.id,item_id:product.item_id,
+          production_order_number:"PO-FIXTURE",quantity_kg:"100",received_kg:"100",delivered_kg:"0",
+          customer_id:customer.id,order_number:order.order_number,production_complete:true,
+          product:{...product,customer_name:customer.name,customer_name_ar:customer.name_ar},
+        }],next:null};
+        else if (url.pathname === "/api/production/deliveries") data={records:[],next:null};
+        else if (url.pathname === "/api/data-transfer/schema") data={
+          ready:true,version:"fixture-version",environment:"Development",limits:{bytes:5242880,rows:2000,retentionDays:30},
+          tables:[{name:"customers",labelAr:"العملاء",labelEn:"Customers",group:"catalogue",approved:true,
+            exportable:true,importable:true,reasonAr:"",reasonEn:"",keys:[["id"]],relations:[],
+            columns:[{name:"id",labelAr:"المعرّف",labelEn:"ID",type:"character varying",nullable:false,default:null,
+              generated:false,writable:true,maxLength:20,precision:null,scale:null},
+              {name:"name",labelAr:"الاسم",labelEn:"Name",type:"character varying",nullable:false,default:null,
+              generated:false,writable:true,maxLength:200,precision:null,scale:null}]}]};
         else if (url.pathname.startsWith("/api/production/history/")) data = {
           records: url.pathname.endsWith("/inventory") ? [{
             id: 1, production_order_number: "PO-FIXTURE", quantity_kg: "100",
@@ -198,8 +213,8 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
     const open = async route => { assets.length = 0; await send("Page.navigate", { url: origin + route }); };
     await checkReceiptPagination({ temp, open, wait, evaluate, send });
     const click = async selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-    const adminChunks = /(?:UsersAdmin|RolesAdmin|SettingsAdmin)-.*\.js$/;
-    const deferred = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|HumanResources|UserDashboard|ProductionPage|OrderPrintPage|OrderCreateModal|CustomerProductModal|CustomerModal|ProductionOrderModal|OrderDetailsModal|OrderWorkspaceControls|xlsx|jspdf|html2canvas)[-.]/;
+    const adminChunks = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|DataTransferAdmin)-.*\.js$/;
+    const deferred = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|DataTransferAdmin|HumanResources|UserDashboard|ProductionPage|OrderPrintPage|OrderCreateModal|CustomerProductModal|CustomerModal|ProductionOrderModal|OrderDetailsModal|OrderWorkspaceControls|xlsx|jspdf|html2canvas)[-.]/;
     const download = async extension => {
       for (let attempt = 0; attempt < 400; attempt++) {
         const file = (await fs.readdir(temp)).find(name => name.endsWith(extension) && !name.endsWith("-order.pdf"));
@@ -272,9 +287,31 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       await click('a[href="/warehouse"]'); await wait("!!document.querySelector('.warehouse-hall-section')");
       check(`${lang} warehouse hall navigation renders`, await evaluate("!!document.querySelector('.prod-view-nav a[aria-current=\"page\"]')"));
       await click('.prod-view-nav a[href="/warehouse/finished-inventory"]');
-      await wait("!!document.querySelector('.warehouse-inventory-card')");
-      check(`${lang} finished inventory loads its cards and styles`, await evaluate("getComputedStyle(document.querySelector('.warehouse-inventory-card')).display !== 'inline' && document.querySelector('.warehouse-inventory-card').textContent.includes('PO-FIXTURE')"));
-      check(`${lang} stock unit quantities remain visible`, await evaluate("document.querySelector('.warehouse-balance-spec strong').textContent.includes('20')"));
+      await wait("!!document.querySelector('.finished-inventory-page .warehouse-order-card')");
+      check(`${lang} finished inventory matches hall cards and styles`, await evaluate("getComputedStyle(document.querySelector('.finished-inventory-page .warehouse-order-card')).display !== 'inline' && document.querySelector('.finished-inventory-page .warehouse-order-card').textContent.includes('PO-FIXTURE')"));
+      check(`${lang} stock keeps kg metrics and drops legacy unit counts`, await evaluate("document.querySelector('.finished-inventory-page .warehouse-order-metrics').textContent.includes('100')&&!document.querySelector('.warehouse-balance-spec')"));
+      const originalViewport=await evaluate("({width:innerWidth,height:innerHeight})");
+      for(const [width,columns] of [[390,1],[768,3],[1280,6]]){
+        await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<481});
+        check(`${lang} ${width}px stock cards fit with ${columns} columns`,
+          await evaluate(`(()=>{
+            const grid=document.querySelector('.finished-inventory-page .warehouse-hall-grid');
+            return grid&&getComputedStyle(grid).gridTemplateColumns.split(' ').length===${columns}&&
+              grid.getBoundingClientRect().right<=innerWidth+1;
+          })()`));
+      }
+      await send("Emulation.setDeviceMetricsOverride",{...originalViewport,deviceScaleFactor:1,mobile:false});
+      await click(".finished-inventory-page .warehouse-order-select input");
+      await wait("!document.querySelector('.finished-inventory-selection .prod-btn').disabled");
+      await click(".finished-inventory-selection .prod-btn");
+      await wait("!!document.querySelector('.finished-delivery-dialog[role=dialog]')");
+      check(`${lang} delivery voucher binds recipient to the selected customer's order`,
+        await evaluate("document.querySelector('.finished-delivery-recipient strong').textContent.includes('Fixture Customer') || document.querySelector('.finished-delivery-recipient strong').textContent.includes('عميل تجريبي')"));
+      check(`${lang} no voucher number or print exists until saved`,
+        await evaluate("!document.querySelector('.finished-delivery-dialog .finished-delivery-saved')&&!document.querySelector('.finished-delivery-dialog .finished-delivery-header-actions .prod-btn')"));
+      await click(".finished-delivery-dialog .finished-delivery-close");
+      check(`${lang} closing the unsaved voucher does not create stock writes`,
+        await evaluate("!document.querySelector('.finished-delivery-dialog')"));
       check(`${lang} planning and warehouse show no loading error`, await evaluate("document.querySelectorAll('.prod-error').length"), 0);
       await open("/production/film"); await wait("!!document.querySelector('.production-app')");
       check(`${lang} production page chunk loads`, assets.some(value => /ProductionPage-.*\.js/.test(value)));
@@ -312,6 +349,18 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       await wait("document.querySelectorAll('.users-table tbody tr').length===1");
       check(`${lang} admin initially loads only the users tab`, assets.filter(value => adminChunks.test(value)).map(value => value.match(/(UsersAdmin|RolesAdmin|SettingsAdmin)-/)[1]), ["UsersAdmin"]);
       check(`${lang} users list retains fixture identity`, await evaluate("document.querySelector('.users-table').textContent.includes('Fixture Employee')"));
+      await click("#admin-tab-data-transfer");
+      await wait("!!document.querySelector('.transfer-page .transfer-statusline')");
+      check(`${lang} data tool is deferred until administrator opens it`,assets.some(value=>/DataTransferAdmin-.*\.js$/.test(value)));
+      check(`${lang} transfer shows connected environment and discovered catalogue`,
+        await evaluate("document.querySelector('.transfer-page').textContent.includes('Development')&&document.querySelector('.transfer-page').textContent.includes('customers')"));
+      for(const width of [390,768,1280]){
+        await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<481});
+        check(`${lang} ${width}px transfer controls stay within viewport`,
+          await evaluate("document.querySelector('.transfer-page').getBoundingClientRect().right<=innerWidth+1"));
+      }
+      await send("Emulation.setDeviceMetricsOverride",{...originalViewport,deviceScaleFactor:1,mobile:false});
+      await click("#admin-tab-users");await wait("document.querySelectorAll('.users-table tbody tr').length===1");
       await click("#admin-panel-users .page-heading button"); await wait("!!document.querySelector('#user-role option[value=\"891\"]')");
       check(`${lang} user create dialog retains password requirement`, await evaluate("document.querySelector('input[type=password][autocomplete=new-password]').required"));
       check(`${lang} user dialog does not preload the roles editor`, assets.some(value => /RolesAdmin-.*\.js$/.test(value)), false);
@@ -436,21 +485,16 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         await click("[data-receipt-launcher]");
         await wait("!!document.querySelector('[role=dialog]')");
         check("English receipt dialog quantity label", (await body()).includes("Quantity to receive (kg)"));
-        await evaluate("(()=>{const s=document.querySelector('[data-receipt-unit]');s.value='packet';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
-        await wait("!!document.querySelector('[data-receipt-unit-weight]')");
-        check("English receipt dialog derived weight label", await evaluate("document.querySelector('[data-receipt-unit-weight]').title"), "Derived unit weight (kg)");
-        await evaluate("(()=>{const s=document.querySelector('[data-receipt-method]');s.value='piece_weight';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
-        await wait("!!document.querySelector('[data-receipt-piece-weight]')");
-        check("English receipt dialog derived piece label", (await body()).includes("Derived piece weight (grams)"));
+        check("English receipt accepts kg without unit or factor controls",await evaluate("!!document.querySelector('[data-receipt-quantity]')&&!document.querySelector('[data-receipt-unit],[data-receipt-factor],[data-receipt-method]')"));
         await englishOnly("English receipt dialog has no Arabic");
         await evaluate("document.querySelector('[role=dialog] form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))");
-        await wait("document.body.innerText.includes('Complete every field in line 1 before saving.')");
+        await wait("document.body.innerText.includes('Choose a production order in line 1.')");
         await englishOnly("English receipt validation has no Arabic");
         await open("/fixture-receipt");
         await wait("document.querySelectorAll('tbody tr').length===3");
         check("English receipt print direction", await evaluate("document.documentElement.dir"), "ltr");
-        check("English receipt print legacy specification", (await body()).includes("Not recorded historically"));
-        check("English receipt print exact total", (await body()).includes("Voucher total: 25 kg"));
+        check("English receipt print has no retired unit columns", await evaluate("document.querySelectorAll('table th').length"),3);
+        check("English receipt print exact total", (await body()).includes("Voucher total: 25.00 kg"));
         await englishOnly("English receipt A4 print has no Arabic");
         const pdf = await send("Page.printToPDF", { preferCSSPageSize: true, printBackground: true });
         const receiptPdf = path.join(temp, "receipt-en.pdf");
@@ -461,9 +505,11 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
           /Pages:\s+1\b/.test(receiptInfo) && /Page size:\s+59[45]\.\d+ x 84[12]\.\d+ pts \(A4\)/.test(receiptInfo));
         const receiptText = execFileSync("pdftotext", ["-layout", receiptPdf, "-"], { encoding: "utf8" });
         check("English receipt PDF retains every fixture line",
-          ["JO0008", "JO0009", "JO0010", "2 kg", "100 × 50 g", "Not recorded historically"].every(text => receiptText.includes(text)));
+          ["JO0008", "JO0009", "JO0010", "10 kg", "5 kg"].every(text => receiptText.includes(text)));
+        check("English receipt PDF omits retired packing information",
+          !receiptText.includes("100 × 50 g")&&!receiptText.includes("Not recorded historically")&&!receiptText.includes("Packing quantity"));
         check("English receipt PDF retains total and signatures",
-          ["Voucher total: 25 kg", "Released by · production hall", "Received by · finished-goods hall"].every(text => receiptText.includes(text)));
+          ["Voucher total: 25.00 kg", "Released by · production hall", "Received by · finished-goods hall"].every(text => receiptText.includes(text)));
         check("English receipt PDF text has no Arabic", !/[\u0600-\u06ff]/.test(receiptText));
       }
       permissions = ["admin"]; productionBinding = undefined; roleName = "Administrator";

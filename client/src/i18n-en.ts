@@ -119,6 +119,7 @@ const english: Record<string, string> = {
   "الأوزان والتعبئة": "Weights and packaging",
   "الإجراء": "Action",
   "الإدارة": "Administration",
+  "إدارة بيانات القاعدة": "Database data management",
   "الإعدادات الأساسية": "Basic settings",
   "الاستمرار في الحفظ": "Continue saving",
   "الاسم": "Name",

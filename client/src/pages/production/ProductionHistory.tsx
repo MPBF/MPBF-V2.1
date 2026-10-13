@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import type { ProductionHistoryKind, ProductionHistoryFilter, ProductionHistoryRecords, StorageLocation } from "../../../../shared/production";
+import { kgHundredths } from "../../../../shared/production";
 import { productionApi } from "../../lib/production-api";
 import { printReceipt } from "../../lib/receipt-print";
 import { FilmDurationSummary } from "./FilmDurationSummary";
-import { receiptUnitLabel } from "../../../../shared/production-packing";
+import { formatNumber } from "../../lib/format-number";
 
 type Record = ProductionHistoryRecords[ProductionHistoryKind];
 type Props = {
@@ -42,6 +43,10 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
     active: "قيد التنفيذ", completed: "مكتمل", cancelled: "ملغي", archived: "مؤرشف",
   }[status] ?? status);
   const n = (value: unknown, digits = 2) => new Intl.NumberFormat(en ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: digits }).format(Number(value ?? 0));
+  const receiptTotal = (items: ProductionHistoryRecords["receipts"]["items"]) => {
+    const cents = items.reduce((sum, item) => sum + kgHundredths(String(item.quantity_kg)), 0n);
+    return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
+  };
   const local = (ar?: string | null, english?: string | null) => (en ? (english && !/[\u0600-\u06ff]/.test(english) ? english : "") : ar || english) || "—";
   const date = (value?: string | null) => value ? new Date(value).toLocaleString(en ? "en-GB" : "ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh" }) : "—";
   const render = (record: Record) => {
@@ -70,19 +75,14 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
     if (kind === "receipts") {
       const receipt = record as ProductionHistoryRecords["receipts"];
       if (presentation === "cards") return <article className="warehouse-receipt-history-card" key={receipt.id}>
-        <header><div><strong>{receipt.voucher_number}</strong><time dateTime={receipt.created_at}>{date(receipt.created_at)}</time></div><bdi>{n(receipt.items.reduce((sum, item) => sum + Number(item.quantity_kg), 0))} kg</bdi></header>
+        <header><div><strong>{receipt.voucher_number}</strong><time dateTime={receipt.created_at}>{date(receipt.created_at)}</time></div><bdi>{receiptTotal(receipt.items)} kg</bdi></header>
         <button type="button" className="prod-btn secondary" data-print-receipt={receipt.id} onClick={()=>printReceipt(receipt,language)}>{label("طباعة A4", "Print A4")}</button>
         {receipt.notes && <p>{receipt.notes}</p>}
         <div className="warehouse-receipt-items">{receipt.items.map((item, index) => <div className="warehouse-receipt-history-line" key={item.id}>
           <span>{String(item.line_number ?? index + 1).padStart(2, "0")}</span>
           <div><strong>{item.production_order_number ?? `#${item.production_order_id}`}</strong>
             <small>#{item.customer_product_id} · {item.item_id ?? "—"} · {local(item.location_name_ar, item.location_name)}</small>
-            {item.packing && <small>{n(item.packing.quantity)} {receiptUnitLabel(item.packing.unit, language)} · {item.packing.method === "unit_weight"
-              ? `${n(item.packing.unit_weight_kg, 6)} kg / ${receiptUnitLabel(item.packing.unit, language)}`
-              : `${n(item.packing.pieces_per_unit, 0)} ${label("قطعة", "pieces")} × ${n(item.packing.piece_weight_grams, 4)} ${label("جرام", "g")}`}</small>}
-            {!item.packing && item.packaging && <small>{label("تعبئة رولات قديمة", "Legacy roll packaging")} · {n(item.packaging.roll_weight_grams, 4)} {label("جرام", "g")} × {n(item.packaging.rolls_per_unit)} × {n(item.packaging.units)}</small>}
-            {!item.packing && !item.packaging && <small>{label("استلام تاريخي بالكيلو فقط؛ الوحدة غير مسجلة", "Legacy kg-only receipt · unit not recorded")}</small>}
-          </div><bdi>{n(item.quantity_kg)} kg</bdi>
+          </div><bdi>{String(item.quantity_kg)} kg</bdi>
         </div>)}</div>
       </article>;
       return <details className="prod-voucher" key={receipt.id}><summary><strong className="prod-number">{receipt.voucher_number}</strong> · {date(receipt.created_at)} · {n(receipt.items.length)} {label("بنود", "lines")}</summary>
@@ -90,45 +90,18 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
         {receipt.notes && <p>{receipt.notes}</p>}
          {receipt.items.map((item, index) => <div className="prod-measure" key={item.id}>
            <span>{String(item.line_number ?? index + 1).padStart(2, "0")} · {item.production_order_number} · #{item.customer_product_id} · {item.item_id} · {local(item.location_name_ar, item.location_name)}</span>
-          <strong>{n(item.quantity_kg)} kg</strong>
-           {item.packing && <small>
-             {n(item.packing.quantity)} {receiptUnitLabel(item.packing.unit, language)} · {item.packing.method === "unit_weight"
-               ? `${n(item.packing.unit_weight_kg, 6)} kg / ${receiptUnitLabel(item.packing.unit, language)}`
-               : `${n(item.packing.pieces_per_unit, 0)} ${label("قطعة", "pieces")} × ${n(item.packing.piece_weight_grams, 4)} ${label("جرام", "g")}`}
-           </small>}
-           {!item.packing && item.packaging && <small>{label("تعبئة رولات قديمة", "Legacy roll packaging")} · {n(item.packaging.roll_weight_grams, 4)} {label("جرام", "g")} × {n(item.packaging.rolls_per_unit)} × {n(item.packaging.units)}</small>}
-           {!item.packing && !item.packaging && <small>{label("استلام تاريخي بالكيلو فقط؛ الوحدة غير مسجلة", "Legacy kg-only receipt · unit not recorded")}</small>}
+           <strong>{String(item.quantity_kg)} kg</strong>
         </div>)}</details>;
     }
     if (kind === "inventory") {
       const balance = record as ProductionHistoryRecords["inventory"];
-      const legacyWeight = balance.legacy_quantity_kg ?? (balance.unit_balances?.length ? undefined : balance.quantity_kg);
       if (presentation === "cards") return <article className="warehouse-inventory-card" key={balance.id}>
-        <header><div><strong className="warehouse-order-number">{balance.production_order_number}</strong><small>{local(balance.location_name_ar, balance.location_name)}</small></div><bdi>{n(balance.quantity_kg)} kg</bdi></header>
+        <header><div><strong className="warehouse-order-number">{balance.production_order_number}</strong><small>{local(balance.location_name_ar, balance.location_name)}</small></div><bdi>{formatNumber(balance.quantity_kg)} kg</bdi></header>
         <div className="warehouse-order-product"><strong>{local(balance.product.name_ar, balance.product.name)}</strong><span>{local(balance.product.customer_name_ar, balance.product.customer_name)}</span></div>
-        <div className="warehouse-balance-specs">
-          {balance.unit_balances?.map(unitBalance => <div className="warehouse-balance-spec" key={unitBalance.id}>
-            <strong>{n(unitBalance.unit_quantity)} {receiptUnitLabel(unitBalance.unit, language)}</strong>
-            <span>{unitBalance.method === "unit_weight"
-              ? `${n(unitBalance.unit_weight_kg, 6)} kg / ${receiptUnitLabel(unitBalance.unit, language)}`
-              : `${n(unitBalance.pieces_per_unit, 0)} ${label("قطعة", "pieces")} × ${n(unitBalance.piece_weight_grams, 4)} ${label("جرام", "g")} / ${receiptUnitLabel(unitBalance.unit, language)}`}</span>
-            <bdi>{n(unitBalance.quantity_kg)} kg eq.</bdi>
-          </div>)}
-          {legacyWeight !== undefined && Number(legacyWeight)>0 && <div className="warehouse-balance-legacy"><strong>{n(legacyWeight)} kg</strong><span>{label("وزن تاريخي فقط · الوحدة غير مسجلة", "Legacy weight only · unit not recorded")}</span></div>}
-        </div>
       </article>;
       return <div className="prod-record" key={balance.id}><strong>{local(balance.product.name_ar, balance.product.name)}</strong>
         <p>{local(balance.product.customer_name_ar, balance.product.customer_name)} · {balance.production_order_number} · {balance.batch_number ?? "—"}</p>
-        <p>{local(balance.location_name_ar, balance.location_name)} · {n(balance.quantity_kg)} kg · {statusName(balance.production_order_status ?? "")}</p>
-        {balance.unit_balances?.map(unitBalance => <div className="prod-measure" key={unitBalance.id}>
-          <span>{n(unitBalance.unit_quantity)} {receiptUnitLabel(unitBalance.unit, language)} · {unitBalance.method === "unit_weight"
-            ? `${n(unitBalance.unit_weight_kg, 6)} kg / ${receiptUnitLabel(unitBalance.unit, language)}`
-            : `${n(unitBalance.pieces_per_unit, 0)} ${label("قطعة", "pieces")} × ${n(unitBalance.piece_weight_grams, 4)} ${label("جرام", "g")}`}</span>
-          <strong>{n(unitBalance.quantity_kg)} kg eq.</strong>
-        </div>)}
-        {legacyWeight !== undefined && Number(legacyWeight)>0 && <div className="prod-measure">
-          <span>{label("وزن تاريخي فقط · الوحدة غير مسجلة", "Legacy weight only · unit not recorded")}</span><strong>{n(legacyWeight)} kg</strong>
-        </div>}
+        <p>{local(balance.location_name_ar, balance.location_name)} · {formatNumber(balance.quantity_kg)} kg · {statusName(balance.production_order_status ?? "")}</p>
       </div>;
     }
     const movement = record as ProductionHistoryRecords["movements"];

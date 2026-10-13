@@ -94,8 +94,10 @@
 - [Prospective mix accounting](production-mix-accounting.md) — machine-wide FIFO, shortages allowed without later reconciliation; no second raw deduction or inferred screw/layer dosing.
 - [Order status design](order-status-design.md) — user requires colored order states and approved combining status/actions into two rows to save table width.
 - [Operator roll card sizing](operator-roll-card-sizing.md) — user approved small fixed-width roll cards that wrap, never stretch or squeeze as counts change.
-- [Warehouse hall card sizing](warehouse-hall-card-sizing.md) — user approved six ready-order cards per desktop row, fewer on smaller screens; scoped to the production hall.
+- [Warehouse hall card sizing](warehouse-hall-card-sizing.md) — six compact desktop cards, fewer on smaller screens; approved for hall-ready orders and finished stock, not raw or receipt cards.
 - [Planning order cards](planning-order-card-sizing.md) — user approved three compact desktop cards, not the warehouse six-card rule; preserve details and actions.
-- [Finished receipt workflow](finished-receipt-workflow.md) — requested kg drives derived unit weight; compact form, automatic date and FP-Rec numbering, saved-only A4 printing.
+- [Finished receipt workflow](finished-receipt-workflow.md) — kg-only receiving stays in the hall; finished-stock cards now support separate customer delivery deduction; no retired receipt units.
 - [Decimal JSON boundaries](postgres-json-decimal-boundary.md) — PostgreSQL NUMERIC becomes a JS number inside JSONB; preserve text at nested API boundaries and tolerate older numeric reads.
 - [Transient UI checks](transient-ui-verification.md) — capture loading text while detecting the element; a later browser call may run after it has disappeared.
+- [Database transfer policy](database-data-tool-policy.md) — new rows may be added; existing-row updates need explicit approval after preview, never automatic deletion.
+- [Package firewall lockfiles](package-firewall-lockfiles.md) — parent upgrades can retain blocked transitives; verify compatible patched resolutions with a clean install.

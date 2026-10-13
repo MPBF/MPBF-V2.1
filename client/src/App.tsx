@@ -41,6 +41,7 @@ const RoleSwitcher = lazy(() => import("./components/RoleSwitcher"));
 const UsersAdmin = lazy(() => import("./pages/admin/UsersAdmin"));
 const RolesAdmin = lazy(() => import("./pages/admin/RolesAdmin"));
 const SettingsAdmin = lazy(() => import("./pages/admin/SettingsAdmin"));
+const DataTransferAdmin = lazy(() => import("./pages/admin/DataTransferAdmin"));
 
 type OrderProductionSummary = {
   id: number;
@@ -721,14 +722,15 @@ function EntityFormModal({ cfg, row, onClose, onSaved }: { cfg: Config; row: Row
 }
 
 function Admin({ user }: { user: Row }) {
-  const tabs = [["users", "المستخدمون", Users, ["manage_users", "admin"]], ["roles", "الأدوار والصلاحيات", KeyRound, ["manage_roles", "admin"]], ["sections", "الأقسام", Boxes, ["manage_sections", "admin"]], ["machines", "الماكينات", Cog, ["manage_machines", "admin"]], ["components", "مكونات الصيانة", Wrench, ["manage_maintenance", "admin"]], ["categories", "التصنيفات", Boxes, configs.categories.read], ["items", "الأصناف", Package, configs.items.read], ["colors", "ألوان الماستر باتش", Cog, configs.colors.read], ["settings", "إعدادات المصنع", Settings2, ["manage_settings", "admin"]]] as const;
-  const visibleTabs = tabs.filter(([, , , permissions]) => can(user, permissions));
-  const [tab, setTab] = useState(visibleTabs[0]?.[0] || "users");
+  const tabs = [["users", "المستخدمون", Users, ["manage_users", "admin"]], ["roles", "الأدوار والصلاحيات", KeyRound, ["manage_roles", "admin"]], ["sections", "الأقسام", Boxes, ["manage_sections", "admin"]], ["machines", "الماكينات", Cog, ["manage_machines", "admin"]], ["components", "مكونات الصيانة", Wrench, ["manage_maintenance", "admin"]], ["categories", "التصنيفات", Boxes, configs.categories.read], ["items", "الأصناف", Package, configs.items.read], ["colors", "ألوان الماستر باتش", Cog, configs.colors.read], ["settings", "إعدادات المصنع", Settings2, ["manage_settings", "admin"]], ["data-transfer", "إدارة بيانات القاعدة", Boxes, ["admin"]]] as const;
+  const visibleTabs = tabs.filter(([key, , , permissions]) => key === "data-transfer" ? user.permissions?.includes("admin") : can(user, permissions));
+  const [requestedTab, setTab] = useState(visibleTabs[0]?.[0] || "users");
+  const tab = visibleTabs.some(([key])=>key===requestedTab) ? requestedTab : visibleTabs[0]?.[0] || "users";
   const [refreshToken, setRefreshToken] = useState(0);
   // Each tab starts with page 0 and an empty search; EntityPage clears categoryId outside items.
   return <><PageHero kicker="مركز الإدارة · صلاحياتك مفعلة" title={translate("الإدارة")} description="إدارة الهوية والأصول والتعريفات من مساحة واحدة منظمة." onRefresh={() => setRefreshToken((token) => token + 1)} actions={<span className="tag"><Shield size={16} /> ADMIN / CORE</span>} /><div className="admin-tabs" role="tablist">{visibleTabs.map(([key, label, Icon]) => <button id={`admin-tab-${key}`} aria-controls={`admin-panel-${key}`} role="tab" aria-selected={tab === key} key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><Icon size={17} />{translate(label)}</button>)}</div><div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} style={{ marginTop: 24 }}>
     <DeferredContent key={tab}>
-      {tab === "users" ? <UsersAdmin user={user} refreshToken={refreshToken} /> : tab === "roles" ? <RolesAdmin user={user} refreshToken={refreshToken} writable={can(user, configs.roles.write)} deletable={can(user, configs.roles.del || ["admin"])} /> : tab === "settings" ? <SettingsAdmin refreshToken={refreshToken} /> : <EntityPage key={tab} kind={tab} user={user} refreshToken={refreshToken} showHero={false} />}
+      {tab === "users" ? <UsersAdmin user={user} refreshToken={refreshToken} /> : tab === "roles" ? <RolesAdmin user={user} refreshToken={refreshToken} writable={can(user, configs.roles.write)} deletable={can(user, configs.roles.del || ["admin"])} /> : tab === "settings" ? <SettingsAdmin refreshToken={refreshToken} /> : tab === "data-transfer" ? <DataTransferAdmin refreshToken={refreshToken} /> : <EntityPage key={tab} kind={tab} user={user} refreshToken={refreshToken} showHero={false} />}
     </DeferredContent>
   </div></>;
 }
