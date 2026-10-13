@@ -1,4 +1,5 @@
-// Approval is deliberately explicit. Discovery must never grant transfer access.
+// Business-data transfer is explicitly approved by the owner; security/internal
+// tables and authentication secrets remain outside general import/export.
 export const policies: Record<string, {
   ar: string; en: string; group: string; write: string[]; logical?: { column: string; table: string; target: string }[];
 }> = {
@@ -10,8 +11,8 @@ export const policies: Record<string, {
   items: { ar: "الأصناف", en: "Items", group: "catalogue",
     write: ["id", "category_id", "name", "name_ar", "code", "status"],
     logical: [{ column: "category_id", table: "categories", target: "id" }] },
-  // Derived dimensions, history bindings and machine transitions require the
-  // owning services. Until a transactional adapter is approved, fail closed.
+  users: { ar: "المستخدمون", en: "Users", group: "accounts", write: [] },
+  roles: { ar: "الأدوار", en: "Roles", group: "accounts", write: [] },
   customer_products: { ar: "منتجات العملاء", en: "Customer products", group: "catalogue", write: [] },
   machines: { ar: "المكائن", en: "Machines", group: "catalogue", write: [] },
   sections: { ar: "الأقسام", en: "Sections", group: "catalogue", write: [] },
@@ -35,14 +36,19 @@ export const policies: Record<string, {
   factory_mixes: { ar: "خلطات الخام", en: "Raw mixes", group: "warehouse", write: [] },
   factory_mix_items: { ar: "بنود الخلطات", en: "Mix lines", group: "warehouse", write: [] },
 };
-export const sensitiveName = /password|secret|token|session|credential|auth|permission|oauth|api.?key|connection|private.?key|salt|hash|^users$|^roles$|^data_transfer_|^pg_|^sql_|^drizzle|migration|operations|audit|^system_|^internal_|^ai_|^mcp_|^external_/i;
-export const protectedColumn = /^(?:created_by|updated_by|started_by|film_closed_by|printed_by|cut_by|user_id|sales_rep_id)$|password|secret|token|session|credential|auth|permission|api.?key/i;
+export const sensitiveName = /password|secret|token|session|credential|auth|permission|oauth|api.?key|connection|private.?key|salt|hash|^data_transfer_|^database_backup_|^pg_|^sql_|^drizzle|migration|operations|audit|^system_|^internal_|^ai_|^mcp_|^external_|^order_number_allocations$/i;
+export const protectedColumn = /password|secret|token|session|credential|auth|permission|api.?key|private.?key|replit_user_id|is_system_user/i;
+export const eligibleTable = (name: string) => ["users", "roles"].includes(name) || !sensitiveName.test(name);
+export const productDerived = new Set(["size_caption", "bag_weight_grams", "bags_per_kilo", "package_weight_kg", "is_printed"]);
+export const privateSettingKey = /password|secret|token|session|credential|auth|permission|api.?key|private.?key|connection.?string/i;
 export const labels: Record<string, string> = {
   id: "المعرّف", name: "الاسم بالإنجليزية", name_ar: "الاسم بالعربية", code: "الرمز",
   city: "المدينة", address: "العنوان", phone: "الهاتف", tax_number: "الرقم الضريبي",
   commercial_name: "الاسم التجاري", unified_number: "الرقم الموحد", unique_customer_number: "رقم العميل",
   is_active: "نشط", plate_drawer_code: "رقم الدرج", parent_id: "الفئة الأب", category_id: "الفئة",
   overrun_percentage: "نسبة الزيادة", status: "الحالة",
+  username: "اسم المستخدم", display_name: "الاسم المعروض", display_name_ar: "الاسم المعروض بالعربية",
+  role_id: "الدور", permissions: "صلاحيات الدور", customer_id: "العميل", item_id: "الصنف",
 };
 export const MAX_BYTES = 5 * 1024 * 1024;
 export const MAX_ROWS = 2000;

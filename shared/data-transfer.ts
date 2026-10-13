@@ -2,7 +2,7 @@ export type TransferRow = Record<string, string | null>;
 export type TransferColumn = {
   name: string; labelAr: string; labelEn: string; type: string; nullable: boolean;
   default: string | null; generated: boolean; writable: boolean; maxLength: number | null;
-  precision: number | null; scale: number | null;
+  precision: number | null; scale: number | null; identity?: boolean;
 };
 export type TransferRelation = { columns: string[]; table: string; targets: string[] };
 export type TransferTable = {
@@ -31,7 +31,7 @@ export type TransferPreviewRow = {
 };
 export type TransferPreview = {
   id: string; version: string; expiresAt: string; rows: TransferPreviewRow[];
-  kind: "import" | "restore"; retainedInserts?: number;
+  kind: "import" | "restore"; retainedInserts?: number; requiresAdminConfirmation?: boolean;
 };
 export type TransferApproval = { index: number; columns: string[] };
 export type TransferOperation = {
