@@ -21,7 +21,7 @@ import { verifyProductionHistory } from "./verify-production-history";
 import { verifyFilmDurations } from "./verify-film-durations";
 import { verifyRollActors } from "./verify-roll-actors";
 import { verifyFilmOperationSpecs } from "./verify-film-operation-specs";
-import { verifyFinishedUnitReceiving } from "./verify-finished-unit-receiving";
+import { verifyKgReceiving } from "./verify-kg-receiving";
 
 if (process.env.NODE_ENV === "production") throw Error("Integration tests are development-only.");
 if (process.argv.includes("--large") && !process.argv.includes("--local")) throw Error("Large fixtures require --local and a disposable database.");
@@ -65,6 +65,8 @@ try {
       full_name text,password text,email text,phone text);
     CREATE TABLE customers(id varchar(20) PRIMARY KEY,name text,name_ar text,plate_drawer_code text);
     CREATE TABLE items(id varchar(20) PRIMARY KEY,name text,name_ar text);
+    CREATE TABLE categories(id serial PRIMARY KEY,name text);
+    INSERT INTO categories(name) VALUES('Protected fixture category');
     CREATE TABLE master_batch_colors(id varchar(20) PRIMARY KEY,name text,name_ar text,color_hex text);
     CREATE TABLE customer_products(id integer PRIMARY KEY,customer_id varchar(20),item_id varchar(20),
       width numeric,left_facing numeric,right_facing numeric,universal_thickness numeric,cutting_length_cm integer,
@@ -93,6 +95,7 @@ try {
   await setup.query(readFileSync("migrations/0014_raw_material_mixing.sql", "utf8"));
   await setup.query(readFileSync("migrations/0017_raw_mixing_screws.sql", "utf8"));
   await setup.query(readFileSync("migrations/0018_production_monitoring.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0019_finished_receipts_kg_only.sql", "utf8"));
   setup.release(); setup = undefined;
   await test("fixed hall receives with no locations, rolls back provisioning and serializes concurrent creation", async () => {
     assert.equal((await query("SELECT count(*)::int n FROM factory_locations"))[0].n,0);
@@ -100,7 +103,7 @@ try {
     await plan(12,4); await film(12,"10",true);
     const receiver={id:1,permissions:["receive_production"]};
     const receiptInput=(order:number)=>({...key(),items:[{
-      production_order_id:order,packing:{unit:"kg" as const,method:"unit_weight" as const,quantity:"1"},
+      production_order_id:order,quantity_kg:"1",
     }]});
     assert.throws(()=>warehouse.receive({id:1,permissions:["view_production_hall"]},receiptInput(11)),/صلاحية/);
     await query(`CREATE FUNCTION refuse_fixed_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixed hall rollback'; END $$;
@@ -255,7 +258,7 @@ try {
   await test("multi-item receipts update EVERY balance and movement at the fixed hall despite legacy location inputs", async () => {
     const input = { ...key(), notes: "Fixture voucher", items: [
       { production_order_id: 1, location_id: secondLocation.id, quantity_kg: "8.00" },
-      { production_order_id: 3, location_id: location.id, quantity_kg: "12.00", packaging: { roll_weight_grams: "1000", rolls_per_unit: 2, units: 6 } },
+      { production_order_id: 3, location_id: location.id, quantity_kg: "12.00" },
     ] };
     const receipt = await warehouse.receive(actor, input);
     const replay = await warehouse.receive(actor, input);
@@ -455,9 +458,11 @@ try {
       assert.equal((await call("/history/orders", "view_finished_inventory")).status, 403);
       assert.equal((await call("/history/receipts", "operate_film")).status, 403);
       assert.equal((await call("/history/receipts", "view_finished_inventory")).status, 200);
-      const packedLine={production_order_id:9,packing:{unit:"packet",method:"unit_weight",quantity:"1",unit_weight_kg:"1"}};
-      assert.equal((await call("/receipts","view_finished_inventory",{...key(),items:[packedLine]})).status,403);
+      const receiptLine={production_order_id:9,quantity_kg:"1"};
+      const packedLine={...receiptLine,packing:{unit:"packet",method:"unit_weight",quantity:"1",unit_weight_kg:"1"}};
+      assert.equal((await call("/receipts","view_finished_inventory",{...key(),items:[receiptLine]})).status,403);
       for(const invalid of [
+        packedLine,
         {...packedLine,packing:{...packedLine.packing,unit:"box"}},
         {...packedLine,packing:{...packedLine.packing,quantity:"-1"}},
         {...packedLine,packing:{...packedLine.packing,actor_id:123}},
@@ -506,7 +511,7 @@ try {
   await verifyFilmDurations(isolated, query);
   await verifyRollActors(isolated, query);
   await verifyFilmOperationSpecs(isolated, query);
-  await verifyFinishedUnitReceiving(isolated, query);
+  await verifyKgReceiving(isolated, query);
   console.log(`Verified ${passed} PostgreSQL factory production integration scenarios.`);
 } catch (error) {
   console.error(error);

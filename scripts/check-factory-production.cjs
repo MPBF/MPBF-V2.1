@@ -188,13 +188,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             }
             if(route==="/production/receipts"){
               const lines=input.items.map((line,index)=>{
-                const packing=line.packing;
-                const expected=packing
-                  ? (packing.unit==="kg"?Number(packing.quantity)
-                    :packing.method==="unit_weight"?Number(packing.quantity)*Number(packing.unit_weight_kg)
-                    :Number(packing.quantity)*packing.pieces_per_unit*Number(packing.piece_weight_grams)/1000).toFixed(2)
-                  :Number(line.quantity_kg).toFixed(2);
-                assert.equal(Number(line.quantity_kg).toFixed(2),expected,"receipt UI weight matches independent fixture conversion");
+                assert.deepEqual(Object.keys(line).sort(),["production_order_id","quantity_kg"],"receipt sends actual kg only");
+                const expected=Number(line.quantity_kg).toFixed(2);
                 return {...line,location_id:77,id:1000+index,line_number:index+1,quantity_kg:expected};
               });
               const requested=new Map();
@@ -208,18 +203,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
                   target.received_kg=(Number(target.received_kg)+Number(line.quantity_kg)).toFixed(2);
                   target.remaining_kg=(Number(target.ready_kg)-Number(target.received_kg)).toFixed(2);
                   let stock=archives.inventory.find(record=>record.production_order_id===target.id&&record.location_id===line.location_id);
-                  if(!stock){stock={id:500+archives.inventory.length,production_order_id:target.id,customer_product_id:1,item_id:"ITM01",location_id:line.location_id,quantity_kg:"0.00",legacy_quantity_kg:"0.00",production_order_number:target.production_order_number,batch_number:null,product:target.product,location_name:"Finished-goods hall",location_name_ar:"صالة المواد التامة",unit_balances:[]};archives.inventory.push(stock);}
-                  stock.legacy_quantity_kg??=stock.quantity_kg;
+                  if(!stock){stock={id:500+archives.inventory.length,production_order_id:target.id,customer_product_id:1,item_id:"ITM01",location_id:line.location_id,quantity_kg:"0.00",production_order_number:target.production_order_number,batch_number:null,product:target.product,location_name:"Finished-goods hall",location_name_ar:"صالة المواد التامة"};archives.inventory.push(stock);}
                   stock.quantity_kg=(Number(stock.quantity_kg)+Number(line.quantity_kg)).toFixed(2);
-                  stock.unit_balances??=[];
-                  if(line.packing){
-                    const {quantity,...specification}=line.packing;
-                    const signature=JSON.stringify(specification);
-                    let balance=stock.unit_balances.find(balance=>JSON.stringify(Object.fromEntries(Object.entries(balance).filter(([key])=>!["id","quantity_kg","unit_quantity"].includes(key))))===signature);
-                    if(!balance){balance={...specification,id:stock.unit_balances.length+1,unit_quantity:"0",quantity_kg:"0"};stock.unit_balances.push(balance);}
-                    balance.unit_quantity=(Number(balance.unit_quantity)+Number(quantity)).toFixed(4);
-                    balance.quantity_kg=(Number(balance.quantity_kg)+Number(line.quantity_kg)).toFixed(2);
-                  }else stock.legacy_quantity_kg=(Number(stock.legacy_quantity_kg)+Number(line.quantity_kg)).toFixed(2);
                 }
                 archives.receipts.push(structuredClone(body));
                 state.totals.inventory=archives.inventory.length;
@@ -343,7 +328,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           await wait("!!document.querySelector('[data-receipt-voucher]')");
           check(`${lang} ${width} selected orders are prefilled`,await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-order-1').value]"),["4","8"]);
           check(`${lang} ${width} voucher uses numbered table`,await evaluate("!!document.querySelector('.receipt-voucher-table thead')&&document.querySelectorAll('.receipt-voucher-table tbody tr').length===2"));
-          check(`${lang} ${width} exact seven voucher columns`,await evaluate("[...document.querySelectorAll('.receipt-voucher-table th')].map(node=>node.textContent.trim())"),lang==="ar"?["م","أمر الإنتاج","الكمية المتاحة KG","الوحدة","المعامل","معامل الكمية","الكمية المطلوب استلامها (كجم)"]:["Line","Production order","Available (kg)","Packing unit","Weight per packing unit (kg)","Packing-unit quantity","Quantity to receive (kg)"]);
+          check(`${lang} ${width} only four kg receipt columns`,await evaluate("document.querySelectorAll('.receipt-voucher-table th').length"),4);
           check(`${lang} ${width} metadata order matches the voucher`,await evaluate("[...document.querySelectorAll('.receipt-voucher-metadata-grid > [data-receipt-meta]')].map(node=>node.dataset.receiptMeta)"),["number","date","source","destination"]);
           check(`${lang} ${width} all four metadata fields share one row`,await evaluate("new Set([...document.querySelectorAll('.receipt-voucher-metadata-grid > [data-receipt-meta]')].map(node=>Math.round(node.getBoundingClientRect().top))).size===1"));
           check(`${lang} ${width} footer is preview save close`,await evaluate("[...document.querySelectorAll('.receipt-voucher-footer > button')].map(node=>node.textContent.trim())"),lang==="ar"?["معاينة","حفظ","إغلاق"]:["Preview","Save","Close"]);
@@ -357,29 +342,21 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           check(`${lang} ${width} correct language direction`,await evaluate("document.querySelector('[data-receipt-voucher]').dir"),lang==="ar"?"rtl":"ltr");
           check(`${lang} ${width} source and destination`,await evaluate(`document.querySelector('[data-receipt-voucher]').innerText.includes(${jsLiteral(lang==="ar"?"صالة الإنتاج":"Production hall")})&&document.querySelector('[data-receipt-voucher]').innerText.includes(${jsLiteral(lang==="ar"?"المواد التامة":"Finished goods")})`));
           check(`${lang} ${width} no sublocation selection or prerequisite`,await evaluate("!document.querySelector('[id^=\"receipt-location-\"]')&&!document.querySelector('.receipt-voucher-alert')&&!document.querySelector('[data-receipt-submit]').disabled"));
-          await setInput("#receipt-unit-0","packet");
-          await setInput("#receipt-unit-quantity-0","2");
           await setInput("#receipt-quantity-0","10.00");
           await setInput("#receipt-quantity-1","1");
           await clickText(lang==="ar"?"إضافة أمر إنتاج":"Add production order");
           await setInput("#receipt-order-2","4");
-          await setInput("#receipt-unit-2","roll");await setInput("#receipt-unit-quantity-2","3");
-          await setInput("#receipt-method-2","piece_weight");await setInput("#receipt-pieces-2","20");await setInput("#receipt-quantity-2","30.00");
+          await setInput("#receipt-quantity-2","30.00");
           await setInput("#receipt-notes","Retained voucher draft");
-          check(`${lang} ${width} fixed four units`,await evaluate("[...document.querySelector('#receipt-unit-0').options].map(option=>option.value)"),["kg","packet","roll","piece"]);
-          check(`${lang} ${width} both automatic conversions`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-quantity-2').value]"),["10.00","30.00"]);
-          check(`${lang} ${width} weight per unit and piece is automatically derived`,await evaluate("[document.querySelector('#receipt-unit-weight-0').value,document.querySelector('#receipt-piece-weight-2').value]"),["5.000000","500.0000"]);
-          check(`${lang} ${width} factors are kg per full unit in both calculation modes`,await evaluate("[...document.querySelectorAll('[data-receipt-factor]')].map(node=>node.value??node.textContent)"),["5.000000","1.000000","10.0000000"]);
-          check(`${lang} ${width} order unit factor count and kg have separate columns`,await evaluate("[document.querySelector('#receipt-order-0'),document.querySelector('#receipt-unit-0'),document.querySelector('[data-receipt-factor=\"0\"]'),document.querySelector('#receipt-unit-quantity-0'),document.querySelector('#receipt-quantity-0')].map(node=>node.closest('td').cellIndex)"),[1,3,4,5,6]);
-          check(`${lang} ${width} packing controls align in two columns`,await evaluate("(()=>{const quantity=document.querySelector('#receipt-unit-quantity-2').getBoundingClientRect(),method=document.querySelector('#receipt-method-2').getBoundingClientRect(),pieces=document.querySelector('#receipt-pieces-2').getBoundingClientRect(),weight=document.querySelector('#receipt-piece-weight-2').getBoundingClientRect();return Math.abs(quantity.top-method.top)<1&&Math.abs(pieces.top-weight.top)<1&&pieces.top>quantity.bottom})()"));
-          check(`${lang} ${width} requested kg editable and derived weights locked`,await evaluate("!document.querySelector('#receipt-quantity-0').readOnly&&document.querySelector('#receipt-unit-weight-0').readOnly&&document.querySelector('#receipt-piece-weight-2').readOnly"));
+          check(`${lang} ${width} no unit, count or packing controls`,await evaluate("!document.querySelector('[data-receipt-unit],[data-receipt-factor],[data-receipt-method],[data-receipt-pieces],[data-receipt-unit-quantity]')"));
+          check(`${lang} ${width} exact entered kilograms are preserved`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-quantity-2').value]"),["10.00","30.00"]);
+          check(`${lang} ${width} requested kg is editable`,await evaluate("!document.querySelector('#receipt-quantity-0').readOnly"));
           check(`${lang} ${width} date automatic and pending print disabled`,await evaluate("document.querySelector('[data-receipt-meta=\"date\"] bdi').textContent!=='—'&&document.querySelector('.receipt-voucher-print').disabled"));
           check(`${lang} ${width} notes stay compact`,await evaluate("document.querySelector('#receipt-notes').getBoundingClientRect().height<=75"));
           if(width===1440) check(`${lang} ${width} desktop rows stay short`,await evaluate("[...document.querySelectorAll('.receipt-voucher-table tbody tr')].every(row=>row.getBoundingClientRect().height<=160)"));
           check(`${lang} ${width} correct voucher total`,await evaluate("Number(document.querySelector('[data-receipt-total]').dataset.receiptTotal)"),41);
           check(`${lang} ${width} selected predefined product and customer`,await evaluate("document.querySelector('#receipt-order-0').selectedOptions[0].textContent.includes('PO-4')"));
           check(`${lang} ${width} selected order is not repeated below dropdown`,await evaluate("!document.querySelector('.receipt-voucher-order-context')&&document.querySelector('#receipt-order-0').parentElement.children.length===1"));
-          check(`${lang} ${width} quantity-factor label is accessible but not visually duplicated`,await evaluate("document.querySelector('label[for=\"receipt-unit-quantity-0\"]').classList.contains('sr-only')&&document.querySelector('#receipt-unit-quantity-0').labels.length===1"));
           check(`${lang} ${width} requested weight has no duplicate calculated caption`,await evaluate("!document.querySelector('.receipt-voucher-derived-total')"));
           const writesBeforePreview=writes.length,stockBeforePreview=JSON.stringify(state.inventory);
           await evaluate("document.querySelector('[data-receipt-preview-trigger]').click()");
@@ -395,7 +372,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           await evaluate("document.querySelector('[data-receipt-preview-back]').click()");
           await wait("!document.querySelector('[data-receipt-preview]')");
           check(`${lang} ${width} returning from preview restores its button focus`,await evaluate("document.activeElement.matches('[data-receipt-preview-trigger]')"));
-          check(`${lang} ${width} preview preserves draft fields`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-method-2').value,document.querySelector('#receipt-notes').value]"),["10.00","piece_weight","Retained voucher draft"]);
+          check(`${lang} ${width} preview preserves draft fields`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-quantity-2').value,document.querySelector('#receipt-notes').value]"),["10.00","30.00","Retained voucher draft"]);
           await evaluate("document.querySelector('[data-receipt-preview-trigger]').click()");
           await wait("!!document.querySelector('[data-receipt-preview]')");
           await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Escape",code:"Escape",windowsVirtualKeyCode:27});
@@ -435,20 +412,21 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       await wait("!!document.querySelector('.receipt-voucher-error')");
       check("aggregate same-order over-receipt is blocked",writes.length,beforeInvalid);
       await evaluate("document.querySelector('[aria-label=\"Remove line 2\"]').click()");
-      await setInput("#receipt-unit-0","packet");await setInput("#receipt-unit-quantity-0","2");await setInput("#receipt-quantity-0","10.00");
+      await setInput("#receipt-quantity-0","10.00");
       await clickText("Add production order");await setInput("#receipt-order-1","8");await setInput("#receipt-quantity-1","1");
       await clickText("Add production order");await setInput("#receipt-order-2","4");
-      await setInput("#receipt-unit-2","roll");await setInput("#receipt-unit-quantity-2","3");await setInput("#receipt-method-2","piece_weight");await setInput("#receipt-pieces-2","20");await setInput("#receipt-quantity-2","30.00");
+      await setInput("#receipt-quantity-2","30.00");
       await setInput("#receipt-notes","Fixture voucher retry");
       failWrite=true;await clickText("Save");
       await wait("!!document.querySelector('.receipt-voucher-error')");
       check("lost response preserves receipt draft",await evaluate("document.querySelector('#receipt-quantity-0').value"),"10.00");
-      check("uncertain receipt cannot change packing",await evaluate("document.querySelector('#receipt-unit-0').disabled&&document.querySelector('#receipt-unit-quantity-0').disabled"));
+      check("uncertain receipt cannot change order or kg",await evaluate("document.querySelector('#receipt-order-0').disabled&&document.querySelector('#receipt-quantity-0').disabled"));
       await evaluate("document.querySelector('.receipt-voucher-error button').click()");
       await wait("!!document.querySelector('[data-receipt-saved]')");
       const receiptWrites=writes.filter(write=>write.route==="/production/receipts");
       check("retry uses identical receipt request",receiptWrites[0].input,receiptWrites[1].input);
       check("receipt request does not select a sublocation",receiptWrites[0].input.items.every(line=>!("location_id" in line)));
+      check("receipt request contains order id and kg only",receiptWrites[0].input.items.every(line=>Object.keys(line).sort().join(",")==="production_order_id,quantity_kg"));
       check("retry commits only one voucher",[...committed.values()].filter(write=>write.route==="/production/receipts").length,1);
       check("saved voucher number comes from server",await evaluate("document.querySelector('[data-receipt-voucher-number]').textContent"),"FP-Rec0001");
       check("saved receipt supports A4 printing",await evaluate("!document.querySelector('.receipt-voucher-print').disabled"));
@@ -486,7 +464,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         return import('/src/lib/receipt-print.ts').then(module=>module.printReceipt(${jsLiteral(numericHistoryReceipt)},"en"));
       })()`);
       await wait("window.__receiptPrintCalled===true");
-      check("numeric receipt history prints without crashing and retains exact total",await evaluate("document.querySelector('[data-receipt-print-frame]').contentDocument.querySelector('.total').textContent.includes('41 kg')"));
+      check("numeric receipt history prints without crashing and retains exact total",await evaluate("document.querySelector('[data-receipt-print-frame]').contentDocument.querySelector('.total').textContent.includes('41.00 kg')"));
       const arabicPrintedHtml=await evaluate(`import('/src/lib/receipt-print.ts').then(module=>module.receiptPrintHtml(${jsLiteral(savedPrintReceipt)},"ar"))`);
       for(const [printLanguage,sourceHtml] of [["en",printedHtml],["ar",arabicPrintedHtml]]) for(const count of [3,24,100]){
         const boundaryHtml=sourceHtml.replace(/<tbody>[\s\S]*?<\/tbody>/,()=>{
@@ -524,11 +502,9 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         for(const width of [390,768,1440]){
           await send("Emulation.setDeviceMetricsOverride",{width,height:844,deviceScaleFactor:1,mobile:width===390});
           await navigate("/warehouse/finished-inventory");
-          await wait("!!document.querySelector('.warehouse-balance-spec')");
-          const stockText=await evaluate("document.querySelector('.warehouse-finished-view').innerText");
-          check(`${lang} ${width} finished stock shows packet and roll counts`,stockText.includes(lang==="ar"?"باكت":"Packet")&&stockText.includes(lang==="ar"?"رول":"Roll"));
-          check(`${lang} ${width} actual unit counts are not kg counts`,await evaluate("(()=>{const counts=[...document.querySelectorAll('.warehouse-balance-spec strong')].map(node=>node.innerText);return counts.some(value=>/^2(?:\\.0+)?\\s+(باكت|Packet)$/.test(value))&&counts.some(value=>/^3(?:\\.0+)?\\s+(رول|Roll)$/.test(value))})()"));
-          check(`${lang} ${width} historical kg remains explicit`,stockText.includes(lang==="ar"?"وزن تاريخي":"Legacy weight"));
+          await wait("!!document.querySelector('.warehouse-inventory-card')");
+          check(`${lang} ${width} finished stock displays actual kg`,await evaluate("[...document.querySelectorAll('.warehouse-inventory-card')].some(card=>card.innerText.includes('PO-4')&&/\\b40(?:\\.0+)?\\s+kg\\b/.test(card.innerText))"));
+          check(`${lang} ${width} finished stock has no unit counts or legacy split`,await evaluate("!document.querySelector('.warehouse-balance-spec')"),true);
           check(`${lang} ${width} no sublocation management`,await evaluate("!document.querySelector('#location-name')&&!document.querySelector('#location-name-ar')"));
           check(`${lang} ${width} finished stock fits screen`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
           if(lang==="ar"&&width===1440){await evaluate("document.querySelector('.warehouse-inventory-card').scrollIntoView({block:'start'})");const shot=await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});await fs.writeFile("/tmp/unit-finished-inventory.png",Buffer.from(shot.data,"base64"));}
@@ -1538,7 +1514,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     check("receiver-only navigation opens hall", await evaluate("location.pathname"), "/warehouse/hall");
     await evaluate("document.querySelector('[data-receipt-launcher]').click()");
     await wait("!!document.querySelector('[data-receipt-voucher]')");
-    await setInput("#receipt-order-0","4"); await setInput("#receipt-unit-quantity-0","0.10");
+    await setInput("#receipt-order-0","4"); await setInput("#receipt-quantity-0","0.10");
     check("exact remaining 0.10 kg is accepted without floating subtraction", await evaluate("document.querySelector('#receipt-quantity-0').validity.valid"));
     await setInput("#receipt-notes","Fixture recovery note");failWrite=true;
     await clickText("Save");await wait("!!document.querySelector('.prod-error')");

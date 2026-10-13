@@ -6,13 +6,11 @@ const { execFileSync } = require("node:child_process");
 
 const labels = {
   en: {
-    headers: ["#", "Production order", "Item", "Received weight (kg)", "Unit",
-      "Packing quantity", "Unit weight / piece specification"],
+    headers: ["Line", "Production order", "Received quantity (kg)"],
     total: "Voucher total", signatures: ["Released by · production hall", "Received by · finished-goods hall"],
   },
   ar: {
-    headers: ["#", "أمر الإنتاج", "الصنف", "الكمية المستلمة (كجم)", "الوحدة",
-      "كمية التعبئة", "وزن الوحدة / بيانات القطع"],
+    headers: ["م", "أمر الإنتاج", "الكمية المستلمة (كجم)"],
     total: "إجمالي السند", signatures: ["التسليم · صالة الإنتاج", "الاستلام · صالة المواد التامة"],
   },
 };
@@ -38,14 +36,7 @@ function makeReceiptFixture(count, language) {
       const item = { line_number: line, production_order_id: 670000 + line,
         production_order_number: `T67JO${suffix}`, item_id: `T67IT${suffix}`,
         quantity_kg: `${line}.25` };
-      if (index % 4 === 0) item.packing = {
-        unit: "packet", quantity: "5", method: "unit_weight", unit_weight_kg: "2",
-      };
-      if (index % 4 === 1) item.packing = {
-        unit: "piece", quantity: "2", method: "piece_weight", pieces_per_unit: 100, piece_weight_grams: "50",
-      };
-      if (index % 4 === 2) item.packaging = { roll_weight_grams: "50", rolls_per_unit: 100 };
-      return item; // Fourth case intentionally has no historical packing record.
+      return item;
     }),
   };
 }
@@ -64,9 +55,12 @@ function validateReceiptPages(pages, receipt, language) {
     assert.ok(rows.length || contains(text, expected.total), `${context}: header-only/orphan page ${index + 1}`);
     if (rows.length) {
       for (const header of expected.headers) {
-        // Layout extraction interleaves columns when a heading wraps.
-        const prefix = text.slice(0, text.indexOf(rows[0]));
-        assert.ok(normalize(header).split(" ").every(word => prefix.includes(word)),
+         // RTL extraction may move a parenthesis to the other end of a
+         // heading despite a correct rendered PDF. Retain every label/unit
+         // token and verify physical header positions independently below.
+         const headerText = normalize(header).replace(/[()]/g, "");
+         const pageText = text.replace(/[()]/g, "");
+         assert.ok(headerText.split(" ").every(word => pageText.includes(word)),
           `${context}: missing header "${header}" on page ${index + 1}`);
       }
     }
@@ -74,18 +68,15 @@ function validateReceiptPages(pages, receipt, language) {
   assert.deepEqual(seen, receipt.items.map(item => item.production_order_number),
     `${context}: every ordered row must appear exactly once`);
   for (const item of receipt.items) {
-    for (const token of [item.production_order_number, item.item_id]) {
-      assert.equal(tokenCount(whole, token), 1, `${context}: ${token} once`);
-    }
+    assert.equal(tokenCount(whole, item.production_order_number), 1, `${context}: order once`);
     const rowPage = normalized.find(text => text.includes(item.production_order_number));
-    assert.ok(rowPage.includes(item.item_id), `${context}: split row ${item.line_number}`);
     // The independent fixture total includes fractional kg and thousands grouping.
     const quantity = new Intl.NumberFormat("en-GB").format(Number(item.quantity_kg));
     assert.ok(rowPage.includes(quantity), `${context}: missing row weight ${item.line_number}`);
   }
   const final = normalized.at(-1);
   const total = receipt.items.length * (receipt.items.length + 1) / 2 + receipt.items.length / 4;
-  const number = new Intl.NumberFormat("en-GB").format(total);
+  const number = new Intl.NumberFormat("en-GB", {minimumFractionDigits:2,maximumFractionDigits:2}).format(total);
   assert.ok(pages.at(-1).split("\n").some(line =>
     contains(line, expected.total) && normalize(line).includes(`${number} kg`)),
   `${context}: full exact total on final page`);
@@ -127,7 +118,7 @@ function inspectReceiptPdf(file, receipt, language) {
     if (firstRow) {
       // Headings must exist in their own PDF columns above the first row.
       // This cannot be satisfied by a duplicate word elsewhere in the document.
-      const widths = [6, 20, 12.75, 12.75, 12.75, 12.75, 23];
+       const widths = [9, 61, 30];
       let start = 0;
       for (const [column, percentage] of widths.entries()) {
         const finish = start + percentage;
