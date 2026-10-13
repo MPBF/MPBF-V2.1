@@ -32,7 +32,7 @@ export class DatabaseBackupService {
   }
   private async ready(q: Queryable) {
     const { rows } = await q.query("SELECT to_regclass($1) IS NOT NULL AS ready", [`${this.namespace}.data_transfer_operations`]);
-    if (!rows[0].ready) backupError("BACKUP_STORAGE_UNAVAILABLE", 503);
+    if (!rows[0].ready) backupError("BACKUP_SETUP_REQUIRED", 503);
   }
   private async log(q: Queryable, actor: number, id: string, kind: string, counts: unknown, result: unknown = null, approval: string | null = null) {
     await q.query(`INSERT INTO ${this.table("data_transfer_operations")}

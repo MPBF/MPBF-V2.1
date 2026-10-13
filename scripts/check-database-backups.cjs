@@ -12,7 +12,7 @@ const { once } = require("node:events");
 (async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "backup-browser-"));
   let chrome, server, ws;
-  let safetyFails = false, applyUncertain = false, commits = 0;
+  let safetyFails = false, applyUncertain = false, setupMissing = false, commits = 0;
   const requests = [], errors = [];
   const id = "00000000-0000-4000-8000-000000000001";
   const checksum = "a".repeat(64), phrase = "synthetic-backup-passphrase";
@@ -32,6 +32,9 @@ const { once } = require("node:events");
         const raw = Buffer.concat(parts).toString();
         requests.push({ path: url.pathname, body: raw });
         if (url.pathname.endsWith("/create") || url.pathname.endsWith("/safety")) {
+          if (url.pathname.endsWith("/create") && setupMissing) {
+            res.writeHead(503, { "Content-Type": "application/json" }); res.end('{"code":"BACKUP_SETUP_REQUIRED"}'); return;
+          }
           if (url.pathname.endsWith("/safety") && safetyFails) {
             res.writeHead(503, { "Content-Type": "application/json" }); res.end('{"code":"BACKUP_STORAGE_UNAVAILABLE"}'); return;
           }
@@ -159,6 +162,13 @@ const { once } = require("node:events");
       check(`${lang} retry preserves identical approved input and one commit`, applies.length === 2 && JSON.stringify(applies[0]) === JSON.stringify(applies[1]) && commits === 1);
       check(`${lang} session renewal is explicit`, await evaluate("!!document.querySelector('.db-backup-success button')"));
       check(`${lang} passphrases are not stored in browser storage`, await evaluate("localStorage.length===0&&sessionStorage.length===0"));
+      setupMissing = true;
+      await evaluate(`(()=>{for(const e of document.querySelectorAll('.db-backups-panel form')[0].querySelectorAll('input[type=password]')){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,${JSON.stringify(phrase)});e.dispatchEvent(new Event("input",{bubbles:true}));}})()`);
+      await click(".db-backups-panel form button[type=submit]");
+      await wait("!!document.querySelector('.db-backup-alert')");
+      check(`${lang} missing migration reports required setup, not temporary storage failure`, await evaluate("document.querySelector('.db-backup-alert').textContent.includes(" + JSON.stringify(lang === "ar" ? "لم تُجهّز" : "have not been set up") + ")"));
+      check(`${lang} setup error still clears entered passphrases`, await evaluate("document.querySelectorAll('.db-backups-panel form')[0].querySelector('input[type=password]').value===''"));
+      setupMissing = false;
     }
     check("no uncaught browser exceptions", errors.length === 0);
     console.log(`Verified ${assertions} backup browser assertions; screenshots at ${temp}`);

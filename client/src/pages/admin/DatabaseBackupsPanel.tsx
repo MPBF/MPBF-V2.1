@@ -18,6 +18,7 @@ const messages: Record<string, [string, string]> = {
   ADMIN_MISSING: ["تعذر التحقق من صلاحية المسؤول.", "Administrator authorization could not be verified."],
   RELATION_BLOCKED: ["تمنع علاقة بيانات تطبيق الاستعادة بأمان.", "A data relation prevents a safe restore."],
   STORAGE_UNAVAILABLE: ["التخزين غير متاح حالياً. حاول لاحقاً.", "Storage is unavailable. Try again later."],
+    SETUP_REQUIRED: ["لم تُجهّز جداول أداة النسخ الاحتياطية في قاعدة البيانات بعد. يلزم تطبيق تحديث إعداد الأداة؛ إعادة المحاولة وحدها لا تعالج المشكلة.", "Backup database tables have not been set up. Apply the tool's database setup update; retrying alone will not fix this."],
   BUSY: ["هناك عملية أخرى قيد التنفيذ. حاول مجدداً بعد انتهائها.", "Another operation is in progress. Retry when it finishes."],
   UNSAFE_SCHEMA: ["المخطط الحالي غير آمن للاستعادة.", "The current schema is not safe to restore."],
   FAILED: ["تعذر إكمال العملية. تحقق من الاتصال والصلاحيات ثم حاول مجدداً.", "The operation could not be completed. Check the connection and permissions, then retry."],

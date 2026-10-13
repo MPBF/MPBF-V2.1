@@ -60,6 +60,10 @@ try {
       BEGIN NEW.names=ARRAY['would-change-on-restore']; RETURN NEW; END $$;
     CREATE TRIGGER product_insert BEFORE INSERT ON products FOR EACH ROW EXECUTE FUNCTION touch_names();
   `);
+  await test("missing technical tables report setup-required instead of a transient storage outage", async () => {
+    await assertCode(() => service.create(1, phrase), "BACKUP_SETUP_REQUIRED");
+    assert.equal((await sql("SELECT count(*)::int AS n FROM customers"))[0].n, 2);
+  });
   await pool.query(readFileSync("migrations/0020_data_transfer.sql", "utf8"));
   await test("encrypted full archive preserves exact decimals, arrays, JSON, binary, accounts, identity and business QR", async () => {
     original = await snap(); archive = await service.create(1, phrase);
@@ -171,6 +175,13 @@ try {
     await sql("CREATE SCHEMA other; CREATE TABLE other.child(customer text REFERENCES public.customers(id))");
     await assertCode(() => service.create(1, phrase), "BACKUP_UNSAFE_SCHEMA");
     await sql("DROP SCHEMA other CASCADE");
+  });
+  await test("reviewed technical-table setup is idempotent and preserves business and audit records", async () => {
+    const before = await snap();
+    const auditCount = (await sql("SELECT count(*)::int AS n FROM data_transfer_operations"))[0].n;
+    await pool.query(readFileSync("migrations/0020_data_transfer.sql", "utf8"));
+    assert.equal((await snap()).stateHash, before.stateHash);
+    assert.equal((await sql("SELECT count(*)::int AS n FROM data_transfer_operations"))[0].n, auditCount);
   });
   console.log(`Verified ${tests} encrypted full-database backup scenarios on disposable PostgreSQL only.`);
 } finally { await pool.end(); }
