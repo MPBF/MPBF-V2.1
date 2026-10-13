@@ -33,8 +33,11 @@ const counts=async()=>query(`SELECT (SELECT count(*) FROM customers)::int custom
  (SELECT count(*) FROM categories)::int categories,(SELECT count(*) FROM items)::int items`);
 try {
   await pool.query(`
-    CREATE TABLE users(id integer PRIMARY KEY,password text);
-    INSERT INTO users VALUES(1,'never-export'),(2,'never-export');
+    CREATE TABLE roles(id serial PRIMARY KEY,name text,permissions json);
+    INSERT INTO roles(id,name,permissions) VALUES(1,'Administrator','["admin"]'),(2,'Operator','["view_production"]');
+    CREATE TABLE users(id serial PRIMARY KEY,username text UNIQUE,password text,role_id integer REFERENCES roles(id),
+      display_name text,status text DEFAULT 'active',must_change_password boolean DEFAULT false);
+    INSERT INTO users(id,username,password,role_id) VALUES(1,'admin','never-export',1),(2,'operator','never-export',2);
     CREATE TABLE customers(id varchar(20) PRIMARY KEY,name varchar(200) NOT NULL,name_ar varchar(200),
       tax_number varchar(20),unified_number varchar(10),phone varchar(20),is_active boolean DEFAULT true,
       created_at timestamp DEFAULT now(),sales_rep_id integer REFERENCES users(id));
@@ -43,7 +46,10 @@ try {
     CREATE TABLE items(id varchar(20) PRIMARY KEY,name varchar(100),name_ar varchar(100),
       category_id varchar(20) REFERENCES categories(id),status varchar(20) DEFAULT 'active' CHECK(status IN('active','inactive')));
     CREATE TABLE customer_products(id serial PRIMARY KEY,customer_id varchar(20) REFERENCES customers(id),
-      item_id varchar(20) REFERENCES items(id),width numeric(18,4),universal_thickness numeric GENERATED ALWAYS AS(width*2) STORED);
+      item_id varchar(20) REFERENCES items(id),width numeric(18,4),universal_thickness numeric GENERATED ALWAYS AS(width*2) STORED,
+      left_facing numeric,right_facing numeric,thickness numeric,density numeric DEFAULT 0.95,printing_cylinder text,
+      cutting_length_cm integer,size_caption text,bag_weight_grams numeric,bags_per_kilo numeric,package_weight_kg numeric,is_printed boolean,
+      notes text);
     CREATE TABLE machines(id varchar(20) PRIMARY KEY,name text);
     CREATE TABLE orders(id serial PRIMARY KEY,order_number text UNIQUE,customer_id varchar(20) REFERENCES customers(id),
       status text,share_token text);
@@ -85,13 +91,16 @@ try {
   await pool.query(readFileSync("migrations/0020_data_transfer.sql","utf8"));
   await pool.query(readFileSync("migrations/0021_finished_deliveries.sql","utf8"));
   version=(await tools.schema()).version;
-  await test("dynamic schema excludes authentication, tokens and generated writes; discovered tables stay unapproved",async()=>{
+  await test("business tables and accounts are importable; secrets, internal tables and computed writes remain excluded",async()=>{
     const s=await tools.schema();
-    assert.equal(s.ready,true);assert(!s.tables.some(t=>["users","sessions","data_transfer_previews"].includes(t.name)));
+    assert.equal(s.ready,true);assert(!s.tables.some(t=>["sessions","data_transfer_previews","order_number_allocations"].includes(t.name)));
     assert(!s.tables.find(t=>t.name==="orders")!.columns.some(c=>c.name==="share_token"));
-    assert.equal(s.tables.find(t=>t.name==="discovered_business")!.exportable,false);
+    assert.equal(s.tables.find(t=>t.name==="discovered_business")!.importable,true);
+    assert(s.tables.find(t=>t.name==="users")!.importable);
+    assert(!s.tables.find(t=>t.name==="users")!.columns.some(c=>/password/.test(c.name)));
     assert.equal(s.tables.find(t=>t.name==="customer_products")!.columns.find(c=>c.name==="universal_thickness")!.writable,false);
-    await assert.rejects(()=>tools.export(1,["users"],"json",version));
+    const userExport=await tools.export(1,["users"],"json",version);
+    assert(!userExport.body.toString().includes("never-export"));
     await assert.rejects(()=>tools.export(1,['customers";DROP TABLE items;--'],"csv",version));
   });
   await test("CSV round trip protects formulas, leading zeros, Arabic, quotes, newlines and null",async()=>{
@@ -194,7 +203,7 @@ try {
     const p2=await preview("customers",[{id:"CID006",name:"Never"}]);
     await query("ALTER TABLE customers ADD COLUMN discovered text");
     await assert.rejects(()=>tools.apply(1,p2.id,[],true));
-    const s=await tools.schema();assert(!s.tables.find(t=>t.name==="customers")!.columns.find(c=>c.name==="discovered")!.writable);
+    const s=await tools.schema();assert(s.tables.find(t=>t.name==="customers")!.columns.find(c=>c.name==="discovered")!.writable);
     version=s.version;
   });
   await test("durable backup failure and SQL save failure leave all business data unchanged",async()=>{
@@ -265,6 +274,95 @@ try {
     assert.equal((await query("SELECT sum(quantity_kg)::text n FROM factory_delivery_movements WHERE inventory_id=1"))[0].n,"72.34");
     await deliver(1,"37.66");assert(!(await delivery.stock(manager)).records.some(r=>r.id===1));
     assert.equal((await query("SELECT quantity_kg FROM factory_inventory WHERE id=1"))[0].quantity_kg,"0.00");
+  });
+  await test("CSV customer-product imports validate local IDs, compute derived values, and advance serial IDs",async()=>{
+    const data={id:"100",customer_id:"CID001",item_id:"ITM001",width:"20",left_facing:"0",right_facing:"0",thickness:"10",printing_cylinder:"10",notes:"imported"};
+    const f=await file("customer_products",Object.keys(data),[data]);
+    const m=mapping("customer_products",Object.keys(data));
+    const rejected=await tools.preview(1,version,f,[m]);
+    assert(rejected.rows[0].errors.some(e=>e.message.includes("Numeric IDs")));
+    const p=await tools.preview(1,version,f,[m],true);assert.deepEqual(p.rows[0].errors,[]);
+    await tools.apply(1,p.id,[],true);
+    const row=(await query("SELECT * FROM customer_products WHERE id=100"))[0];
+    assert.equal(row.universal_thickness,"40.0000");assert(Number(row.bag_weight_grams)>0);assert(row.cutting_length_cm>0);
+    const next=(await query("INSERT INTO customer_products(customer_id,width) VALUES('CID001',20) RETURNING id"))[0].id;
+    assert(next>100);
+    const old=(await query("SELECT bag_weight_grams,cutting_length_cm FROM customer_products WHERE id=100"))[0];
+    const note=await file("customer_products",["id","notes"],[{id:"100",notes:"changed"}]);
+    const update=await tools.preview(1,version,note,[mapping("customer_products",["id","notes"])],true);
+    await tools.apply(1,update.id,[{index:0,columns:["notes"]}],false);
+    assert.deepEqual((await query("SELECT bag_weight_grams,cutting_length_cm FROM customer_products WHERE id=100"))[0],old);
+  });
+  await test("users import without plaintext passwords; existing hashes stay unchanged and new accounts require password reset",async()=>{
+    const headers=["username","role_id","display_name"];
+    const f=await file("users",headers,[{username:"operator",role_id:"2",display_name:"Changed"},{username:"new-user",role_id:"2",display_name:"New"}]);
+    const m={...mapping("users",headers),matchKey:["username"]};
+    const p=await tools.preview(1,version,f,[m],true);assert(p.rows.every(r=>!r.errors.length));
+    assert(!JSON.stringify(p).includes("never-export"));
+    await tools.apply(1,p.id,[{index:0,columns:["display_name"]}],true);
+    const old=(await query("SELECT password FROM users WHERE username='operator'"))[0];
+    assert.equal(old.password,"never-export");
+    const created=(await query("SELECT password,must_change_password FROM users WHERE username='new-user'"))[0];
+    assert.match(created.password,/^\$2b\$/);assert.equal(created.must_change_password,true);
+    await assert.rejects(()=>file("users",["username","password"],[{username:"bad",password:"do-not-store"}]),/Authentication secrets/);
+    assert(!(await query("SELECT document::text AS d FROM data_transfer_previews")).some(r=>r.d.includes("do-not-store")));
+  });
+  await test("current administrator cannot be disabled or lose explicit admin permissions through import",async()=>{
+    const f=await file("users",["username","status"],[{username:"admin",status:"inactive"}]);
+    const p=await tools.preview(1,version,f,[{...mapping("users",["username","status"]),matchKey:["username"]}]);
+    assert(p.rows[0].errors.some(e=>e.message.includes("current administrator")));
+    await assert.rejects(()=>tools.apply(1,p.id,[{index:0,columns:["status"]}],false));
+    const roles=await file("roles",["id","permissions"],[{id:"1",permissions:'["*"]'}]);
+    const rp=await tools.preview(1,version,roles,[mapping("roles",["id","permissions"])],true);
+    assert(rp.rows[0].errors.some(e=>e.message.includes("current administrator")));
+  });
+  await test("privilege grants require separate explicit approval and lost responses remain idempotent",async()=>{
+    const f=await file("roles",["id","name","permissions"],[{id:"50",name:"Import-admin",permissions:'["admin"]'}]);
+    const p=await tools.preview(1,version,f,[mapping("roles",["id","name","permissions"])],true);
+    assert(p.requiresAdminConfirmation);
+    await assert.rejects(()=>tools.apply(1,p.id,[],true),/administrator grant confirmation/);
+    const result=await tools.apply(1,p.id,[],true,true);
+    assert.deepEqual(await tools.apply(1,p.id,[],true,true),result);
+    assert.equal((await query("SELECT count(*)::int n FROM roles WHERE id=50"))[0].n,1);
+    assert((await query("INSERT INTO roles(name,permissions) VALUES('next','[]') RETURNING id"))[0].id>50);
+  });
+  await test("generic business tables support reviewed imports but invalid FKs reject the entire batch",async()=>{
+    const machine=await file("machines",["id","name"],[{id:"MC900",name:"Imported machine"}]);
+    const p=await tools.preview(1,version,machine,[mapping("machines",["id","name"])]);
+    assert.deepEqual(p.rows[0].errors,[]);await tools.apply(1,p.id,[],true);
+    const bad=await file("customer_products",["id","customer_id","width"],[{id:"500",customer_id:"UNKNOWN",width:"20"}]);
+    const rejected=await tools.preview(1,version,bad,[mapping("customer_products",["id","customer_id","width"])],true);
+    assert(rejected.rows[0].errors.some(e=>e.message.includes("Foreign relationship")));
+    await assert.rejects(()=>tools.apply(1,rejected.id,[],true));
+    assert.equal((await query("SELECT count(*)::int n FROM customer_products WHERE id=500"))[0].n,0);
+  });
+  await test("dependent account imports order roles before users even when file order is reversed",async()=>{
+    const current=await tools.schema();
+    const bundle:TransferFile={source:"external",tables:[
+      {name:"new_users",headers:["username","role_id"],rows:[{username:"linked-user",role_id:"80"}]},
+      {name:"new_roles",headers:["id","name","permissions"],rows:[{id:"80",name:"Linked role",permissions:'["view_production"]'}]},
+    ]};
+    // Use the real parser/receipt path rather than forging a client file document.
+    const zipped=new JSZip();
+    zipped.file("new_users.csv",csvExport(bundle.tables[0].headers,bundle.tables[0].rows));
+    zipped.file("new_roles.csv",csvExport(bundle.tables[1].headers,bundle.tables[1].rows));
+    // External multi-table JSON is not a trusted local bundle, so a workbook is used.
+    const workbook=new ExcelJS.Workbook();
+    for(const t of bundle.tables){const sheet=workbook.addWorksheet(t.name);sheet.addRow(t.headers);for(const r of t.rows)sheet.addRow(t.headers.map(h=>r[h]));}
+    const input=await tools.readFile(1,Buffer.from(await workbook.xlsx.writeBuffer()),"accounts.xlsx");
+    const p=await tools.preview(1,current.version,input,[
+      {...mapping("users",["username","role_id"],"new_users"),matchKey:["username"]},
+      mapping("roles",["id","name","permissions"],"new_roles"),
+    ],true);
+    assert(p.rows.every(r=>!r.errors.length));await tools.apply(1,p.id,[],true);
+    assert.equal((await query("SELECT role_id FROM users WHERE username='linked-user'"))[0].role_id,80);
+  });
+  await test("new users with default-active status still require approval for an administrative role",async()=>{
+    const f=await file("users",["username","role_id"],[{username:"privileged-new-user",role_id:"1"}]);
+    const p=await tools.preview(1,version,f,[{...mapping("users",["username","role_id"]),matchKey:["username"]}],true);
+    assert(p.requiresAdminConfirmation);
+    await assert.rejects(()=>tools.apply(1,p.id,[],true),/administrator grant confirmation/);
+    assert.equal((await query("SELECT count(*)::int n FROM users WHERE username='privileged-new-user'"))[0].n,0);
   });
   console.log(`Verified ${tests} isolated PostgreSQL safety suites.`);
 } finally {await pool.end();}

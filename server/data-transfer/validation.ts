@@ -1,6 +1,6 @@
 import type { TransferColumn, TransferFile, TransferMapping, TransferPreviewRow, TransferRow, TransferSchema } from "../../shared/data-transfer";
 import { approved, hash, type Snapshot } from "./schema";
-import { fail, MAX_ROWS } from "./policy";
+import { fail, MAX_ROWS, privateSettingKey } from "./policy";
 
 export function valueFor(column: TransferColumn, value: unknown): string | null {
   if (value === null) {
@@ -23,15 +23,30 @@ export function valueFor(column: TransferColumn, value: unknown): string | null 
     if (column.scale !== null && decimal.length > column.scale) fail("Decimal scale exceeded; rounding is not allowed");
     if (column.precision !== null && whole.replace(/^0+/, "").length > column.precision - (column.scale ?? 0)) fail("Decimal precision exceeded");
   }
-  if (column.type === "boolean" && !["true", "false"].includes(value)) fail("Boolean must be true or false");
+  if (column.type === "boolean") {
+    if (!["true", "false", "t", "f"].includes(value)) fail("Boolean must be true or false");
+    return ["true", "t"].includes(value) ? "t" : "f";
+  }
   if (column.type === "date") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || new Date(value).toISOString().slice(0, 10) !== value) fail("Invalid ISO date");
   }
-  if (column.type.startsWith("timestamp") && (!/^\d{4}-\d{2}-\d{2}T/.test(value) || !Number.isFinite(Date.parse(value)))) fail("Invalid ISO timestamp");
+  if (column.type.startsWith("timestamp") && (!/^\d{4}-\d{2}-\d{2}[T ]/.test(value) || !Number.isFinite(Date.parse(value)))) fail("Invalid ISO timestamp");
+  if (["json", "jsonb"].includes(column.type)) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(value); } catch { fail("Invalid JSON value"); }
+    const inspect = (v: unknown, depth = 0) => {
+      if (depth > 64) fail("JSON nesting limit exceeded");
+      if (v && typeof v === "object") for (const [key, item] of Object.entries(v)) {
+        if (privateSettingKey.test(key)) fail("Nested security data is excluded from general transfer");
+        inspect(item, depth + 1);
+      }
+    };
+    inspect(parsed);
+  }
   return value;
 }
 const same = (a: string | null | undefined, b: string | null | undefined) => a === b;
-export function makePreview(schema: TransferSchema, file: TransferFile, mappings: TransferMapping[], graph: Snapshot): TransferPreviewRow[] {
+export function makePreview(schema: TransferSchema, file: TransferFile, mappings: TransferMapping[], graph: Snapshot, confirmLocalIds = false): TransferPreviewRow[] {
   if (!Array.isArray(mappings) || !mappings.length || mappings.length > 10 ||
     new Set(mappings.map(m => m.fileTable)).size !== mappings.length ||
     new Set(mappings.map(m => m.table)).size !== mappings.length) fail("Choose one mapping per unique table");
@@ -41,7 +56,7 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
     const table = approved(schema, mapping.table, true);
     const input = file.tables.find(t => t.name === mapping.fileTable);
     if (!input) fail("File table not found");
-    if (!Array.isArray(mapping.matchKey) || !table.keys.some(k => hash(k) === hash(mapping.matchKey)) ||
+    if (!Array.isArray(mapping.matchKey) || !(table.keys.some(k => hash(k) === hash(mapping.matchKey)) || (!table.keys.length && !mapping.matchKey.length)) ||
       mapping.matchKey.some(k => !table.columns.find(c => c.name === k)?.writable)) fail("Select an approved reliable match key");
     if (!mapping.columns || typeof mapping.columns !== "object" || Array.isArray(mapping.columns)) fail("Invalid mapping");
     const targets = Object.values(mapping.columns).filter(Boolean);
@@ -62,20 +77,21 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
         }
         try {
           const column = table.columns.find(c => c.name === target)!;
-          if (file.source !== "same-database" && table.relations.some(r => r.columns.includes(target)) &&
+          if (!confirmLocalIds && file.source !== "same-database" && table.relations.some(r => r.columns.includes(target)) &&
             (["integer", "bigint", "smallint"].includes(column.type) || /^\d+$/.test(rawValue))) fail("Numeric foreign IDs from another source are not trusted");
           row.values[target] = valueFor(column, rawValue);
         } catch (e) { row.errors.push({ column: target, message: (e as Error).message }); }
       }
+      const automaticKey = mapping.matchKey.length > 0 && mapping.matchKey.every(k => table.columns.find(c => c.name === k)?.generated && row.values[k] == null);
       for (const key of mapping.matchKey) {
-        if (row.values[key] == null || row.values[key] === "") row.errors.push({ column: key, message: "Match key is required" });
-        if (file.source !== "same-database" && key === "id" && /^\d+$/.test(row.values[key] ?? ""))
+        if (!automaticKey && (row.values[key] == null || row.values[key] === "")) row.errors.push({ column: key, message: "Match key is required" });
+        if (!confirmLocalIds && file.source !== "same-database" && key === "id" && /^\d+$/.test(row.values[key] ?? ""))
           row.errors.push({ column:key,message:"Numeric IDs from another source are not trusted; use a stable business code or a verified local JSON package" });
       }
-      const key = hash(mapping.matchKey.map(k => row.values[k]));
+      const key = automaticKey || !mapping.matchKey.length ? `new-row-${row.index}` : hash(mapping.matchKey.map(k => row.values[k]));
       if (seen.has(key)) { row.status = "conflict"; row.errors.push({ column: mapping.matchKey.join(","), message: "Duplicate match key in file" }); }
       seen.add(key);
-      const matches = (graph[table.name] ?? []).filter(r => mapping.matchKey.every(k => same(r[k], row.values[k])));
+      const matches = automaticKey || !mapping.matchKey.length ? [] : (graph[table.name] ?? []).filter(r => mapping.matchKey.every(k => same(r[k], row.values[k])));
       if (matches.length > 1) { row.status = "conflict"; row.errors.push({ column: "", message: "Ambiguous database match" }); }
       if (matches.length === 1) {
         row.old = matches[0];
@@ -129,6 +145,26 @@ export function project(graph: Snapshot, rows: TransferPreviewRow[]): Snapshot {
   return result;
 }
 export function validateBusiness(table: string, row: TransferRow, graph: Snapshot) {
+  for (const key of ["key", "setting_key", "config_key"]) {
+    if (row[key] && "value" in row && privateSettingKey.test(row[key]!)) fail("Security settings are excluded from general transfer");
+  }
+  if (table === "users") {
+    if ("username" in row && !row.username?.trim()) fail("Username is required");
+    if (row.status != null && !["active", "inactive"].includes(row.status)) fail("Invalid user status");
+    if (row.preferred_language != null && !["ar", "en"].includes(row.preferred_language)) fail("Invalid user language");
+  }
+  if (table === "roles" && row.permissions != null) {
+    let permissions: unknown; try { permissions = JSON.parse(row.permissions); } catch { fail("Invalid role permissions"); }
+    if (!Array.isArray(permissions) || permissions.length > 1000 || permissions.some(p => typeof p !== "string" || (p !== "*" && !/^[a-z_][a-z0-9_]*$/i.test(p)))) fail("Invalid role permissions");
+  }
+  if (table === "customer_products") {
+    for (const field of ["width", "left_facing", "right_facing", "thickness", "cutting_length_cm"]) {
+      if (row[field] == null) continue;
+      const value = Number(row[field]);
+      if (!Number.isSafeInteger(value) || value < 0 || (["width", "thickness", "cutting_length_cm"].includes(field) && value === 0)) fail("Product dimensions must be valid whole numbers");
+    }
+    if (row.density != null && (!Number.isFinite(Number(row.density)) || Number(row.density) <= 0)) fail("Product density must be positive");
+  }
   const has = (table: string, value: string) => graph[table]?.some(r => r.id === value);
   if (["customers", "categories"].includes(table) && !row.name?.trim()) fail("English name is required");
   if (table === "customers") {

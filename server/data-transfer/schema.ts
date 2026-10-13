@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { TransferRow, TransferSchema, TransferTable } from "../../shared/data-transfer";
-import { identifier, labels, policies, protectedColumn, sensitiveName, MAX_BYTES, MAX_ROWS, MAX_EXPORT_ROWS, RETENTION_DAYS, fail } from "./policy";
+import { identifier, labels, policies, protectedColumn, eligibleTable, productDerived, privateSettingKey, MAX_BYTES, MAX_ROWS, MAX_EXPORT_ROWS, RETENTION_DAYS, fail } from "./policy";
 
 export interface Queryable { query(text: string, values?: any[]): Promise<{ rows: any[] }> }
 export interface TransferConnection extends Queryable { release(): void }
@@ -37,36 +37,32 @@ export async function discover(q: Queryable, namespace = "public"): Promise<Tran
     WHERE n.nspname=$1 AND i.indisunique AND i.indisvalid AND i.indpred IS NULL AND i.indexprs IS NULL
     ORDER BY t.relname,i.indexrelid`, [namespace]);
   const names = [...new Set<string>(columns.map(c => c.table_name))];
-  const tables: TransferTable[] = names.filter(name => !sensitiveName.test(name) &&
-    !/^(?:attendance_|shift_|user_|administrative_requests$|company_profile$|order_number_allocations$|order_display_folder_assignments$)/.test(name)).map(name => {
+  const eligible = new Set(names.filter(eligibleTable));
+  const tables: TransferTable[] = names.filter(name => eligible.has(name)).map(name => {
     const policy = policies[name];
-    const cols = columns.filter(c => c.table_name === name && !protectedColumn.test(c.column_name) &&
+    const cols = columns.filter(c => c.table_name === name && (!protectedColumn.test(c.column_name) || (name === "roles" && c.column_name === "permissions")) &&
       !(["factory_receipt_items", "factory_inventory", "factory_movements"].includes(name) && /unit|packing|piece/i.test(c.column_name)))
       .map(c => ({
         name: c.column_name, labelAr: labels[c.column_name] ?? c.column_name,
         labelEn: c.column_name.replaceAll("_", " "), type: c.data_type,
         nullable: c.is_nullable === "YES", default: c.column_default,
         generated: c.is_generated !== "NEVER" || c.is_identity === "YES" || /nextval\(/.test(c.column_default ?? ""),
-        writable: !!policy?.write.includes(c.column_name) && c.is_generated === "NEVER" &&
-          c.is_identity !== "YES" && !/nextval\(/.test(c.column_default ?? ""),
+        identity: c.is_identity === "YES",
+        writable: c.is_generated === "NEVER" && !(name === "customer_products" && productDerived.has(c.column_name)),
         maxLength: c.character_maximum_length, precision: c.numeric_precision, scale: c.numeric_scale,
       }));
     const visible = new Set(cols.map(c => c.name));
     return {
       name, labelAr: policy?.ar ?? name, labelEn: policy?.en ?? name, group: policy?.group ?? "discovered",
-      approved: !!policy, exportable: !!policy, importable: !!policy?.write.length,
-      reasonAr: policy?.write.length ? "إضافة ومعاينة وتحديث بموافقة؛ لا حذف." : policy
-        ? "التصدير فقط؛ الاستيراد المباشر ممنوع لحماية الحقول المحسوبة وقواعد التشغيل والمحاسبة. استخدم خدمة الجدول الأصلية."
-        : "جدول مكتشف غير معتمد؛ النقل ممنوع حتى مراجعة قواعده.",
-      reasonEn: policy?.write.length ? "Add and explicitly approve updates after preview; no deletion." : policy
-        ? "Export only. Direct import is blocked to protect derived fields, workflow and accounting rules. Use the owning service."
-        : "Discovered, unapproved table; transfer blocked pending policy review.",
+      approved: true, exportable: true, importable: cols.some(c => c.writable),
+      reasonAr: "إضافة ومعاينة وتحديث بموافقة؛ لا حذف. الحقول المحسوبة والأسرار محمية.",
+      reasonEn: "Add and explicitly approve updates after preview; no deletion. Derived values and secrets are protected.",
       columns: cols,
       keys: indices.filter(i => i.table_name === name && i.columns.length && i.columns.every((c: string) => visible.has(c)))
         .map(i => i.columns),
       relations: [
         ...constraints.filter(c => c.table_name === name && c.contype === "f" &&
-          policies[c.foreign_table] && c.columns.every((x: string) => visible.has(x)))
+          eligible.has(c.foreign_table) && c.columns.every((x: string) => visible.has(x)))
           .map(c => ({ columns: c.columns, table: c.foreign_table, targets: c.targets })),
         ...(policy?.logical ?? []).map(r => ({ columns: [r.column], table: r.table, targets: [r.target] })),
       ],
@@ -74,7 +70,7 @@ export async function discover(q: Queryable, namespace = "public"): Promise<Tran
   });
   const ready = ["data_transfer_previews", "data_transfer_operations", "data_transfer_backups", "data_transfer_templates"]
     .every(n => names.includes(n));
-  return { version: hash({ columns, constraints, indices, policies }), tables, ready,
+  return { version: hash({ columns, constraints, indices, policies, transferPolicy: "business-users-v2" }), tables, ready,
     environment: process.env.NODE_ENV === "production" ? "production" : "development",
     limits: { bytes: MAX_BYTES, rows: MAX_ROWS, retentionDays: RETENTION_DAYS } };
 }
@@ -86,9 +82,12 @@ export function approved(schema: TransferSchema, name: string, write = false) {
 export async function readRows(q: Queryable, table: TransferTable, namespace: string): Promise<TransferRow[]> {
   const columns = table.columns.map(c => `${identifier(c.name)}::text AS ${identifier(c.name)}`).join(",");
   if (!columns) return [];
+  const settingKey = table.columns.find(c => ["key", "setting_key", "config_key"].includes(c.name));
+  const filtered = !!settingKey && table.columns.some(c => c.name === "value");
   const { rows } = await q.query(`SELECT ${columns} FROM ${identifier(namespace)}.${identifier(table.name)}
-    ORDER BY ${table.keys[0]?.map(identifier).join(",") || table.columns.map(c => identifier(c.name)).join(",")}
-    LIMIT ${MAX_EXPORT_ROWS + 1}`);
+    ${filtered ? `WHERE COALESCE(${identifier(settingKey!.name)}::text,'') !~* $1` : ""}
+    ORDER BY ${table.keys[0]?.map(identifier).join(",") || `row_to_json(${identifier(table.name)})::text`}
+    LIMIT ${MAX_EXPORT_ROWS + 1}`, filtered ? [privateSettingKey.source] : undefined);
   if (rows.length > MAX_EXPORT_ROWS) fail("Table exceeds safe transfer row limit", 413);
   for (const row of rows) for (const column of table.columns.filter(c => ["json","jsonb"].includes(c.type))) {
     // Do not parse arbitrary JSON through JS Number (precision loss). A package

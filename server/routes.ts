@@ -62,6 +62,7 @@ import hr from "./hr";
 import selfService from "./self-service";
 import factoryProduction from "./production/routes";
 import dataTransfer from "./data-transfer/routes";
+import databaseBackups from "./database-backups/routes";
 
 const router = Router();
 router.use(createPublicOrderPrintRouter(getOrderDetails));
@@ -637,6 +638,7 @@ router.use("/self", selfService);
 router.use("/hr", hr);
 router.use("/production", factoryProduction);
 router.use("/data-transfer", dataTransfer);
+router.use("/database-backups", databaseBackups);
 router.get("/public-branding", async (_req, res, next) => {
   try {
     const profile = (await db.select().from(company_profile).limit(1))[0] ?? null;
