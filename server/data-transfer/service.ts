@@ -1,9 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
+import bcrypt from "bcrypt";
 import type { TransferApproval, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferRow, TransferTemplate } from "../../shared/data-transfer";
 import { approved, discover, hash, readRows, snapshot, stable, type Queryable, type Snapshot, type TransferPool } from "./schema";
-import { fail, identifier, MAX_ROWS, RETENTION_DAYS } from "./policy";
+import { fail, identifier, MAX_ROWS, RETENTION_DAYS, productDerived, protectedColumn } from "./policy";
 import { csvExport, csvZipExport, excelExport, makeBundle, parseFile, verifyBundleShape } from "./files";
 import { makePreview, project, validateBusiness } from "./validation";
+import { derivedProductValues, grantsAdministrator, guardAdministrator, orderedRows, preserveSequences } from "./adapters";
 
 type Document = {
   preview: TransferPreview; graph: Snapshot; guard: string; mappings: TransferMapping[];
@@ -29,7 +31,11 @@ export class DataTransferService {
       JOIN pg_class child ON child.oid=c.conrelid JOIN pg_namespace cn ON cn.oid=child.relnamespace
       JOIN pg_class parent ON parent.oid=c.confrelid JOIN pg_namespace pn ON pn.oid=parent.relnamespace
       WHERE c.contype='f' AND cn.nspname=$1 AND pn.nspname=$1 AND parent.relname=ANY($2::text[])`, [this.namespace, names]);
-    return [...new Set<string>([...names,...children.rows.map(r=>r.name)])].sort();
+    // The tool itself creates previews/audits/backups between its guard checks.
+    // Following users' actor_id children into these tables would invalidate
+    // every import through our own bookkeeping, not through a business edit.
+    return [...new Set<string>([...names,...children.rows.map(r=>r.name)])]
+      .filter(name => !/^(?:data_transfer_|database_backup_)/.test(name)).sort();
   }
   private async guard(q: Queryable, names: string[]) {
     const signatures: Record<string, string> = {};
@@ -83,6 +89,11 @@ export class DataTransferService {
         tables: obj.tables.map((t: any) => ({ name: t.name, headers: t.columns.map((c: any) => c.name), rows: t.rows })),
       };
     });
+    for (const table of file.tables) {
+      if (table.headers.some(h => (protectedColumn.test(h) && h !== "permissions") || /كلمة.*مرور/.test(h))) {
+        fail("Authentication secrets cannot be uploaded to general transfer", 403);
+      }
+    }
     const receipt = randomUUID();
     await this.pool.query(`INSERT INTO ${this.table("data_transfer_previews")}(id,actor_id,document,expires_at)
       VALUES($1,$2,$3::jsonb,clock_timestamp()+interval '30 minutes')`, [receipt, actor, stable({ file })]);
@@ -125,7 +136,7 @@ export class DataTransferService {
         filename: `MPBF-data-${bundle.id}.${format==="csv"&&names.length>1?"zip":format}` };
     } catch (e) { await q.query("ROLLBACK"); throw e; } finally { q.release(); }
   }
-  async preview(actor: number, version: string, submitted: TransferFile, mappings: TransferMapping[]) {
+  async preview(actor: number, version: string, submitted: TransferFile, mappings: TransferMapping[], confirmLocalIds = false) {
     if (!submitted?.receipt) fail("Upload the file again; a server receipt is required");
     await this.ready(this.pool);
     const { rows: uploads } = await this.pool.query(`SELECT document FROM ${this.table("data_transfer_previews")}
@@ -142,9 +153,13 @@ export class DataTransferService {
       if (schema.version !== version || (file.schemaVersion && file.source === "same-database" && file.schemaVersion !== version)) fail("Schema changed; refresh and preview again", 409);
       const graph = await snapshot(q, schema, this.namespace);
       const guard = await this.guard(q, Object.keys(graph));
-      const rows = makePreview(schema, file, mappings, graph);
+      const rows = makePreview(schema, file, mappings, graph, confirmLocalIds);
+      const projected = project(graph, rows);
+      try { guardAdministrator(actor, rows, projected); }
+      catch (e) { for (const row of rows.filter(r => ["users", "roles"].includes(r.table))) { row.status = "invalid"; row.errors.push({ column: "", message: (e as Error).message }); } }
       if (!rows.length || rows.length > MAX_ROWS) fail("File must contain 1–2000 rows");
-      document = { preview: { id: randomUUID(), version, expiresAt: new Date(Date.now() + 1800000).toISOString(), rows, kind: "import" },
+      document = { preview: { id: randomUUID(), version, expiresAt: new Date(Date.now() + 1800000).toISOString(), rows, kind: "import",
+        requiresAdminConfirmation: grantsAdministrator(rows, graph, projected) },
         graph, guard, mappings };
       await q.query("COMMIT");
     } catch (e) { await q.query("ROLLBACK"); throw e; } finally { q.release(); }
@@ -176,9 +191,9 @@ export class DataTransferService {
     if (!selected.length) fail("Select at least one change");
     return selected;
   }
-  async apply(actor: number, previewId: string, approvals: TransferApproval[], confirmNew: boolean) {
+  async apply(actor: number, previewId: string, approvals: TransferApproval[], confirmNew: boolean, confirmAdminGrants = false) {
     await this.ready(this.pool);
-    const approvalHash = hash({ approvals, confirmNew });
+    const approvalHash = hash({ approvals, confirmNew, confirmAdminGrants });
     const q = await this.pool.connect();
     let locked = false;
     try {
@@ -194,6 +209,9 @@ export class DataTransferService {
       }
       const document = await this.getPreview(q, actor, previewId);
       const selected = this.selected(document, approvals, confirmNew);
+      const proposed = project(document.graph, selected);
+      guardAdministrator(actor, selected, proposed);
+      if (grantsAdministrator(selected, document.graph, proposed) && !confirmAdminGrants) fail("Explicit administrator grant confirmation is required", 403);
       // Permanent backup is committed and read back before ANY business write.
       await q.query("BEGIN ISOLATION LEVEL REPEATABLE READ"); await this.setup(q);
       const schema = await this.ready(q);
@@ -218,7 +236,8 @@ export class DataTransferService {
       const projected = project(graph, selected);
       for (const row of selected) {
         const table = approved(currentSchema, row.table, true);
-        if (Object.keys(row.values).some(c => !table.columns.find(x => x.name === c)?.writable)) fail("Protected column", 403);
+        if (Object.keys(row.values).some(c => !table.columns.find(x => x.name === c)?.writable &&
+          !(document.preview.kind === "restore" && row.table === "customer_products" && productDerived.has(c)))) fail("Protected column", 403);
         validateBusiness(row.table, { ...row.old, ...row.values }, projected);
         for (const relation of table.relations) {
           const value = { ...row.old, ...row.values };
@@ -229,10 +248,17 @@ export class DataTransferService {
       const applied: { table: string; old: TransferRow | null; after: TransferRow; columns: string[] }[] = [];
       // Dependencies first; self references are validated above and category
       // logical links have no database FK. No client controls execution order.
-      selected.sort((a, b) => ["customers", "categories", "items"].indexOf(a.table) - ["customers", "categories", "items"].indexOf(b.table));
-      for (const row of selected) {
-        const columns = Object.keys(row.values);
-        const params: any[] = columns.map(c => row.values[c]);
+      const passwordHash = selected.some(r => r.table === "users" && !r.old)
+        ? await bcrypt.hash(randomBytes(32).toString("base64url"), 12) : null;
+      const insertedTables = new Set(selected.filter(r => !r.old).map(r => r.table));
+      await preserveSequences(q, currentSchema, this.namespace, insertedTables);
+      for (const row of orderedRows(selected, currentSchema, graph)) {
+        const derived = derivedProductValues(row, currentSchema, projected);
+        const values: TransferRow = { ...derived, ...row.values,
+          ...(document.preview.kind !== "restore" ? derived : {}),
+          ...(row.table === "users" && !row.old ? { password: passwordHash, must_change_password: "t" } : {}) };
+        const columns = Object.keys(values);
+        const params: any[] = columns.map(c => values[c]);
         const table = approved(currentSchema, row.table, true);
         const returning = table.columns.map(c => `${identifier(c.name)}::text AS ${identifier(c.name)}`).join(",");
         let text: string;
@@ -241,12 +267,14 @@ export class DataTransferService {
           if (!key) fail("No reliable row key");
           const where = key.map(c => { params.push(row.old![c]); return `${identifier(c)}=$${params.length}`; }).join(" AND ");
           text = `UPDATE ${this.table(row.table)} SET ${columns.map((c, i) => `${identifier(c)}=$${i + 1}`).join(",")} WHERE ${where} RETURNING ${returning}`;
-        } else text = `INSERT INTO ${this.table(row.table)}(${columns.map(identifier).join(",")})
-          VALUES(${columns.map((_, i) => `$${i + 1}`).join(",")}) RETURNING ${returning}`;
+        } else text = columns.length ? `INSERT INTO ${this.table(row.table)}(${columns.map(identifier).join(",")}) ${table.columns.some(c => c.identity) ? "OVERRIDING SYSTEM VALUE" : ""}
+          VALUES(${columns.map((_, i) => `$${i + 1}`).join(",")}) RETURNING ${returning}`
+          : `INSERT INTO ${this.table(row.table)} DEFAULT VALUES RETURNING ${returning}`;
         const { rows } = await q.query(text, params);
         if (rows.length !== 1) fail("Row changed; create a new preview", 409);
         applied.push({ table: row.table, old: row.old, after: rows[0], columns });
       }
+      await preserveSequences(q, currentSchema, this.namespace, insertedTables);
       const counts = { inserted: applied.filter(r => !r.old).length, updated: applied.filter(r => r.old).length };
       const result = { id: previewId, status: "completed", counts, backup: true, retainedInserts: document.preview.retainedInserts ?? 0 };
       // Detailed before/after images are private backup data, not activity logs.
@@ -328,6 +356,7 @@ export class DataTransferService {
         catch (e) { row.status = "invalid"; row.errors.push({ column: "", message: (e as Error).message }); }
       }
       document = { preview: { id: randomUUID(), version: schema.version, kind: "restore", rows,
+        requiresAdminConfirmation: grantsAdministrator(rows, graph, projected),
         expiresAt: new Date(Date.now() + 1800000).toISOString(), retainedInserts: applied.filter(r => !r.old).length },
         graph, guard: await this.guard(q, Object.keys(graph)), mappings: [], restoredOperation: operationId };
       await q.query("COMMIT");

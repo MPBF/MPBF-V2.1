@@ -103,7 +103,16 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
             columns:[{name:"id",labelAr:"المعرّف",labelEn:"ID",type:"character varying",nullable:false,default:null,
               generated:false,writable:true,maxLength:20,precision:null,scale:null},
               {name:"name",labelAr:"الاسم",labelEn:"Name",type:"character varying",nullable:false,default:null,
-              generated:false,writable:true,maxLength:200,precision:null,scale:null}]}]};
+              generated:false,writable:true,maxLength:200,precision:null,scale:null}]},
+            ...["customer_products","users","roles","discovered_business"].map(name=>({
+              name,labelAr:({customer_products:"منتجات العملاء",users:"المستخدمون",roles:"الأدوار",discovered_business:"بيانات أخرى"})[name],
+              labelEn:({customer_products:"Customer products",users:"Users",roles:"Roles",discovered_business:"Other data"})[name],
+              group:["users","roles"].includes(name)?"accounts":"catalogue",
+              approved:true,exportable:true,importable:true,reasonAr:"",reasonEn:"",keys:[["id"]],
+              relations:name==="customer_products"?[{columns:["hidden_customer_column"],table:"customers",targets:["hidden_target_column"]}]:[],
+              columns:[{name:"id",labelAr:"المعرّف",labelEn:"ID",type:"integer",nullable:false,default:"nextval('fixture_seq')",
+                generated:true,writable:true,maxLength:null,precision:32,scale:0}],
+            }))]};
         else if (url.pathname.startsWith("/api/production/history/")) data = {
           records: url.pathname.endsWith("/inventory") ? [{
             id: 1, production_order_number: "PO-FIXTURE", quantity_kg: "100",
@@ -354,6 +363,10 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       check(`${lang} data tool is deferred until administrator opens it`,assets.some(value=>/DataTransferAdmin-.*\.js$/.test(value)));
       check(`${lang} transfer shows connected environment and discovered catalogue`,
         await evaluate("document.querySelector('.transfer-page').textContent.includes('Development')&&document.querySelector('.transfer-page').textContent.includes('customers')"));
+      check(`${lang} table catalogue hides column details including relationship column names`,
+        await evaluate("document.querySelectorAll('.transfer-table-card .transfer-column').length===0&&![...document.querySelectorAll('.transfer-table-card')].some(card=>/hidden_customer_column|hidden_target_column/.test(card.textContent))"));
+      check(`${lang} catalogue includes products, users, roles and other business tables`,
+        await evaluate('["customer_products","users","roles","discovered_business"].every(name=>[...document.querySelectorAll(".transfer-table-card small.mono")].some(label=>label.textContent===name))'));
       for(const width of [390,768,1280]){
         await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<481});
         check(`${lang} ${width}px transfer controls stay within viewport`,

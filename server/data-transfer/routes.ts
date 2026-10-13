@@ -60,14 +60,14 @@ router.post("/preview", asyncRoute("preview", async (req, res) => {
     receipt: uuid, source: z.enum(["external", "same-database"]), schemaVersion: z.string().optional(),
     tables: z.array(z.object({ name: z.string().max(100), headers: z.array(z.string().max(200)).max(150),
       rows: z.array(z.record(z.string().max(200), z.string().max(10000).nullable())).max(2000) }).strict()).max(10),
-  }).strict(), mappings: z.array(mapping).min(1).max(10) }).strict().parse(req.body);
-  res.json(await service.preview(req.user!.id, input.version, input.file, input.mappings));
+  }).strict(), mappings: z.array(mapping).min(1).max(10), confirmLocalIds: z.boolean().optional() }).strict().parse(req.body);
+  res.json(await service.preview(req.user!.id, input.version, input.file, input.mappings, input.confirmLocalIds));
 }));
 router.post("/apply", asyncRoute("apply", async (req, res) => {
-  const input = z.object({ previewId: uuid, confirmNew: z.boolean(),
+  const input = z.object({ previewId: uuid, confirmNew: z.boolean(), confirmAdminGrants: z.boolean().optional(),
     approvals: z.array(z.object({ index: z.number().int().min(0).max(1999),
       columns: z.array(z.string().max(100)).max(150) }).strict()).max(2000) }).strict().parse(req.body);
-  res.json(await service.apply(req.user!.id, input.previewId, input.approvals, input.confirmNew));
+  res.json(await service.apply(req.user!.id, input.previewId, input.approvals, input.confirmNew, input.confirmAdminGrants));
 }));
 router.post("/restore-preview", asyncRoute("restore-preview", async (req, res) => {
   const input = z.object({ operationId: uuid }).strict().parse(req.body);
