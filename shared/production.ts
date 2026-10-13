@@ -105,6 +105,20 @@ export type InventoryRecord = {
   product: ProductSnapshot; location_name: string; location_name_ar: string;
   production_order_status?: string;
 };
+export type DeliveryStock = InventoryRecord & {
+  customer_id: string; order_number: string; received_kg: string; delivered_kg: string;
+  production_complete: boolean;
+};
+export type DeliveryInput = {
+  request_id: string; notes?: string;
+  items: { inventory_id: number; quantity_kg: string }[];
+};
+export type FinishedDelivery = {
+  id: number; voucher_number: string; customer_id: string; customer_name: string;
+  customer_name_ar: string | null; created_at: string; notes: string | null;
+  items: { id: number; inventory_id: number; production_order_id: number;
+    production_order_number: string; item_id: string; product: ProductSnapshot; quantity_kg: string }[];
+};
 export type InventoryMovement = {
   id: number; receipt_id: number; receipt_item_id: number; quantity_kg: string; created_at: string;
   voucher_number: string; production_order_id: number; location_id: number;
