@@ -149,7 +149,9 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     if (!schema) return [];
     const map = new Map<string, TransferTable[]>();
     schema.tables.forEach((table) => map.set(table.group, [...(map.get(table.group) || []), table]));
-    return [...map.entries()];
+    return [...map.entries()].sort(([groupA], [groupB]) =>
+      groupA === "discovered" ? (groupB === "discovered" ? 0 : 1) : groupB === "discovered" ? -1 : 0,
+    );
   }, [schema]);
 
   const loadData = async () => {
@@ -493,18 +495,6 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
         </div>
         <div className="transfer-footer-note"><ShieldCheck size={16} /><span>{tr("استيراد الجداول لا ينشئ جداول ولا يحذف سجلات. الإدراجات الجديدة افتراضياً، وتعديلات السجلات الموجودة تحتاج اختيار الأعمدة والموافقة عليها. هذا مختلف عن الاسترجاع الكامل الذي يستبدل البيانات بعد تأكيد مستقل.", "Table imports do not create tables or delete records. New rows are the default; existing-row updates require explicit column approval. This differs from full restore, which replaces data after separate confirmation.")}</span></div>
 
-        <DatabaseBackupsPanel language={language} />
-
-        <input
-          ref={fileInputRef}
-          className="transfer-hidden-file-input"
-          data-transfer-file-input="true"
-          type="file"
-          accept=".csv,.xlsx,.xls,.json,.zip,application/json,text/csv,application/zip"
-          aria-label={tr("اختر ملفاً لاستيراده إلى الجدول المحدد", "Choose a file to import into the selected table")}
-          onChange={handleFile}
-        />
-
         <section className="panel transfer-section">
           <div className="panel-head">
             <div><div className="eyebrow">{tr("فهرس نقل البيانات", "DATA TRANSFER CATALOGUE")}</div><h3>{tr("الجداول المعتمدة", "Approved data tables")}</h3><p>{tr("يعرض الفهرس الجداول المتاحة وفق صلاحيات الاستيراد والتصدير، مع العلاقات المرتبطة بها.", "This catalogue lists tables available under import and export permissions, with their relationships.")}</p></div>
@@ -547,6 +537,18 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
             </div>)}
           </div>
         </section>
+
+        <DatabaseBackupsPanel language={language} />
+
+        <input
+          ref={fileInputRef}
+          className="transfer-hidden-file-input"
+          data-transfer-file-input="true"
+          type="file"
+          accept=".csv,.xlsx,.xls,.json,.zip,application/json,text/csv,application/zip"
+          aria-label={tr("اختر ملفاً لاستيراده إلى الجدول المحدد", "Choose a file to import into the selected table")}
+          onChange={handleFile}
+        />
 
         {importTargetName && file && targetTable && <section className="panel transfer-section transfer-import-workflow" aria-live="polite">
           <div className="panel-head">

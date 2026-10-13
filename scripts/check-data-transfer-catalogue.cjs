@@ -18,7 +18,7 @@ const WebSocket = require("ws");
   const column = (name) => ({name,labelAr:name,labelEn:name,type:"character varying",nullable:name!=="id",
     default:null,generated:false,writable:true,maxLength:200,precision:null,scale:null});
   const tables = ["customers","customer_products","users","readonly_table"].map(name=>({
-    name,labelAr:name,labelEn:name,group:"catalogue",approved:true,exportable:true,importable:name!=="readonly_table",
+    name,labelAr:name,labelEn:name,group:name==="customers"?"discovered":"catalogue",approved:true,exportable:true,importable:name!=="readonly_table",
     reasonAr:"",reasonEn:"",keys:[["id"]],relations:[],columns:[column("id"),column("name")],
   }));
   try {
@@ -69,6 +69,8 @@ const WebSocket = require("ws");
       requests.length=0;commits=0;
       await send("Page.navigate",{url:`http://127.0.0.1:${server.address().port}/?lang=${lang}`});
       await wait("document.querySelectorAll('[data-transfer-export]').length===4");
+      check(`${lang} other data tables group is last`,await evaluate("document.querySelector('.transfer-group:last-child [data-transfer-export=customers]')!==null"));
+      check(`${lang} catalogue appears before backups`,await evaluate("Boolean(document.querySelector('.transfer-groups').compareDocumentPosition(document.querySelector('.db-backups-panel')) & Node.DOCUMENT_POSITION_FOLLOWING)"));
       check(`${lang} controlled transfer section removed`,await evaluate("!document.body.textContent.includes('نقل مضبوط')&&!document.body.textContent.includes('CONTROLLED TRANSFER')"));
       check(`${lang} import capability stays enforced`,await evaluate("document.querySelector('[data-transfer-import=readonly_table]').disabled"));
       await click('[data-transfer-export="users"]');
@@ -100,7 +102,7 @@ const WebSocket = require("ws");
       check(`${lang} unresolved apply blocks catalogue target changes`,await evaluate("[...document.querySelectorAll('[data-transfer-import],[data-transfer-export]')].every(b=>b.disabled)"));
       const first=requests.filter(r=>r.path.endsWith("/apply"))[0].body;
       await evaluate(`${applySelector}.click()`);
-      await wait("!document.querySelector('.transfer-import-workflow')");
+      await wait("!document.querySelector('.transfer-import-workflow')&&!document.querySelector('[data-transfer-import=customers]').disabled");
       const applied=requests.filter(r=>r.path.endsWith("/apply"));
       check(`${lang} retry preserves identical frozen apply request`,applied.length===2&&JSON.stringify(first)===JSON.stringify(applied[1].body)&&commits===1);
       check(`${lang} completed workflow releases catalogue`,await evaluate("!document.querySelector('[data-transfer-import=customers]').disabled"));
