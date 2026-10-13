@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ArrowLeftRight, Check, CheckCircle2, ChevronDown, Clock3, Database, Download, FileArchive, FileSpreadsheet, FileText, RefreshCw, RotateCcw, Save, ShieldCheck, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Check, CheckCircle2, ChevronDown, Clock3, Download, FileArchive, FileSpreadsheet, FileText, RefreshCw, RotateCcw, Save, ShieldCheck, Upload, X } from "lucide-react";
 import type { TransferApproval, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferSchema, TransferTable, TransferTemplate } from "../../../../shared/data-transfer";
 import "./DataTransferAdmin.css";
 import DatabaseBackupsPanel from "./DatabaseBackupsPanel";
@@ -117,7 +117,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
   const [file, setFile] = useState<TransferFile | null>(null);
   const [fileName, setFileName] = useState("");
   const [fileTableName, setFileTableName] = useState("");
-  const [targetName, setTargetName] = useState("");
+  const [importTargetName, setImportTargetName] = useState("");
   const [mappingColumns, setMappingColumns] = useState<Record<string, string>>({});
   const [matchKey, setMatchKey] = useState<string[]>([]);
   const [nullColumns, setNullColumns] = useState<string[]>([]);
@@ -130,15 +130,17 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState<ErrorInfo | null>(null);
   const [notice, setNotice] = useState("");
-  const [exportTables, setExportTables] = useState<string[]>([]);
-  const [exportFormat, setExportFormat] = useState<"csv" | "xlsx" | "json">("xlsx");
   const [templateName, setTemplateName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importTargetRef = useRef("");
+  const workflowHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const lastImportButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingApply = useRef<{previewId:string;approvals:TransferApproval[];confirmNew:boolean;confirmAdminGrants:boolean}|null>(null);
   const [uncertain,setUncertain] = useState(false);
 
   const selectedFileTable = file?.tables.find((item) => item.name === fileTableName) || null;
-  const targetTable = schema?.tables.find((table) => table.name === targetName && table.approved && table.importable) || null;
+  const targetTable = schema?.tables.find((table) => table.name === importTargetName && table.approved && table.importable) || null;
   const compatibleTemplates = useMemo(
     () => templates.filter((template) => schema && template.version === schema.version),
     [templates, schema?.version],
@@ -162,10 +164,6 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
       ]) : [[],[]];
       setOperations(Array.isArray(nextOperations) ? nextOperations : []);
       setTemplates(Array.isArray(nextTemplates) ? nextTemplates : []);
-      setExportTables((current) => current.filter((name) => nextSchema.tables.some((table) => table.name === name && table.approved && table.exportable)));
-       if (!targetName || !nextSchema.tables.some((table) => table.name === targetName && table.approved && table.importable)) {
-        setTargetName(nextSchema.tables.find((table) => table.approved && table.importable)?.name || "");
-      }
     } catch (e) {
       setError(localError(e, tr));
     } finally {
@@ -174,13 +172,24 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
   };
 
   useEffect(() => {
+    if (pendingApply.current) return;
     setPreview(null);
     setApprovals({});
     setConfirmNew(false);
     setConfirmLocalIds(false);
     setConfirmAdminGrants(false);
+    setFile(null);
+    setFileName("");
+    setFileTableName("");
+    setMappingConfigs({});
+    setImportTargetName("");
+    importTargetRef.current = "";
     void loadData();
   }, [refreshToken]);
+
+  useEffect(() => {
+    if (file && importTargetName) workflowHeadingRef.current?.focus();
+  }, [file, importTargetName]);
 
   useEffect(() => {
     if (!selectedFileTable || !targetTable) {
@@ -217,14 +226,58 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     setFile(null);
     setFileName("");
     setFileTableName("");
+    setMappingConfigs({});
+    setImportTargetName("");
+    importTargetRef.current = "";
     await loadData();
+  };
+
+  const closeImportWorkflow = () => {
+    if (busy !== "" || pendingApply.current) return;
+    clearWorkflow();
+    setFile(null);
+    setFileName("");
+    setFileTableName("");
+    setMappingConfigs({});
+    setImportTargetName("");
+    importTargetRef.current = "";
+    setTemplateName("");
+    setSelectedTemplate("");
+    const trigger = lastImportButtonRef.current;
+    requestAnimationFrame(() => trigger?.focus());
+  };
+
+  const openImportChooser = (table: TransferTable, button: HTMLButtonElement) => {
+    if (!schema?.ready || !table.approved || !table.importable || busy !== "" || preview || file || pendingApply.current) return;
+    lastImportButtonRef.current = button;
+    clearWorkflow();
+    setError(null);
+    setFile(null);
+    setFileName("");
+    setFileTableName("");
+    setMappingConfigs({});
+    setTemplateName("");
+    setSelectedTemplate("");
+    importTargetRef.current = table.name;
+    setImportTargetName(table.name);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
   };
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     if(pendingApply.current)return;
     const selected = event.target.files?.[0];
     event.target.value = "";
-    if (!selected) return;
+    if (!selected) {
+      setFile(null);
+      setFileName("");
+      setFileTableName("");
+      return;
+    }
+    const requestedTarget = importTargetRef.current;
+    if (!requestedTarget || !schema?.tables.some((table) => table.name === requestedTarget && table.approved && table.importable)) return;
     clearWorkflow();
     setBusy("file");
     setError(null);
@@ -236,14 +289,14 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message_en || data.message || `HTTP_${response.status}`);
       const parsed = data as TransferFile;
+      if (!Array.isArray(parsed.tables) || parsed.tables.length === 0) throw new Error("No importable tables found in file");
       setFile(parsed);
-      setFileTableName(parsed.tables[0]?.name || "");
+      setFileTableName(parsed.tables.find((item) => item.name === requestedTarget)?.name || parsed.tables[0].name);
       setMappingConfigs({});
-       const exactTarget = schema?.tables.find((table) => table.name === parsed.tables[0]?.name && table.approved && table.importable);
-      setTargetName(exactTarget?.name || schema?.tables.find((table) => table.approved && table.importable)?.name || "");
     } catch (e) {
       setError(localError(e, tr));
       setFile(null);
+      setFileName("");
     } finally { setBusy(""); }
   };
 
@@ -257,15 +310,9 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     if (mapping) setMappingConfigs((current) => ({ ...current, [mapping.fileTable]: mapping }));
   };
 
-  const allFileMappings = () => {
-    const current = currentMapping();
-    const configured = { ...mappingConfigs, ...(current ? { [current.fileTable]: current } : {}) };
-    return file?.tables.map((item) => configured[item.name]).filter((mapping): mapping is TransferMapping => Boolean(mapping)) || [];
-  };
-
-  const createPreview = async (mappings: TransferMapping[]) => {
+  const createPreview = async (mapping: TransferMapping) => {
     if(pendingApply.current)return;
-    if (!file || !mappings.length) return;
+    if (!file || !selectedFileTable || !targetTable) return;
     setBusy("preview");
     setError(null);
     setNotice("");
@@ -276,7 +323,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     try {
       const result = await api("/data-transfer/preview", {
         method: "POST",
-        body: JSON.stringify({ version: schema?.version, file, mappings, confirmLocalIds: file.source === "external" && confirmLocalIds }),
+        body: JSON.stringify({ version: schema?.version, file: { ...file, tables: [selectedFileTable] }, mappings: [mapping], confirmLocalIds: file.source === "external" && confirmLocalIds }),
       }) as TransferPreview;
       setPreview(result);
     } catch (e) { setError(localError(e, tr)); }
@@ -337,6 +384,12 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
       setApprovals({});
       setConfirmLocalIds(false);
       setConfirmAdminGrants(false);
+      setFile(null);
+      setFileName("");
+      setFileTableName("");
+      setMappingConfigs({});
+      setImportTargetName("");
+      importTargetRef.current = "";
       await loadData();
     } catch (e) {
       setError(localError(e,tr));
@@ -373,18 +426,18 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     });
   };
 
-  const exportData = async () => {
-    if (!schema || exportTables.length === 0) return;
-    setBusy("export");
+  const exportTable = async (table: TransferTable) => {
+    if (!schema?.ready || !table.approved || !table.exportable || busy !== "" || pendingApply.current) return;
+    setBusy(`export-${table.name}`);
     setError(null);
     try {
-      await downloadResponse("/api/data-transfer/export", `mpbf-transfer.${exportFormat === "csv" && exportTables.length>1 ? "zip" : exportFormat}`, "POST", { tables: exportTables, format: exportFormat, version: schema.version });
-      setNotice(tr("بدأ تنزيل ملف التصدير", "Export download started"));
+      await downloadResponse("/api/data-transfer/export", `mpbf-transfer-${table.name}.xlsx`, "POST", { tables: [table.name], format: "xlsx", version: schema.version });
+      const label = language === "ar" ? table.labelAr : table.labelEn;
+      setNotice(tr(`بدأ تنزيل ${label}`, `Download started for ${label}`));
     } catch (e) { setError(localError(e, tr)); }
     finally { setBusy(""); }
   };
 
-  const toggleExport = (name: string, checked: boolean) => setExportTables((current) => checked ? [...new Set([...current, name])] : current.filter((item) => item !== name));
   const statusLabel = (status: TransferPreviewRow["status"]) => ({
     new: tr("جديد", "New"), existing: tr("موجود", "Existing"), conflict: tr("تعارض", "Conflict"), invalid: tr("غير صالح", "Invalid"),
   })[status];
@@ -429,7 +482,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
           <span className={`tag ${schema.ready ? "" : "red"}`}>{schema.ready ? tr("جاهز", "Ready") : tr("غير جاهز", "Not ready")}</span>
           <span className="mono">{tr("الإصدار", "Version")} {schema.version}</span>
           <div className="transfer-toolbar" style={{ marginInlineStart: "auto" }}>
-            <button type="button" className="btn btn-muted" onClick={() => void refreshSchema()} disabled={busy !== ""}><RefreshCw size={15} />{tr("تحديث المخطط", "Refresh schema")}</button>
+            <button type="button" className="btn btn-muted" onClick={() => void refreshSchema()} disabled={busy !== "" || Boolean(pendingApply.current)}><RefreshCw size={15} />{tr("تحديث المخطط", "Refresh schema")}</button>
           </div>
         </div>
         <div className="transfer-facts" aria-label={tr("حدود النقل", "Transfer limits")}>
@@ -441,6 +494,16 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
         <div className="transfer-footer-note"><ShieldCheck size={16} /><span>{tr("استيراد الجداول لا ينشئ جداول ولا يحذف سجلات. الإدراجات الجديدة افتراضياً، وتعديلات السجلات الموجودة تحتاج اختيار الأعمدة والموافقة عليها. هذا مختلف عن الاسترجاع الكامل الذي يستبدل البيانات بعد تأكيد مستقل.", "Table imports do not create tables or delete records. New rows are the default; existing-row updates require explicit column approval. This differs from full restore, which replaces data after separate confirmation.")}</span></div>
 
         <DatabaseBackupsPanel language={language} />
+
+        <input
+          ref={fileInputRef}
+          className="transfer-hidden-file-input"
+          data-transfer-file-input="true"
+          type="file"
+          accept=".csv,.xlsx,.xls,.json,.zip,application/json,text/csv,application/zip"
+          aria-label={tr("اختر ملفاً لاستيراده إلى الجدول المحدد", "Choose a file to import into the selected table")}
+          onChange={handleFile}
+        />
 
         <section className="panel transfer-section">
           <div className="panel-head">
@@ -458,8 +521,24 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
                   </div>
                   <p>{table.approved ? (language === "ar" ? table.reasonAr : table.reasonEn) : (language === "ar" ? table.reasonAr : table.reasonEn) || tr("غير مصرح بالاستيراد لأسباب سلامة البيانات.", "Import is restricted for data-integrity reasons.")}</p>
                   <div className="transfer-chips">
-                    <span className={`transfer-chip ${table.exportable ? "" : "transfer-chip--muted"}`}><Download size={12} />{table.exportable ? tr("تصدير", "Export") : tr("لا تصدير", "No export")}</span>
-                    <span className={`transfer-chip ${table.importable ? "" : "transfer-chip--muted"}`}><Upload size={12} />{table.importable ? tr("استيراد", "Import") : tr("تصدير فقط", "Export only")}</span>
+                    <button
+                      type="button"
+                      className={`transfer-chip transfer-chip--action ${table.approved && table.exportable ? "" : "transfer-chip--muted"}`}
+                      data-transfer-export={table.name}
+                      aria-label={tr(`تصدير ${language === "ar" ? table.labelAr : table.labelEn}`, `Export ${language === "ar" ? table.labelAr : table.labelEn}`)}
+                      title={tr(`تصدير ${language === "ar" ? table.labelAr : table.labelEn}`, `Export ${language === "ar" ? table.labelAr : table.labelEn}`)}
+                      disabled={!schema.ready || !table.approved || !table.exportable || busy !== "" || Boolean(pendingApply.current)}
+                      onClick={() => void exportTable(table)}
+                    ><Download size={12} />{table.exportable ? tr("تصدير", "Export") : tr("لا تصدير", "No export")}</button>
+                    <button
+                      type="button"
+                      className={`transfer-chip transfer-chip--action ${table.approved && table.importable ? "" : "transfer-chip--muted"}`}
+                      data-transfer-import={table.name}
+                      aria-label={tr(`استيراد ${language === "ar" ? table.labelAr : table.labelEn}`, `Import ${language === "ar" ? table.labelAr : table.labelEn}`)}
+                      title={tr(`استيراد ${language === "ar" ? table.labelAr : table.labelEn}`, `Import ${language === "ar" ? table.labelAr : table.labelEn}`)}
+                      disabled={!schema.ready || !table.approved || !table.importable || busy !== "" || Boolean(file && importTargetName) || Boolean(preview) || Boolean(pendingApply.current)}
+                      onClick={(event) => openImportChooser(table, event.currentTarget)}
+                    ><Upload size={12} />{table.importable ? tr("استيراد", "Import") : tr("تصدير فقط", "Export only")}</button>
                     <span className="transfer-chip transfer-chip--muted">{numberLabel(table.columns.length, language)} {tr("عمود", "columns")}</span>
                   </div>
                   {relationNames(table) && <p><strong>{tr("العلاقات:", "Relations:")}</strong> {relationNames(table)}</p>}
@@ -469,103 +548,79 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
           </div>
         </section>
 
-        <section className="panel transfer-section">
-          <div className="panel-head"><div><div className="eyebrow">{tr("نقل مضبوط", "CONTROLLED TRANSFER")}</div><h3>{tr("تصدير واستيراد", "Export and import")}</h3><p>{tr("اختر الجداول المعتمدة المتاحة؛ تشمل بيانات العمل والمستخدمين والأدوار، مع استثناء جداول الأمان والنظام الداخلية.", "Choose approved tables for transfer, including business data, users and roles; internal security and system tables are excluded.")}</p></div><Database size={20} color="var(--teal)" /></div>
-          <div className="transfer-section-body">
-            <div className="transfer-flow-grid">
-              <div>
-                <div className="transfer-field"><label>{tr("تصدير الجداول", "Export tables")}</label>
-                  <div className="transfer-table-grid" style={{ padding: "0", marginTop: 4 }}>
-                    {schema.tables.filter((table) => table.approved && table.exportable).map((table) => <label className="check-row" key={table.name}>
-                      <input type="checkbox" checked={exportTables.includes(table.name)} onChange={(event) => toggleExport(table.name, event.target.checked)} />
-                      <span>{language === "ar" ? table.labelAr : table.labelEn}</span><code className="mono" style={{ marginInlineStart: "auto", fontSize: 10 }}>{table.name}</code>
-                    </label>)}
-                  </div>
-                </div>
-                <div className="transfer-inline" style={{ marginTop: 12 }}>
-                  <label className="transfer-field"><span className="sr-only">{tr("تنسيق التصدير", "Export format")}</span><select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "csv" | "xlsx" | "json")} aria-label={tr("تنسيق التصدير", "Export format")}><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV</option><option value="json">JSON</option></select></label>
-                  <button type="button" className="btn btn-primary" disabled={!exportTables.length || busy !== ""} onClick={() => void exportData()}><Download size={16} />{tr("تنزيل التصدير", "Download export")}</button>
-                </div>
-              </div>
-              <div className="transfer-field">
-                <label htmlFor="transfer-file">{tr("ملف الاستيراد", "Import file")}</label>
-                <label className="transfer-upload" htmlFor="transfer-file">
-                  <Upload size={22} /><strong>{fileName || tr("اختر ملفاً للتحليل", "Choose a file to inspect")}</strong>
-                  <small>{tr("CSV أو Excel أو JSON · يحدد الخادم نوع المصدر ويفحص الحدود", "CSV, Excel or JSON · the server identifies source and validates limits")}</small>
-                  <input id="transfer-file" type="file" accept=".csv,.xlsx,.xls,.json,application/json,text/csv" onChange={handleFile} disabled={!schema.ready || busy !== ""} />
-                </label>
-                {busy === "file" && <small role="status">{tr("جارٍ قراءة الملف وفحصه…", "Reading and validating file…")}</small>}
-                {file?.source === "external" && <label className="check-row transfer-safety-check">
-                  <input type="checkbox" checked={confirmLocalIds} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => { clearWorkflow(); setConfirmLocalIds(event.target.checked); }} />
-                  <span><strong>{tr("أؤكد أن المعرّفات الرقمية في الملف تشير إلى سجلات قاعدة البيانات الحالية", "I confirm numeric IDs in this file refer to records in the current database")}</strong><small>{tr("قد تشير المعرّفات الأساسية أو المرتبطة إلى سجلات مختلفة في قاعدة أخرى؛ اترك التأكيد غير محدد ما لم تتحقق من مصدرها.", "Primary or foreign IDs may refer to different records in another database; leave unchecked unless you have verified their source.")}</small></span>
-                </label>}
-                <div className="transfer-password-note"><ShieldCheck size={15} /><span>{tr("عند استيراد مستخدمين جدد، يحفظ الخادم تجزئة كلمة مرور عشوائية غير قابلة للاستخدام ويلزم تغييرها؛ يعيّن المسؤول كلمة صالحة من إدارة المستخدمين. لا تُستورد كلمات مرور المستخدمين الحاليين ولا تُصدّر أو تُحدّث.", "For new users, the server stores a random, unusable password hash and requires a change; an admin sets a usable password in user management. Existing users’ passwords are never imported, exported or updated.")}</span></div>
-              </div>
-            </div>
-            {file && <>
-              <div className="transfer-callout" style={{ marginTop: 14 }}><AlertTriangle size={16} /><span>{file.source === "external" ? tr("ملف خارجي: استخدم المعرّفات الرقمية للمفاتيح أو العلاقات فقط بعد تأكيد أنها تشير إلى سجلات قاعدة البيانات الحالية.", "External file: use numeric primary or foreign IDs only after confirming they refer to records in the current database.") : tr("ملف من قاعدة البيانات نفسها: يمكن استخدام المراجع الرقمية، مع بقاء التحقق من المفاتيح والعلاقات إلزامياً.", "Same-database file: numeric references may be used, while key and relation validation still applies.")}</span></div>
-              <div className="transfer-flow-grid" style={{ marginTop: 14 }}>
-                <div className="transfer-field"><label htmlFor="transfer-file-table">{tr("جدول الملف", "File table")}</label><select id="transfer-file-table" value={fileTableName} onChange={(event) => { rememberCurrentMapping(); setFileTableName(event.target.value); clearWorkflow(); }}>
-                  {file.tables.map((table) => <option key={table.name} value={table.name}>{table.name} · {table.rows.length} {tr("صف", "rows")}</option>)}
-                </select></div>
-                <div className="transfer-field"><label htmlFor="transfer-target">{tr("جدول الوجهة", "Target table")}</label><select id="transfer-target" value={targetName} onChange={(event) => { rememberCurrentMapping(); setTargetName(event.target.value); clearWorkflow(); }}>
-                  {schema.tables.filter((table) => table.approved && table.importable).map((table) => <option key={table.name} value={table.name}>{language === "ar" ? table.labelAr : table.labelEn} · {table.name}</option>)}
-                 </select><small>{tr("تظهر هنا الوجهات المصرح بها للاستيراد فقط؛ تُستثنى جداول الأمان والنظام الداخلية.", "Only import-authorized targets are listed; internal security and system tables are excluded.")}</small></div>
-              </div>
-              {selectedFileTable && targetTable && <div style={{ marginTop: 14 }}>
-                <div className="panel-head" style={{ padding: "10px 0", borderTop: "1px solid var(--line)" }}><div><strong>{tr("ربط الأعمدة", "Column mapping")}</strong><small className="cell-sub">{tr("تم اقتراح المطابقة الدقيقة غير الملتبسة فقط؛ الحقل الفارغ يتجاوز العمود.", "Only exact, unambiguous matches are suggested; an empty target skips the column.")}</small></div></div>
-                <div className="transfer-mapping-list">
-                  {selectedFileTable.headers.map((header) => <div className="transfer-mapping-row" key={header}>
-                    <code>{header}</code><ArrowLeftRight className="transfer-map-arrow" size={15} />
-                    <select aria-label={`${tr("وجهة العمود", "Column target")} ${header}`} value={mappingColumns[header] || ""} onChange={(event) => { clearWorkflow(); setMappingColumns((current) => ({ ...current, [header]: event.target.value })); }}>
-                      <option value="">{tr("تجاوز هذا العمود", "Skip this column")}</option>
-                      {targetTable.columns.filter((column) => column.writable && !column.generated).map((column) => {
-                        const foreignNumeric = file.source === "external" && targetTable.relations.some((relation) => relation.columns.includes(column.name)) && /int|numeric|serial|bigint/i.test(column.type);
-                        const localIdConfirmationNeeded = foreignNumeric && !confirmLocalIds;
-                        return <option key={column.name} value={column.name} disabled={localIdConfirmationNeeded}>{language === "ar" ? column.labelAr : column.labelEn} · {column.name}{localIdConfirmationNeeded ? ` — ${tr("يتطلب تأكيد المعرّفات المحلية", "requires local-ID confirmation")}` : ""}</option>;
-                      })}
-                    </select>
-                  </div>)}
-                </div>
-                <div className="transfer-flow-grid" style={{ marginTop: 12 }}>
-                  <div className="transfer-field"><label htmlFor="transfer-key">{tr("مفتاح مطابقة السجلات الموجودة", "Existing-row match key")}</label>
-                    <select id="transfer-key" value={JSON.stringify(matchKey)} onChange={(event) => { clearWorkflow(); setMatchKey(JSON.parse(event.target.value) as string[]); }} disabled={!targetTable.keys.length}>
-                      {targetTable.keys.map((key) => <option key={key.join("|")} value={JSON.stringify(key)}>{key.join(" + ")}</option>)}
-                      {!targetTable.keys.length && <option value="[]">{tr("بدون مفتاح فريد", "No unique key")}</option>}
-                    </select>
-                    <small>{targetTable.keys.length ? tr("تُطابق السجلات الموجودة بهذا المفتاح؛ يمكن ترك المعرّفات المولّدة تلقائياً فارغة للصفوف الجديدة.", "This key matches existing rows; autogenerated IDs may be omitted for new rows.") : tr("هذا الجدول للإدراج فقط لأن ليس له مفتاح فريد؛ يمكن ترك المعرّفات المولّدة تلقائياً فارغة للصفوف الجديدة.", "This table is insert-only because it has no unique key; autogenerated IDs may be omitted for new rows.")}</small>
-                  </div>
-                  <div className="transfer-field"><label>{tr("السماح بمسح قيمة صراحةً", "Explicitly allow clearing values")}</label>
-                    <div className="transfer-null-box">{targetTable.columns.filter((column) => column.writable && column.nullable && !column.generated).map((column) => <label className="transfer-null-option" key={column.name}>
-                       <input type="checkbox" checked={nullColumns.includes(column.name)} onChange={(event) => { clearWorkflow(); setNullColumns((current) => event.target.checked ? [...current, column.name] : current.filter((name) => name !== column.name)); }} />
-                      {language === "ar" ? column.labelAr : column.labelEn} <code>{column.name}</code>
-                    </label>)}</div>
-                    <small>{tr("القيم الفارغة تتجاوز افتراضياً؛ المسح ممكن فقط للأعمدة المختارة هنا.", "Blank values are skipped by default; clearing is possible only for columns selected here.")}</small>
-                  </div>
-                </div>
-                <div className="transfer-template-row">
-                  <select aria-label={tr("القوالب المتوافقة", "Compatible templates")} value={selectedTemplate} onChange={(event) => setSelectedTemplate(event.target.value)}>
-                    <option value="">{tr("استخدام قالب محفوظ…", "Use a saved template…")}</option>
-                    {compatibleTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-                  </select>
-                  <button type="button" className="btn btn-muted" onClick={useTemplate} disabled={!selectedTemplate}><ChevronDown size={15} />{tr("تطبيق القالب", "Apply template")}</button>
-                  <input aria-label={tr("اسم القالب", "Template name")} placeholder={tr("اسم القالب", "Template name")} value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
-                  <button type="button" className="btn btn-muted" onClick={() => void saveTemplate()} disabled={!templateName.trim() || busy !== ""}><Save size={15} />{tr("حفظ الربط", "Save mapping")}</button>
-                  <button type="button" className="btn btn-primary" onClick={() => {
-                    rememberCurrentMapping();
-                    const mappings = allFileMappings();
-                    if (mappings.length) void createPreview(mappings);
-                  }} disabled={!targetTable || !selectedFileTable || (file.source === "external" && !confirmLocalIds) || busy !== "" || allFileMappings().length !== file.tables.length}>
-                    <FileSpreadsheet size={16} />{busy === "preview" ? tr("جارٍ إعداد المعاينة…", "Preparing preview…") : allFileMappings().length !== file.tables.length ? tr("اربط كل جداول الملف أولاً", "Map every file table first") : tr("معاينة الاستيراد", "Preview import")}
-                  </button>
-                </div>
-              </div>}
-            </>}
+        {importTargetName && file && targetTable && <section className="panel transfer-section transfer-import-workflow" aria-live="polite">
+          <div className="panel-head">
+            <div><div className="eyebrow">{tr("استيراد جدول محدد", "SINGLE-TABLE IMPORT")}</div><h3 ref={workflowHeadingRef} tabIndex={-1}>{tr("استيراد إلى", "Import into")} {language === "ar" ? targetTable.labelAr : targetTable.labelEn}</h3><p>{tr("الوجهة ثابتة لهذا المسار؛ اختر جدول المصدر واربط الأعمدة لمراجعة التغييرات قبل التطبيق.", "The target is locked for this workflow. Choose a source table and map its columns to review changes before applying.")} · <code className="mono">{targetTable.name}</code></p></div>
+            <button type="button" className="btn btn-muted" onClick={closeImportWorkflow} disabled={busy !== "" || Boolean(pendingApply.current)}><X size={15} />{tr("إغلاق الاستيراد", "Close import")}</button>
           </div>
-        </section>
+          <div className="transfer-section-body">
+            <div className="transfer-import-file"><FileText size={16} /><span>{tr("الملف المحدد:", "Selected file:")} <strong dir="auto">{fileName}</strong></span></div>
+            <div className="transfer-callout"><AlertTriangle size={16} /><span>{file.source === "external" ? tr("ملف خارجي: استخدم المعرّفات الرقمية للمفاتيح أو العلاقات فقط بعد تأكيد أنها تشير إلى سجلات قاعدة البيانات الحالية.", "External file: use numeric primary or foreign IDs only after confirming they refer to records in the current database.") : tr("ملف من قاعدة البيانات نفسها: يمكن استخدام المراجع الرقمية، مع بقاء التحقق من المفاتيح والعلاقات إلزامياً.", "Same-database file: numeric references may be used, while key and relation validation still applies.")}</span></div>
+            {file.source === "external" && <label className="check-row transfer-safety-check">
+              <input type="checkbox" checked={confirmLocalIds} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => { clearWorkflow(); setConfirmLocalIds(event.target.checked); }} />
+              <span><strong>{tr("أؤكد أن المعرّفات الرقمية في الملف تشير إلى سجلات قاعدة البيانات الحالية", "I confirm numeric IDs in this file refer to records in the current database")}</strong><small>{tr("قد تشير المعرّفات الأساسية أو المرتبطة إلى سجلات مختلفة في قاعدة أخرى؛ اترك التأكيد غير محدد ما لم تتحقق من مصدرها.", "Primary or foreign IDs may refer to different records in another database; leave unchecked unless you have verified their source.")}</small></span>
+            </label>}
+            <div className="transfer-password-note"><ShieldCheck size={15} /><span>{tr("عند استيراد مستخدمين جدد، يحفظ الخادم تجزئة كلمة مرور عشوائية غير قابلة للاستخدام ويلزم تغييرها؛ يعيّن المسؤول كلمة صالحة من إدارة المستخدمين. لا تُستورد كلمات مرور المستخدمين الحاليين ولا تُصدّر أو تُحدّث.", "For new users, the server stores a random, unusable password hash and requires a change; an admin sets a usable password in user management. Existing users’ passwords are never imported, exported or updated.")}</span></div>
+            <div className="transfer-import-target"><span>{tr("جدول الوجهة", "Target table")}</span><strong>{language === "ar" ? targetTable.labelAr : targetTable.labelEn}</strong><code className="mono">{targetTable.name}</code></div>
+            <div className="transfer-flow-grid" style={{ marginTop: 14 }}>
+              <div className="transfer-field"><label htmlFor="transfer-file-table">{tr("جدول المصدر في الملف", "Source table in file")}</label><select id="transfer-file-table" value={fileTableName} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => { rememberCurrentMapping(); clearWorkflow(); setFileTableName(event.target.value); }}>
+                {file.tables.map((table) => <option key={table.name} value={table.name}>{table.name} · {table.rows.length} {tr("صف", "rows")}</option>)}
+              </select></div>
+              <div className="transfer-field"><label>{tr("تنسيق الملف", "File format")}</label><div className="transfer-file-type">{fileName.split(".").pop()?.toUpperCase() || tr("ملف", "File")}</div></div>
+            </div>
+            {selectedFileTable && <div style={{ marginTop: 14 }}>
+              <div className="panel-head transfer-mapping-heading"><div><strong>{tr("ربط الأعمدة", "Column mapping")}</strong><small className="cell-sub">{tr("تم اقتراح المطابقة الدقيقة غير الملتبسة فقط؛ الحقل الفارغ يتجاوز العمود.", "Only exact, unambiguous matches are suggested; an empty target skips the column.")}</small></div></div>
+              <div className="transfer-mapping-list">
+                {selectedFileTable.headers.map((header) => <div className="transfer-mapping-row" key={header}>
+                  <code>{header}</code><ArrowLeftRight className="transfer-map-arrow" size={15} />
+                  <select aria-label={`${tr("وجهة العمود", "Column target")} ${header}`} value={mappingColumns[header] || ""} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => { clearWorkflow(); setMappingColumns((current) => ({ ...current, [header]: event.target.value })); }}>
+                    <option value="">{tr("تجاوز هذا العمود", "Skip this column")}</option>
+                    {targetTable.columns.filter((column) => column.writable && !column.generated).map((column) => {
+                      const foreignNumeric = file.source === "external" && targetTable.relations.some((relation) => relation.columns.includes(column.name)) && /int|numeric|serial|bigint/i.test(column.type);
+                      const localIdConfirmationNeeded = foreignNumeric && !confirmLocalIds;
+                      return <option key={column.name} value={column.name} disabled={localIdConfirmationNeeded}>{language === "ar" ? column.labelAr : column.labelEn} · {column.name}{localIdConfirmationNeeded ? ` — ${tr("يتطلب تأكيد المعرّفات المحلية", "requires local-ID confirmation")}` : ""}</option>;
+                    })}
+                  </select>
+                </div>)}
+              </div>
+              <div className="transfer-flow-grid" style={{ marginTop: 12 }}>
+                <div className="transfer-field"><label htmlFor="transfer-key">{tr("مفتاح مطابقة السجلات الموجودة", "Existing-row match key")}</label>
+                  <select id="transfer-key" value={JSON.stringify(matchKey)} disabled={!targetTable.keys.length || busy !== "" || Boolean(pendingApply.current)} onChange={(event) => { clearWorkflow(); setMatchKey(JSON.parse(event.target.value) as string[]); }}>
+                    {targetTable.keys.map((key) => <option key={key.join("|")} value={JSON.stringify(key)}>{key.join(" + ")}</option>)}
+                    {!targetTable.keys.length && <option value="[]">{tr("بدون مفتاح فريد", "No unique key")}</option>}
+                  </select>
+                  <small>{targetTable.keys.length ? tr("تُطابق السجلات الموجودة بهذا المفتاح؛ يمكن ترك المعرّفات المولّدة تلقائياً فارغة للصفوف الجديدة.", "This key matches existing rows; autogenerated IDs may be omitted for new rows.") : tr("هذا الجدول للإدراج فقط لأن ليس له مفتاح فريد؛ يمكن ترك المعرّفات المولّدة تلقائياً فارغة للصفوف الجديدة.", "This table is insert-only because it has no unique key; autogenerated IDs may be omitted for new rows.")}</small>
+                </div>
+                <div className="transfer-field"><label>{tr("السماح بمسح قيمة صراحةً", "Explicitly allow clearing values")}</label>
+                  <div className="transfer-null-box">{targetTable.columns.filter((column) => column.writable && column.nullable && !column.generated).map((column) => <label className="transfer-null-option" key={column.name}>
+                    <input type="checkbox" checked={nullColumns.includes(column.name)} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => { clearWorkflow(); setNullColumns((current) => event.target.checked ? [...current, column.name] : current.filter((name) => name !== column.name)); }} />
+                    {language === "ar" ? column.labelAr : column.labelEn} <code>{column.name}</code>
+                  </label>)}</div>
+                  <small>{tr("القيم الفارغة تتجاوز افتراضياً؛ المسح ممكن فقط للأعمدة المختارة هنا.", "Blank values are skipped by default; clearing is possible only for columns selected here.")}</small>
+                </div>
+              </div>
+              <div className="transfer-template-row">
+                <select aria-label={tr("القوالب المتوافقة", "Compatible templates")} value={selectedTemplate} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => setSelectedTemplate(event.target.value)}>
+                  <option value="">{tr("استخدام قالب محفوظ…", "Use a saved template…")}</option>
+                  {compatibleTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                </select>
+                <button type="button" className="btn btn-muted" onClick={useTemplate} disabled={!selectedTemplate || busy !== "" || Boolean(pendingApply.current)}><ChevronDown size={15} />{tr("تطبيق القالب", "Apply template")}</button>
+                <input aria-label={tr("اسم القالب", "Template name")} placeholder={tr("اسم القالب", "Template name")} value={templateName} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => setTemplateName(event.target.value)} />
+                <button type="button" className="btn btn-muted" onClick={() => void saveTemplate()} disabled={!templateName.trim() || busy !== "" || Boolean(pendingApply.current)}><Save size={15} />{tr("حفظ الربط", "Save mapping")}</button>
+                <button type="button" className="btn btn-primary" onClick={() => {
+                  rememberCurrentMapping();
+                  const mapping = currentMapping();
+                  if (mapping) void createPreview(mapping);
+                }} disabled={!targetTable || !selectedFileTable || (file.source === "external" && !confirmLocalIds) || busy !== "" || Boolean(pendingApply.current)}>
+                  <FileSpreadsheet size={16} />{busy === "preview" ? tr("جارٍ إعداد المعاينة…", "Preparing preview…") : tr("معاينة الاستيراد", "Preview import")}
+                </button>
+              </div>
+            </div>}
+          </div>
+        </section>}
 
         {preview && <section className="panel transfer-section" aria-live="polite">
-          <div className="panel-head"><div><div className="eyebrow">{preview.kind === "restore" ? tr("معاينة الاستعادة", "RESTORE PREVIEW") : tr("قبل التطبيق", "REVIEW BEFORE APPLY")}</div><h3>{tr("مراجعة الصفوف والتغييرات", "Review rows and changes")}</h3><p>{tr("انتهاء المعاينة:", "Preview expires:")} {dateLabel(preview.expiresAt, language)} · <code className="mono">{preview.id}</code></p></div><button type="button" className="btn btn-muted" onClick={() => { setPreview(null); setApprovals({}); setConfirmAdminGrants(false); }}><X size={15} />{tr("إغلاق", "Close")}</button></div>
+          <div className="panel-head"><div><div className="eyebrow">{preview.kind === "restore" ? tr("معاينة الاستعادة", "RESTORE PREVIEW") : tr("قبل التطبيق", "REVIEW BEFORE APPLY")}</div><h3>{tr("مراجعة الصفوف والتغييرات", "Review rows and changes")}</h3><p>{tr("انتهاء المعاينة:", "Preview expires:")} {dateLabel(preview.expiresAt, language)} · <code className="mono">{preview.id}</code></p></div><button type="button" className="btn btn-muted" onClick={() => { if (pendingApply.current) return; setPreview(null); setApprovals({}); setConfirmAdminGrants(false); }} disabled={busy !== "" || Boolean(pendingApply.current)}><X size={15} />{tr("إغلاق", "Close")}</button></div>
           {(() => { const c = counts(preview.rows); return <div className="transfer-preview-summary">
             <strong>{numberLabel(preview.rows.length, language)} {tr("صف", "rows")}</strong>
             <span className="transfer-status transfer-status--new">{tr("جديد", "New")} · {numberLabel(c.new, language)}</span>
@@ -634,7 +689,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
               <div className="transfer-toolbar">
                 <button type="button" className="btn btn-muted" onClick={async () => { setBusy(`report-${operation.id}`); setError(null); try { await downloadResponse(`/api/data-transfer/operations/${encodeURIComponent(operation.id)}`, `operation-${operation.id}.json`); } catch (e) { setError(localError(e, tr)); } finally { setBusy(""); } }} disabled={busy !== ""}><FileText size={15} />{tr("تنزيل التقرير", "Download report")}</button>
                 {operation.backup && <button type="button" className="btn btn-muted" onClick={async () => { setBusy(`backup-${operation.id}`); setError(null); try { await downloadResponse(`/api/data-transfer/backups/${encodeURIComponent(operation.id)}`, `backup-${operation.id}.json`); } catch (e) { setError(localError(e, tr)); } finally { setBusy(""); } }} disabled={busy !== ""}><Download size={15} />{tr("تنزيل النسخة", "Download backup")}</button>}
-                {operation.backup && <button type="button" className="btn btn-danger" onClick={() => void previewRestore(operation)} disabled={busy !== ""}><RotateCcw size={15} />{busy === `restore-${operation.id}` ? tr("جارٍ تجهيز الاستعادة…", "Preparing restore…") : tr("معاينة الاستعادة", "Preview restore")}</button>}
+                 {operation.backup && <button type="button" className="btn btn-danger" onClick={() => void previewRestore(operation)} disabled={busy !== "" || Boolean(pendingApply.current)}><RotateCcw size={15} />{busy === `restore-${operation.id}` ? tr("جارٍ تجهيز الاستعادة…", "Preparing restore…") : tr("معاينة الاستعادة", "Preview restore")}</button>}
               </div>
             </article>)}
           </div> : <div className="transfer-empty"><strong>{tr("لا توجد عمليات مسجلة", "No recorded operations")}</strong>{tr("ستظهر عمليات النقل والنسخ الاحتياطية هنا بعد استخدامها.", "Transfer operations and backups will appear here when available.")}</div>}
