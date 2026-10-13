@@ -8,6 +8,7 @@ import { canViewRawInventory, type MixingState, type RawMovementInput, type RawV
 import { formatNumber, formatWholeNumber } from "../../lib/format-number";
 import { confirmedProductionRejection } from "../../lib/production-api";
 import { rawMixingApi } from "../../lib/raw-mixing-api";
+import { normalizeRawNumber as latin, rawQuantityValue as quantityValue } from "../../lib/raw-quantity";
 import { availableWarehouseViews } from "../../lib/warehouse-navigation";
 
 import "../production/production.css";
@@ -45,8 +46,6 @@ const messages: Record<string, [string, string]> = {
   notesLabel: ["ملاحظة", "Note"], receiptKind: ["إدخال", "Receipt"], issueKind: ["صرف", "Issue"],
 };
 const tx = (key: string, en: boolean) => messages[key]?.[en ? 1 : 0] ?? key;
-const latin = (raw: string) => raw.replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[۰-۹]/g, d => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/٫/g, ".").replace(/٬/g, ",").trim();
-const quantityValue = (raw: string) => { const value = latin(raw); return /^\d{1,12}(?:\.\d{1,2})?$/.test(value) && Number(value) > 0 ? value : null; };
 const requestId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
   if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") throw new Error("secure");

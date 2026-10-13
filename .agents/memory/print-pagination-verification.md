@@ -28,3 +28,24 @@ but maximum-length identifiers pushed the footer past the fixed paper edge.
 **How to apply:** test the combined worst case and inspect both page contents
 and content bounds. Never use hidden overflow as a substitute for fitting
 the required identifiers, QR, and footer.
+
+Chromium may report A4 dimensions a fraction of a point away from the nominal
+595.28 × 841.89 points. Validate physical size with a small tolerance rather
+than matching the exact decimal string.
+
+**Why:** a correctly sized A4 page was reported as 594.96 × 841.92 points,
+which an exact leading-digit assertion rejected.
+
+**How to apply:** combine a bounded size tolerance with the page-content and
+pagination checks above; do not accept a different paper format.
+
+Arabic PDF text extraction is not a verbatim DOM string: bidirectional runs
+can move punctuation around numeric totals, lam-alef glyphs can change extracted
+character order, and wrapped headings can interleave neighbouring columns.
+
+**Why:** exact string matching initially rejected visually complete Arabic
+receipt PDFs, even though all content was present.
+
+**How to apply:** account narrowly for extraction differences, check totals on
+their actual PDF line, and use glyph coordinates to verify each header in its
+own column. Do not weaken checks to document-wide word presence alone.
