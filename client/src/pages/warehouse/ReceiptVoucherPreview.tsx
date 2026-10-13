@@ -2,19 +2,14 @@ import { X } from "lucide-react";
 import type { MutableRefObject } from "react";
 
 import type { ProductionOrderRecord, ProductionReceipt, ReceiptItem } from "../../../../shared/production";
-import { deriveReceiptPacking, type ReceiptDraft } from "../../../../shared/receipt-draft";
-import { packingUnitWeightKg, receiptUnitLabel, type PackingSpecification, type ReceiptPacking } from "../../../../shared/production-packing";
+import { normalizeReceiptQuantity, type ReceiptDraft } from "../../../../shared/receipt-draft";
 import type { ReceiptVoucherCopy } from "./receipt-voucher-copy";
-
-type DerivedReceiptRow = ReturnType<typeof deriveReceiptPacking> | null;
 
 type Props = {
   language: string;
   copy: ReceiptVoucherCopy;
   eligible: ProductionOrderRecord[];
   drafts: ReceiptDraft[];
-  derived: DerivedReceiptRow[];
-  factors: (string | null)[];
   savedReceipt: ProductionReceipt | null;
   dateTime: string;
   draftDateTime: string;
@@ -26,36 +21,11 @@ type Props = {
   number: (value: string | number | null | undefined, language: string, digits?: number) => string;
 };
 
-const stringValue = (value: unknown) => String(value ?? "");
-
 function parseCents(value: string | number): bigint {
-  const [whole = "0", fraction = ""] = String(value).split(".");
-  return BigInt(whole || "0") * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
-}
-
-function savedPackingSpecification(packing: ReceiptPacking): PackingSpecification {
-  if (packing.method === "unit_weight") {
-    return {
-      unit: packing.unit,
-      method: packing.method,
-      unit_weight_kg: stringValue(packing.unit_weight_kg ?? (packing.unit === "kg" ? "1" : "")),
-    };
-  }
-  return {
-    unit: packing.unit,
-    method: packing.method,
-    pieces_per_unit: Number(packing.pieces_per_unit),
-    piece_weight_grams: stringValue(packing.piece_weight_grams),
-  };
-}
-
-function savedPackingFactor(packing: ReceiptPacking | null): string {
-  if (!packing) return "1.000000";
-  try {
-    return packingUnitWeightKg(savedPackingSpecification(packing));
-  } catch {
-    return "—";
-  }
+  const raw = String(value);
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) return 0n;
+  const [whole, fraction = ""] = raw.split(".");
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
 }
 
 function savedReceiptTotal(items: ReceiptItem[]): string {
@@ -76,38 +46,15 @@ function SavedReceiptRows({
 }) {
   return (
     <div className="receipt-voucher-preview-rows">
-      {items.map((item, index) => {
-        const quantity = stringValue(item.quantity_kg);
-        const packing = item.packing ? {
-          ...item.packing,
-          quantity: stringValue(item.packing.quantity),
-          unit_weight_kg: item.packing.unit_weight_kg === undefined ? undefined : stringValue(item.packing.unit_weight_kg),
-          piece_weight_grams: item.packing.piece_weight_grams === undefined ? undefined : stringValue(item.packing.piece_weight_grams),
-          pieces_per_unit: item.packing.pieces_per_unit === undefined ? undefined : Number(item.packing.pieces_per_unit),
-        } : null;
-        const unit = packing?.unit ?? "kg";
-        const factor = savedPackingFactor(packing);
-        const orderIdentifier = item.production_order_number || `#${item.production_order_id}`;
-        return (
-          <article className="receipt-voucher-preview-row" key={`saved-preview-${item.id}`}>
-            <div className="receipt-voucher-preview-row-head">
-              <strong>{String(item.line_number ?? index + 1).padStart(2, "0")} · {orderIdentifier}</strong>
-            </div>
-            <div className="receipt-voucher-preview-values">
-              <span><small>{t.unit}</small>{receiptUnitLabel(unit, language)}</span>
-              <span><small>{t.factor}</small>{factor} kg</span>
-              <span><small>{t.count}</small>{packing ? packing.quantity : quantity}</span>
-              <span><small>{t.quantity}</small>{number(quantity, language)} kg</span>
-              <span className="receipt-voucher-preview-spec">
-                <small>{t.method}</small>
-                {packing?.method === "piece_weight"
-                  ? `${String(packing.pieces_per_unit)} ${t.pieces} · ${stringValue(packing.piece_weight_grams)} g`
-                  : packing?.method === "unit_weight" ? t.modeUnit : "—"}
-              </span>
-            </div>
-          </article>
-        );
-      })}
+      {items.map((item, index) => (
+        <article className="receipt-voucher-preview-row" key={`saved-preview-${item.id}`}>
+          <div className="receipt-voucher-preview-values">
+            <span><small>{t.line}</small>{String(item.line_number ?? index + 1).padStart(2, "0")}</span>
+            <span><small>{t.order}</small><bdi>{item.production_order_number || `#${item.production_order_id}`}</bdi></span>
+            <span><small>{t.quantity}</small>{number(item.quantity_kg, language, 2)} kg</span>
+          </div>
+        </article>
+      ))}
     </div>
   );
 }
@@ -117,8 +64,6 @@ export function ReceiptVoucherPreview({
   copy: t,
   eligible,
   drafts,
-  derived,
-  factors,
   savedReceipt,
   dateTime,
   draftDateTime,
@@ -136,6 +81,23 @@ export function ReceiptVoucherPreview({
   const metadataDate = savedSnapshot ? dateTime : draftDateTime;
   const shownNotes = savedSnapshot ? savedReceipt!.notes ?? "" : notes;
   const shownTotal = savedSnapshot ? savedReceiptTotal(savedReceipt!.items) : total;
+  const draftRows = drafts.map((row) => {
+    const order = eligible.find((item) => String(item.id) === row.orderId) ?? null;
+    let quantity = "";
+    let cents = 0n;
+    try {
+      quantity = normalizeReceiptQuantity(row.quantity);
+      cents = parseCents(quantity);
+    } catch { /* Keep incomplete rows visible in the local preview. */ }
+    return { order, quantity, cents };
+  });
+  const totalsByOrder = new Map<string, bigint>();
+  draftRows.forEach(({ order, quantity, cents }) => {
+    if (order && quantity) {
+      const key = String(order.id);
+      totalsByOrder.set(key, (totalsByOrder.get(key) ?? 0n) + cents);
+    }
+  });
 
   return (
     <div className="receipt-voucher-preview-backdrop">
@@ -174,52 +136,28 @@ export function ReceiptVoucherPreview({
           <SavedReceiptRows items={savedReceipt!.items} language={language} copy={t} number={number} />
         ) : (
           <div className="receipt-voucher-preview-rows">
-            {drafts.map((row, index) => {
-              const order = eligible.find((item) => String(item.id) === row.orderId);
-              const valid = derived[index] !== null && Boolean(row.orderId && order);
-              const packing = derived[index]?.packing;
+            {draftRows.map(({ order, quantity }, index) => {
+              const valid = Boolean(
+                order &&
+                quantity &&
+                (totalsByOrder.get(String(order.id)) ?? 0n) <= parseCents(order.remaining_kg)
+              );
               return (
                 <article className={`receipt-voucher-preview-row${valid ? "" : " is-invalid"}`} key={`preview-${index}`}>
-                  <div className="receipt-voucher-preview-row-head">
-                    <strong>{String(index + 1).padStart(2, "0")} · {order ? orderLabel(order) : t.choose}</strong>
-                    {!valid && <span role="status">{t.invalid}</span>}
+                  <div className="receipt-voucher-preview-values">
+                    <span><small>{t.line}</small>{String(index + 1).padStart(2, "0")}</span>
+                    <span><small>{t.order}</small>{order ? `${order.production_order_number} · ${orderLabel(order)}` : t.choose}</span>
+                    <span><small>{t.available}</small>{order ? `${number(order.remaining_kg, language, 2)} kg` : "—"}</span>
+                    <span><small>{t.quantity}</small>{quantity ? `${quantity} kg` : "—"}</span>
                   </div>
-                  {valid ? (
-                    <div className="receipt-voucher-preview-values">
-                      <span><small>{t.order}</small>{order ? order.production_order_number : "—"}</span>
-                      <span><small>{t.available}</small>{order ? `${number(order.remaining_kg, language)} kg` : "—"}</span>
-                      <span><small>{t.unit}</small>{receiptUnitLabel(row.unit, language)}</span>
-                      <span><small>{t.factor}</small>{factors[index] ?? "—"} kg</span>
-                      <span><small>{t.count}</small>{row.unit === "kg" ? row.quantity : row.count}</span>
-                      <span><small>{t.quantity}</small>{row.quantity} kg</span>
-                      <span className="receipt-voucher-preview-spec">
-                        <small>{t.method}</small>
-                        {packing?.method === "piece_weight"
-                          ? `${packing.pieces_per_unit} ${t.pieces} · ${packing.piece_weight_grams} g`
-                          : row.unit === "kg" ? "—" : t.modeUnit}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="receipt-voucher-preview-invalid-values">
-                      <span>{t.order}: {order ? order.production_order_number : t.choose}</span>
-                      <span>{t.available}: {order ? `${number(order.remaining_kg, language)} kg` : "—"}</span>
-                      <span>{t.unit}: {receiptUnitLabel(row.unit, language)}</span>
-                      <span>{t.factor}: {factors[index] ?? "—"} kg</span>
-                      <span>{t.count}: {row.unit === "kg" ? row.quantity : row.count || "—"}</span>
-                      <span>{t.quantity}: {row.quantity || "—"} kg</span>
-                      {row.unit !== "kg" && <span>{t.method}: {row.method === "piece_weight" ? t.modePiece : t.modeUnit}</span>}
-                      {row.method === "piece_weight" && (
-                        <span>{t.pieces}: {row.pieces || "—"} · {t.pieceWeight}: {packing?.piece_weight_grams ?? (row.pieceWeight || "—")}</span>
-                      )}
-                    </div>
-                  )}
+                  {!valid && <span className="receipt-voucher-preview-invalid">{t.invalid}</span>}
                 </article>
               );
             })}
           </div>
         )}
         <div className="receipt-voucher-preview-total">
-          <span>{t.total}</span><strong>{shownTotal === null ? "—" : `${number(shownTotal, language)} kg`}</strong>
+          <span>{t.total}</span><strong>{shownTotal === null ? "—" : `${shownTotal} kg`}</strong>
         </div>
         <div className="receipt-voucher-preview-notes">
           <small>{t.notes}</small><p>{shownNotes || "—"}</p>

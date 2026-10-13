@@ -25,7 +25,7 @@ import "../warehouse/warehouse-cards.css";
 import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
 import { ReceiptVoucherModal, type ReceiptDraft } from "../warehouse/ReceiptVoucherModal";
-import { deriveReceiptPacking } from "../../../../shared/receipt-draft";
+import { normalizeReceiptQuantity } from "../../../../shared/receipt-draft";
 import { printReceipt } from "../../lib/receipt-print";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
@@ -413,7 +413,7 @@ function OperatorBoard({ state,user,stage,language,reload,machineSlot }: {state:
   </>;
 }
 
-const emptyDraft = (orderId=""):ReceiptDraft=>({orderId,quantity:"",unit:"kg",count:"",method:"unit_weight",unitWeight:"1",pieces:"",pieceWeight:""});
+const emptyDraft = (orderId=""):ReceiptDraft=>({orderId,quantity:""});
 const kgHundredths=(value:string|number|null|undefined):bigint=>{
   const raw=latinDigits(String(value??""));
   if(!/^\d+(?:\.\d{1,2})?$/.test(raw))return 0n;
@@ -433,22 +433,29 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
   const submit=(event:FormEvent)=>{
     event.preventDefault();
     if(drafts.length>100){setFormError(language==="en"?"A voucher can contain at most 100 lines.":"يمكن أن يحتوي السند على 100 سطر كحد أقصى.");return;}
-    const normalized=drafts.map(row=>({...row,count:latinDigits(row.count),unitWeight:latinDigits(row.unitWeight),pieces:latinDigits(row.pieces),pieceWeight:latinDigits(row.pieceWeight)}));
-    const calculated=normalized.map(row=>{
+    const normalized: { orderId: string; quantity: string }[] = [];
+    for (let index = 0; index < drafts.length; index++) {
+      const row = drafts[index];
+      if (!row.orderId) {
+        setFormError(language==="en"?`Choose a production order in line ${index+1}.`:`اختر أمر الإنتاج في السطر ${index+1}.`);
+        return;
+      }
       try {
-        return deriveReceiptPacking(row);
-      } catch { return null; }
-    });
-    const invalidLine=normalized.findIndex((row,index)=>!row.orderId||!calculated[index]);
-    if(invalidLine>=0){setFormError(language==="en"?`Complete every field in line ${invalidLine+1} before saving.`:`أكمل جميع حقول السطر ${invalidLine+1} قبل الحفظ.`);return;}
+        normalized.push({ orderId: row.orderId, quantity: normalizeReceiptQuantity(row.quantity) });
+      } catch (cause) {
+        const reason = cause as Error & { message_ar?: string; message_en?: string };
+        setFormError(language==="en"?(reason.message_en||"Enter a valid positive quantity in kg."):(reason.message_ar||"أدخل كمية صحيحة وموجبة بالكيلوجرام."));
+        return;
+      }
+    }
     const totalsByOrder=new Map<string,bigint>();
-    normalized.forEach((row,index)=>totalsByOrder.set(row.orderId,(totalsByOrder.get(row.orderId)??0n)+kgHundredths(calculated[index]!.result.quantity_kg)));
+    normalized.forEach(row=>totalsByOrder.set(row.orderId,(totalsByOrder.get(row.orderId)??0n)+kgHundredths(row.quantity)));
     const exceeded=[...totalsByOrder].find(([orderId,total])=>total>kgHundredths(eligible.find(order=>String(order.id)===orderId)?.remaining_kg));
     if(exceeded){const order=eligible.find(item=>String(item.id)===exceeded[0]);setFormError(language==="en"?`Receipt quantity exceeds the available ${order?.production_order_number??"order"} balance.`:`كمية الاستلام تتجاوز المتاح للأمر ${order?.production_order_number??""}.`);return;}
     setFormError("");
-    const items=normalized.map((row,index)=>({
+    const items=normalized.map(row=>({
       production_order_id:Number(row.orderId),
-      quantity_kg:calculated[index]!.result.quantity_kg,packing:calculated[index]!.packing,
+      quantity_kg:row.quantity,
     }));
     const input:ReceiptInput={request_id:"",notes:notes.trim()||undefined,items};
     const submittedDraft=receiptDraft.current;
@@ -460,13 +467,13 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
       if(receiptDraft.current===submittedDraft){setDrafts([emptyDraft()]);setNotes("");setSelected([]);}
     });
   };
-  const setRow=(index:number,key:keyof ReceiptDraft,value:string)=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value,...(key==="unit"&&value==="kg"?{method:"unit_weight",unitWeight:"1",pieces:"",pieceWeight:""}:{}),...(key==="unit"&&value!=="kg"&&row.unit==="kg"?{unitWeight:""}:{})}:row));};
+  const setRow=(index:number,key:keyof ReceiptDraft,value:string)=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value}:row));};
   const readyOrders=eligible.filter(order=>Number(order.ready_kg)>0||Number(order.received_kg)>0);
   const lockReceipt=write.uncertain;
   const receiveSelected=()=>{
     const ids=selected.filter(id=>eligible.some(order=>order.id===id));
     if(!ids.length)return;
-    const dirty=drafts.some(row=>row.orderId||row.count||row.unit!=="kg"||row.method!=="unit_weight"||row.unitWeight!=="1"||row.pieces||row.pieceWeight)||Boolean(notes);
+    const dirty=drafts.some(row=>row.orderId||row.quantity)||Boolean(notes);
     const draftIds=new Set(drafts.map(row=>Number(row.orderId)).filter(Boolean));
     if(dirty&&ids.length===draftIds.size&&ids.every(id=>draftIds.has(id))){setReceiptOpen(true);return;}
     if(dirty&&!window.confirm(language==="en"?"Replace the unsaved receipt draft with the selected orders?":"استبدال مسودة سند الاستلام غير المحفوظة بالأوامر المحددة؟"))return;

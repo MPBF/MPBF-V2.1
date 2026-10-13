@@ -1,5 +1,3 @@
-import type { ReceiptUnit } from "../../../../shared/production-packing";
-
 export const RECEIPT_COPY = {
   en: {
     title: "Finished goods receipt voucher",
@@ -14,13 +12,6 @@ export const RECEIPT_COPY = {
     quantity: "Quantity to receive (kg)",
     available: "Available",
     availableColumn: "Available (kg)",
-    unit: "Packing unit",
-    factor: "Weight per packing unit (kg)",
-    count: "Packing-unit quantity",
-    method: "Calculation method",
-    unitWeight: "Derived unit weight (kg)",
-    pieces: "Pieces per unit",
-    pieceWeight: "Derived piece weight (grams)",
     notes: "Voucher notes",
     addLine: "Add production order",
     preview: "Preview",
@@ -44,10 +35,6 @@ export const RECEIPT_COPY = {
     print: "Print A4",
     assignedOnSave: "Assigned after save",
     date: "Date",
-    calculated: "Calculated",
-    units: ["kg", "packet", "roll", "piece"] as ReceiptUnit[],
-    modeUnit: "Count × unit weight",
-    modePiece: "Count × pieces × piece weight",
   },
   ar: {
     title: "سند استلام مواد تامة",
@@ -62,13 +49,6 @@ export const RECEIPT_COPY = {
     quantity: "الكمية المطلوب استلامها (كجم)",
     available: "المتاح",
     availableColumn: "الكمية المتاحة KG",
-    unit: "الوحدة",
-    factor: "المعامل",
-    count: "معامل الكمية",
-    method: "طريقة الحساب",
-    unitWeight: "وزن الوحدة المحسوب (كجم)",
-    pieces: "عدد القطع في الوحدة",
-    pieceWeight: "وزن القطعة المحسوب (جرام)",
     notes: "ملاحظات السند",
     addLine: "إضافة أمر إنتاج",
     preview: "معاينة",
@@ -92,10 +72,6 @@ export const RECEIPT_COPY = {
     print: "طباعة A4",
     assignedOnSave: "يُخصص بعد الحفظ",
     date: "التاريخ",
-    calculated: "المحسوب",
-    units: ["kg", "packet", "roll", "piece"] as ReceiptUnit[],
-    modeUnit: "العدد × وزن الوحدة",
-    modePiece: "العدد × القطع × وزن القطعة",
   },
 } as const;
 

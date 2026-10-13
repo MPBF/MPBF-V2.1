@@ -74,16 +74,11 @@ export const receiptSelect = `SELECT r.*,COALESCE((SELECT jsonb_agg(to_jsonb(ri)
   JOIN factory_locations l ON l.id=ri.location_id WHERE ri.receipt_id=r.id),'[]'::jsonb) items
   FROM factory_receipts r`;
 export const inventorySelect = `SELECT inv.*,p.production_order_number,p.batch_number,p.status production_order_status,e.product,
-  l.name location_name,l.name_ar location_name_ar,
-  COALESCE(unit_stock.balances,'[]'::jsonb) unit_balances,
-  (inv.quantity_kg-COALESCE(unit_stock.weight,0))::text legacy_quantity_kg
+  l.name location_name,l.name_ar location_name_ar
   FROM factory_inventory inv
   JOIN factory_execution e ON e.production_order_id=inv.production_order_id
   JOIN production_orders p ON p.id=inv.production_order_id JOIN factory_locations l ON l.id=inv.location_id
-  LEFT JOIN LATERAL (
-    SELECT jsonb_agg(u.specification||jsonb_build_object('id',u.id,'unit_quantity',u.unit_quantity::text,'quantity_kg',u.quantity_kg::text) ORDER BY u.id) balances,
-      sum(u.quantity_kg) weight FROM factory_inventory_units u WHERE u.inventory_id=inv.id
-  ) unit_stock ON true`;
+  `;
 export const movementSelect = `SELECT m.*,r.voucher_number,ri.production_order_id,ri.location_id,p.production_order_number
   FROM factory_movements m JOIN factory_receipts r ON r.id=m.receipt_id
   JOIN factory_receipt_items ri ON ri.id=m.receipt_item_id JOIN production_orders p ON p.id=ri.production_order_id`;

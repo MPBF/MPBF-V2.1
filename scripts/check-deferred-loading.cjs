@@ -274,7 +274,7 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       await click('.prod-view-nav a[href="/warehouse/finished-inventory"]');
       await wait("!!document.querySelector('.warehouse-inventory-card')");
       check(`${lang} finished inventory loads its cards and styles`, await evaluate("getComputedStyle(document.querySelector('.warehouse-inventory-card')).display !== 'inline' && document.querySelector('.warehouse-inventory-card').textContent.includes('PO-FIXTURE')"));
-      check(`${lang} stock unit quantities remain visible`, await evaluate("document.querySelector('.warehouse-balance-spec strong').textContent.includes('20')"));
+      check(`${lang} stock keeps actual kg and drops legacy unit counts`, await evaluate("document.querySelector('.warehouse-inventory-card header bdi').textContent==='100 kg'&&!document.querySelector('.warehouse-balance-spec')"));
       check(`${lang} planning and warehouse show no loading error`, await evaluate("document.querySelectorAll('.prod-error').length"), 0);
       await open("/production/film"); await wait("!!document.querySelector('.production-app')");
       check(`${lang} production page chunk loads`, assets.some(value => /ProductionPage-.*\.js/.test(value)));
@@ -436,21 +436,16 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         await click("[data-receipt-launcher]");
         await wait("!!document.querySelector('[role=dialog]')");
         check("English receipt dialog quantity label", (await body()).includes("Quantity to receive (kg)"));
-        await evaluate("(()=>{const s=document.querySelector('[data-receipt-unit]');s.value='packet';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
-        await wait("!!document.querySelector('[data-receipt-unit-weight]')");
-        check("English receipt dialog derived weight label", await evaluate("document.querySelector('[data-receipt-unit-weight]').title"), "Derived unit weight (kg)");
-        await evaluate("(()=>{const s=document.querySelector('[data-receipt-method]');s.value='piece_weight';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
-        await wait("!!document.querySelector('[data-receipt-piece-weight]')");
-        check("English receipt dialog derived piece label", (await body()).includes("Derived piece weight (grams)"));
+        check("English receipt accepts kg without unit or factor controls",await evaluate("!!document.querySelector('[data-receipt-quantity]')&&!document.querySelector('[data-receipt-unit],[data-receipt-factor],[data-receipt-method]')"));
         await englishOnly("English receipt dialog has no Arabic");
         await evaluate("document.querySelector('[role=dialog] form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))");
-        await wait("document.body.innerText.includes('Complete every field in line 1 before saving.')");
+        await wait("document.body.innerText.includes('Choose a production order in line 1.')");
         await englishOnly("English receipt validation has no Arabic");
         await open("/fixture-receipt");
         await wait("document.querySelectorAll('tbody tr').length===3");
         check("English receipt print direction", await evaluate("document.documentElement.dir"), "ltr");
-        check("English receipt print legacy specification", (await body()).includes("Not recorded historically"));
-        check("English receipt print exact total", (await body()).includes("Voucher total: 25 kg"));
+        check("English receipt print has no retired unit columns", await evaluate("document.querySelectorAll('table th').length"),3);
+        check("English receipt print exact total", (await body()).includes("Voucher total: 25.00 kg"));
         await englishOnly("English receipt A4 print has no Arabic");
         const pdf = await send("Page.printToPDF", { preferCSSPageSize: true, printBackground: true });
         const receiptPdf = path.join(temp, "receipt-en.pdf");
@@ -461,9 +456,11 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
           /Pages:\s+1\b/.test(receiptInfo) && /Page size:\s+59[45]\.\d+ x 84[12]\.\d+ pts \(A4\)/.test(receiptInfo));
         const receiptText = execFileSync("pdftotext", ["-layout", receiptPdf, "-"], { encoding: "utf8" });
         check("English receipt PDF retains every fixture line",
-          ["JO0008", "JO0009", "JO0010", "2 kg", "100 × 50 g", "Not recorded historically"].every(text => receiptText.includes(text)));
+          ["JO0008", "JO0009", "JO0010", "10 kg", "5 kg"].every(text => receiptText.includes(text)));
+        check("English receipt PDF omits retired packing information",
+          !receiptText.includes("100 × 50 g")&&!receiptText.includes("Not recorded historically")&&!receiptText.includes("Packing quantity"));
         check("English receipt PDF retains total and signatures",
-          ["Voucher total: 25 kg", "Released by · production hall", "Received by · finished-goods hall"].every(text => receiptText.includes(text)));
+          ["Voucher total: 25.00 kg", "Released by · production hall", "Received by · finished-goods hall"].every(text => receiptText.includes(text)));
         check("English receipt PDF text has no Arabic", !/[\u0600-\u06ff]/.test(receiptText));
       }
       permissions = ["admin"]; productionBinding = undefined; roleName = "Administrator";
