@@ -42,9 +42,21 @@ type Props = {
   number: (value: string | number | null | undefined, language: string, digits?: number) => string;
 };
 
-const parseCents = (weight: string) => {
-  const [whole = "0", fraction = ""] = weight.split(".");
-  return BigInt(whole || "0") * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
+// تحويل أي قيمة رقمية/نصية إلى سنتات مع التقريب الصحيح لمنزلتين
+const parseCents = (weight: string | number | null | undefined): bigint => {
+  if (weight === null || weight === undefined) return 0n;
+  const num = typeof weight === "number" ? weight : parseFloat(String(weight).trim());
+  if (Number.isNaN(num) || !Number.isFinite(num)) return 0n;
+  return BigInt(Math.round(num * 100));
+};
+
+// تنسيق السنتات إلى صيغة X.XX دائماً بخانتين
+const formatCents = (cents: bigint): string => {
+  const isNegative = cents < 0n;
+  const abs = isNegative ? -cents : cents;
+  const whole = abs / 100n;
+  const fraction = String(abs % 100n).padStart(2, "0");
+  return `${isNegative ? "-" : ""}${whole}.${fraction}`;
 };
 
 export function ReceiptVoucherModal(props: Props) {
@@ -61,48 +73,66 @@ export function ReceiptVoucherModal(props: Props) {
   const previewOpenRef = useRef(false);
   const wasPreviewOpen = useRef(false);
   const openedAt = useRef(new Date());
+  
   const [previewOpen, setPreviewOpen] = useState(false);
   previewOpenRef.current = previewOpen;
   const editable = !saving && !locked;
 
-  // إدارة التركيز والـ Keyboard Trap
+  // قفل الـ Scroll فقط عند الفتح والإنهاء
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
+  // إدارة Focus والـ Keyboard Trap
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
 
     const previous = openerRef.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
 
-    const within = (root: ParentNode) =>
+    const getFocusable = (root: ParentNode) =>
       [...root.querySelectorAll<HTMLElement>(
         'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       )].filter((el) => el.offsetParent !== null);
-    (within(dialog)[0] ?? dialog).focus();
+
+    (getFocusable(dialog)[0] ?? dialog).focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        if (previewOpenRef.current) setPreviewOpen(false);
-        else onClose();
+        if (previewOpenRef.current) {
+          setPreviewOpen(false);
+        } else {
+          onClose();
+        }
         return;
       }
 
       if (event.key === "Tab") {
         const activeDialog = (previewOpenRef.current ? previewRef.current : dialog) ?? dialog;
-        const items = within(activeDialog ?? dialog);
+        const items = getFocusable(activeDialog);
         if (!items.length) {
           event.preventDefault();
-          (activeDialog ?? dialog).focus();
-        } else if (event.shiftKey && document.activeElement === items[0]) {
+          activeDialog.focus();
+          return;
+        }
+
+        const isFirst = document.activeElement === items[0];
+        const isLast = document.activeElement === items[items.length - 1];
+
+        if (event.shiftKey && isFirst) {
           event.preventDefault();
-          items.at(-1)?.focus();
-        } else if (!event.shiftKey && document.activeElement === items.at(-1)) {
+          items[items.length - 1]?.focus();
+        } else if (!event.shiftKey && isLast) {
           event.preventDefault();
           items[0]?.focus();
-        } else if (!(activeDialog ?? dialog).contains(document.activeElement)) {
+        } else if (!activeDialog.contains(document.activeElement)) {
           event.preventDefault();
-          (event.shiftKey ? items.at(-1) : items[0])?.focus();
+          (event.shiftKey ? items[items.length - 1] : items[0])?.focus();
         }
       }
     };
@@ -110,18 +140,20 @@ export function ReceiptVoucherModal(props: Props) {
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
       if (previous?.isConnected) previous.focus();
     };
   }, [onClose, openerRef]);
 
   useEffect(() => {
-    if (previewOpen) previewRef.current?.focus();
-    else if (wasPreviewOpen.current) previewTriggerRef.current?.focus();
+    if (previewOpen) {
+      previewRef.current?.focus();
+    } else if (wasPreviewOpen.current) {
+      previewTriggerRef.current?.focus();
+    }
     wasPreviewOpen.current = previewOpen;
   }, [previewOpen]);
 
-  // 2. استخدام useMemo لتفادي إعادة الحسابات مع كتابة الملاحظات
+  // الحسابات المشتقة لكل سطر
   const derived = useMemo(() => {
     return drafts.map((row) => {
       try {
@@ -132,39 +164,41 @@ export function ReceiptVoucherModal(props: Props) {
     });
   }, [drafts]);
 
-  // Display the coefficient from the same validated specification used by the receipt calculation.
-  const factors = useMemo(() => derived.map((item) => {
-    if (!item) return null;
-    try {
-      return packingUnitWeightKg(item.result.specification);
-    } catch {
-      return null;
-    }
-  }), [derived]);
+  // معاملات الوزن المحددة لكل سطر بخانتين عشريتين
+  const factors = useMemo(() => {
+    return derived.map((item) => {
+      if (!item) return null;
+      try {
+        const wt = packingUnitWeightKg(item.result.specification);
+        return formatCents(parseCents(wt));
+      } catch {
+        return null;
+      }
+    });
+  }, [derived]);
 
-  // حساب المجموع الكلي
+  // حساب المجموع الكلي بخانتين عشريتين
   const total = useMemo(() => {
-    const clearDraft = drafts.length === 1 && !drafts[0].orderId && !drafts[0].count;
-    const validRows = derived.every((item) => item !== null);
+    const isSingleEmptyDraft = drafts.length === 1 && !drafts[0].orderId && !drafts[0].count;
+    const allValid = derived.every((item) => item !== null);
 
     let centsTotal: bigint | null = null;
-    if (clearDraft && savedReceipt) {
-      centsTotal = savedReceipt.items.reduce((sum, item) => sum + parseCents(String(item.quantity_kg)), 0n);
-    } else if (validRows) {
+    if (isSingleEmptyDraft && savedReceipt) {
+      centsTotal = savedReceipt.items.reduce((sum, item) => sum + parseCents(item.quantity_kg), 0n);
+    } else if (allValid) {
       centsTotal = derived.reduce((sum, item) => sum + parseCents(item!.result.quantity_kg), 0n);
     }
 
-    if (centsTotal === null) return "—";
-    return `${centsTotal / 100n}.${String(centsTotal % 100n).padStart(2, "0")}`;
+    return centsTotal === null ? "—" : formatCents(centsTotal);
   }, [drafts, derived, savedReceipt]);
 
   const previewTotal = useMemo(() => {
     if (!derived.length || derived.some((item) => item === null)) return null;
     const cents = derived.reduce((sum, item) => sum + parseCents(item!.result.quantity_kg), 0n);
-    return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
+    return formatCents(cents);
   }, [derived]);
 
-  // تجهيز التاريخ المنسق
+  // تنسيق التواريخ
   const draftDateTime = useMemo(() => {
     return new Intl.DateTimeFormat(
       language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB",
@@ -240,25 +274,27 @@ export function ReceiptVoucherModal(props: Props) {
           }
         >
           <div className="receipt-voucher-metadata-grid">
-          <div className="receipt-voucher-meta-item" data-receipt-meta="number">
-            {savedReceipt && <strong>{t.saved}</strong>}
-            <small>{t.voucher}</small>
-            {savedReceipt ? (
-              <bdi data-receipt-voucher-number>{savedReceipt.voucher_number}</bdi>
-            ) : (
-              <span className="receipt-voucher-pending-number">{t.assignedOnSave}</span>
-            )}
-          </div>
-          <div className="receipt-voucher-meta-item" data-receipt-meta="date">
-            <small>{t.date}</small>
-            <bdi data-receipt-created-at={savedReceipt?.created_at}>{dateTime}</bdi>
-          </div>
-          <div className="receipt-voucher-meta-item" data-receipt-meta="source">
-            <small>{t.source}</small><bdi>{t.sourceName}</bdi>
-          </div>
-          <div className="receipt-voucher-meta-item" data-receipt-meta="destination">
-            <small>{t.destination}</small><bdi>{t.destName}</bdi>
-          </div>
+            <div className="receipt-voucher-meta-item" data-receipt-meta="number">
+              {savedReceipt && <strong>{t.saved}</strong>}
+              <small>{t.voucher}</small>
+              {savedReceipt ? (
+                <bdi data-receipt-voucher-number>{savedReceipt.voucher_number}</bdi>
+              ) : (
+                <span className="receipt-voucher-pending-number">{t.assignedOnSave}</span>
+              )}
+            </div>
+            <div className="receipt-voucher-meta-item" data-receipt-meta="date">
+              <small>{t.date}</small>
+              <bdi data-receipt-created-at={savedReceipt?.created_at}>{dateTime}</bdi>
+            </div>
+            <div className="receipt-voucher-meta-item" data-receipt-meta="source">
+              <small>{t.source}</small>
+              <bdi>{t.sourceName}</bdi>
+            </div>
+            <div className="receipt-voucher-meta-item" data-receipt-meta="destination">
+              <small>{t.destination}</small>
+              <bdi>{t.destName}</bdi>
+            </div>
           </div>
         </section>
 
@@ -280,6 +316,7 @@ export function ReceiptVoucherModal(props: Props) {
                 {drafts.map((row, index) => {
                   const order = eligible.find((item) => String(item.id) === row.orderId);
                   const packing = derived[index]?.packing;
+                  const rowKey = (row as { id?: string | number }).id ?? index;
 
                   const handleFieldChange =
                     (field: keyof ReceiptDraft) =>
@@ -287,7 +324,7 @@ export function ReceiptVoucherModal(props: Props) {
                       onDraftChange(index, field, e.target.value);
 
                   return (
-                    <tr className="receipt-voucher-line" key={index}>
+                    <tr className="receipt-voucher-line" key={rowKey}>
                       <td data-label={t.line}>
                         <div className="receipt-voucher-table-line">
                           {String(index + 1).padStart(2, "0")}
@@ -328,7 +365,7 @@ export function ReceiptVoucherModal(props: Props) {
 
                       <td data-label={t.availableColumn}>
                         <bdi className="receipt-voucher-available">
-                          {order ? number(order.remaining_kg, language) : "—"} kg
+                          {order ? number(order.remaining_kg, language, 2) : "—"} kg
                         </bdi>
                       </td>
 
@@ -367,7 +404,11 @@ export function ReceiptVoucherModal(props: Props) {
                               aria-label={t.factor}
                               title={t.unitWeight}
                             />
-                          ) : <output data-receipt-factor={index} title={t.unitWeight}>{factors[index] ?? "—"}</output>}
+                          ) : (
+                            <output data-receipt-factor={index} title={t.unitWeight}>
+                              {factors[index] ?? "—"}
+                            </output>
+                          )}
                           <small>kg / {receiptUnitLabel(row.unit, language)}</small>
                         </div>
                       </td>
@@ -376,16 +417,18 @@ export function ReceiptVoucherModal(props: Props) {
                         <div className="receipt-voucher-packing-cell">
                           <div className="receipt-voucher-packing-controls">
                             <div className="receipt-voucher-control">
-                              <label className="sr-only" htmlFor={`receipt-unit-quantity-${index}`}>{t.count}</label>
+                              <label className="sr-only" htmlFor={`receipt-unit-quantity-${index}`}>
+                                {t.count}
+                              </label>
                               <input
                                 id={`receipt-unit-quantity-${index}`}
                                 data-receipt-unit-quantity={index}
                                 type="text"
-                                inputMode={row.unit === "kg" ? "decimal" : "numeric"}
-                                value={row.unit === "kg" ? row.quantity : row.count}
+                                inputMode="numeric"
+                                value={row.unit === "kg" ? "" : row.count}
+                                placeholder={row.unit === "kg" ? "—" : ""}
                                 required={row.unit !== "kg"}
-                                readOnly={row.unit === "kg"}
-                                disabled={!editable}
+                                disabled={!editable || row.unit === "kg"}
                                 onChange={handleFieldChange("count")}
                               />
                             </div>
@@ -430,7 +473,11 @@ export function ReceiptVoucherModal(props: Props) {
                                   data-receipt-piece-weight={index}
                                   type="text"
                                   inputMode="decimal"
-                                  value={packing?.piece_weight_grams ?? ""}
+                                  value={
+                                    packing?.piece_weight_grams !== undefined
+                                      ? formatCents(parseCents(packing.piece_weight_grams))
+                                      : ""
+                                  }
                                   readOnly
                                   aria-readonly="true"
                                   disabled={!editable}
@@ -488,7 +535,7 @@ export function ReceiptVoucherModal(props: Props) {
             <span>{t.total}</span>
             <strong>
               <bdi data-receipt-total-value>
-                {total === "—" ? "—" : `${number(total, language)} kg`}
+                {total === "—" ? "—" : `${number(total, language, 2)} kg`}
               </bdi>
             </strong>
           </div>
@@ -533,6 +580,7 @@ export function ReceiptVoucherModal(props: Props) {
             </button>
           </footer>
         </form>
+
         {previewOpen && (
           <ReceiptVoucherPreview
             language={language}
