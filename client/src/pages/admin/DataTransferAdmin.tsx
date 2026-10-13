@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowLeftRight, Check, CheckCircle2, ChevronDown, Clock3, Database, Download, FileArchive, FileSpreadsheet, FileText, RefreshCw, RotateCcw, Save, ShieldCheck, Upload, X } from "lucide-react";
 import type { TransferApproval, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferSchema, TransferTable, TransferTemplate } from "../../../../shared/data-transfer";
 import "./DataTransferAdmin.css";
+import DatabaseBackupsPanel from "./DatabaseBackupsPanel";
 
 type Props = { refreshToken?: number };
 type ErrorInfo = { message: string; detail: string };
@@ -398,7 +399,9 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
           <div className="transfer-fact"><span>{tr("الاحتفاظ بالنسخ", "Backup retention")}</span><strong>{numberLabel(schema.limits.retentionDays, language)} {tr("يوماً", "days")}</strong></div>
           <div className="transfer-fact"><span>{tr("نمط التطبيق", "Apply mode")}</span><strong>{tr("ALL · OR · NOTHING", "ALL · OR · NOTHING")}</strong></div>
         </div>
-        <div className="transfer-footer-note"><ShieldCheck size={16} /><span>{tr("لا يتم إنشاء جداول أو حذف سجلات. الإدراجات الجديدة افتراضياً، وتعديلات السجلات الموجودة تحتاج اختيار الأعمدة والموافقة عليها. أي تعارض أو صف غير صالح يمنع التطبيق كاملاً.", "No tables are created and no records are deleted. New rows are the default; updates to existing rows require explicit column selection and approval. Any conflict or invalid row blocks the entire apply.")}</span></div>
+        <div className="transfer-footer-note"><ShieldCheck size={16} /><span>{tr("استيراد الجداول لا ينشئ جداول ولا يحذف سجلات. الإدراجات الجديدة افتراضياً، وتعديلات السجلات الموجودة تحتاج اختيار الأعمدة والموافقة عليها. هذا مختلف عن الاسترجاع الكامل الذي يستبدل البيانات بعد تأكيد مستقل.", "Table imports do not create tables or delete records. New rows are the default; existing-row updates require explicit column approval. This differs from full restore, which replaces data after separate confirmation.")}</span></div>
+
+        <DatabaseBackupsPanel language={language} />
 
         <section className="panel transfer-section">
           <div className="panel-head">
