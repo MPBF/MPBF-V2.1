@@ -99,3 +99,4 @@
 - [Finished receipt workflow](finished-receipt-workflow.md) — kg-only receiving and stock; retire receipt unit data, not catalogue units; fixed halls, automatic FP-Rec numbering, saved-only A4.
 - [Decimal JSON boundaries](postgres-json-decimal-boundary.md) — PostgreSQL NUMERIC becomes a JS number inside JSONB; preserve text at nested API boundaries and tolerate older numeric reads.
 - [Transient UI checks](transient-ui-verification.md) — capture loading text while detecting the element; a later browser call may run after it has disappeared.
+- [Database transfer policy](database-data-tool-policy.md) — new rows may be added; existing-row updates need explicit approval after preview, never automatic deletion.
