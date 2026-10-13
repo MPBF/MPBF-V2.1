@@ -6,6 +6,7 @@ import { Link } from "wouter";
 import FilmOperatorOrders from "./FilmOperatorOrders";
 import RollOperatorOrders from "./RollOperatorOrders";
 import RollLabelControls from "./RollLabelControls";
+import FinishedInventory from "../warehouse/FinishedInventory";
 import "./roll-labels.css";
 import {
   canStartFilmProductionOrder, eligibleForCutting, hasProductionPermission, machineStage,
@@ -529,14 +530,12 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
   </>;
 }
 
-function Warehouse({state,language}:{state:ProductionState;language:string}) {
+function Warehouse({state,user,language,reload}:{state:ProductionState;user:ProductionUser;language:string;reload:()=>Promise<void>}) {
   const locations=state.locations;
   return <>
     <div className="prod-grid"><Metric label={text("balances",language)} value={number(state.totals?.inventory??0,language,0)} unit={text("balanceUnits",language)}/><Metric label={text("movements",language)} value={number(state.totals?.movements??0,language,0)} unit={text("movementUnits",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
     <Metric label={language==="en"?"Total inventory weight":"إجمالي وزن المخزون"} value={`${number(state.totals?.inventory_kg??0,language)} kg`}/>
-     <section className="warehouse-finished-view">
-       <ProductionHistory kind="inventory" title={text("balances",language)} language={language} locations={locations} refresh={state} defaultOpen presentation="cards"/>
-     </section>
+     <FinishedInventory user={user} language={language} refresh={state} reload={reload}/>
      <ProductionHistory kind="receipts" title={text("vouchers",language)} language={language} locations={locations} refresh={state} presentation="cards"/>
     <ProductionHistory kind="movements" title={text("movements",language)} language={language} locations={locations} refresh={state}/>
   </>;
@@ -626,7 +625,7 @@ export default function ProductionPage({user,view,rollId,moduleContext="producti
         {view==="management"&&<Management state={state} user={user} language={language} reload={data.reload}/>}
         {(view==="film"||view==="printing"||view==="cutting")&&<OperatorBoard state={state} user={user} stage={view} language={language} reload={data.reload} machineSlot={machineSlot}/>}
         {view==="hall"&&<HallView state={state} user={user} language={language} reload={data.reload}/>}
-        {view==="warehouse"&&<Warehouse state={state} language={language}/>}
+        {view==="warehouse"&&<Warehouse state={state} user={user} language={language} reload={data.reload}/>}
         <RollLabelControls refresh={state} language={language} />
       </>}
   </section>;

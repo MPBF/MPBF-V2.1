@@ -7,6 +7,7 @@ import { kgHundredths } from "../../shared/production";
 import { ProductionError, type ConnectionPool } from "./core";
 import { ProductionExecutionService } from "./execution";
 import { ProductionWarehouseService } from "./warehouse";
+import { FinishedDeliveryService } from "./delivery";
 import { ProductionReadService } from "./read";
 import { RawMixingService } from "./mixing";
 import { ProductionMonitoringService, monitoringPermission } from "./monitoring";
@@ -46,6 +47,7 @@ const router = Router();
 router.use(requireAuth);
 const execution = new ProductionExecutionService(connectionPool);
 const warehouse = new ProductionWarehouseService(connectionPool);
+const delivery = new FinishedDeliveryService(connectionPool);
 const read = new ProductionReadService(connectionPool);
 const mixing = new RawMixingService(connectionPool);
 const monitoring = new ProductionMonitoringService(connectionPool);
@@ -164,6 +166,24 @@ router.post("/receipts", handler(async (req, res) => {
     production_order_id: id, location_id: id.optional(), quantity_kg: weight,
   }).strict()).min(1).max(100) }).strict().parse(req.body);
   res.json(await warehouse.receive(req.user!, input));
+}));
+const deliveryFilters = z.object({
+  before: id.optional(), limit: z.coerce.number().int().min(1).max(100).optional(),
+  search: safeText(120).optional(),
+}).strict();
+router.get("/delivery-stock", handler(async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await delivery.stock(req.user!, deliveryFilters.parse(req.query)));
+}));
+router.get("/deliveries", handler(async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await delivery.history(req.user!, deliveryFilters.parse(req.query)));
+}));
+router.post("/deliveries", handler(async (req, res) => {
+  const input = request.extend({ notes: safeText(2000).optional(), items: z.array(z.object({
+    inventory_id: id, quantity_kg: weight,
+  }).strict()).min(1).max(100) }).strict().parse(req.body);
+  res.json(await delivery.deliver(req.user!, input));
 }));
 const locationName = safeText(100).refine(value => value.length > 0);
 const location = request.extend({ name: locationName, name_ar: locationName, is_active: z.boolean().optional() });

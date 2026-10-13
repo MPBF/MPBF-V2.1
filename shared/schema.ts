@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 export * from "./production-schema";
 export * from "./raw-mixing-schema";
 export * from "./production-monitoring-schema";
+export * from "./transfer-schema";
 import {
   boolean,
   check,

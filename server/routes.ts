@@ -61,6 +61,7 @@ import { categoryProductionPlan } from "./category-production-plan";
 import hr from "./hr";
 import selfService from "./self-service";
 import factoryProduction from "./production/routes";
+import dataTransfer from "./data-transfer/routes";
 
 const router = Router();
 router.use(createPublicOrderPrintRouter(getOrderDetails));
@@ -635,6 +636,7 @@ router.use("/me/role-preview", rolePreviewRouter);
 router.use("/self", selfService);
 router.use("/hr", hr);
 router.use("/production", factoryProduction);
+router.use("/data-transfer", dataTransfer);
 router.get("/public-branding", async (_req, res, next) => {
   try {
     const profile = (await db.select().from(company_profile).limit(1))[0] ?? null;
