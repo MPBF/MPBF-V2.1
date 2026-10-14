@@ -215,6 +215,28 @@ describe("customer product routes", () => {
     expect(response.status).toBe(400);
     expect(savedUpdate).toBeNull();
   });
+  it.each(["left_facing", "right_facing"])("rejects %s above half the width on create", async (side) => {
+    const response = await request("customer-products", "POST", {
+      ...createInput(), width: "20", left_facing: "0", right_facing: "0", [side]: "11",
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toContain("نصف العرض");
+    expect(savedInsert).toBeNull();
+  });
+  it.each(["left_facing", "right_facing"])("rejects %s above half the persisted width on partial edit", async (side) => {
+    currentProduct = { id: 5, ...createInput() };
+    const response = await request("customer-products/5", "PUT", { [side]: "11" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toContain("نصف العرض");
+    expect(savedUpdate).toBeNull();
+  });
+  it("rechecks half-width limits when the width is reduced", async () => {
+    currentProduct = { id: 5, ...createInput() };
+    const response = await request("customer-products/5", "PUT", { width: "5", left_facing: "0" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toContain("نصف العرض");
+    expect(savedUpdate).toBeNull();
+  });
   it("prevents transferring a product already used by another customer's production order", async () => {
     currentProduct = { id: 5, ...createInput() };
     productionOrderReference = true;
@@ -586,6 +608,14 @@ describe("customer product routes", () => {
     expect(savedInsert).toMatchObject({ customer_id: "C1", is_printed: false });
     expect(savedInsert).not.toHaveProperty("category_id");
     expect(savedInsert).not.toHaveProperty("item_id");
+  });
+  it.each(["left_facing", "right_facing"])("rejects an order draft with %s above half the width", async (side) => {
+    const response = await request("orders/with-items", "POST", createOrderWithProduct({
+      ...orderProductInput(), width: "20", left_facing: "0", right_facing: "0", [side]: "11",
+    }), "manage_orders");
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toContain("نصف العرض");
+    expect(savedInsert).toBeNull();
   });
 
   it("does not infer category from an item for order draft products", async () => {

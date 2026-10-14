@@ -1,5 +1,5 @@
 import { translate } from "../i18n";
-import { ChevronDown, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 type Customer = Record<string, any>;
@@ -121,15 +121,17 @@ export function unitWeightLabel(value: string): string {
   return Number.isFinite(kilos) ? `${Math.round(kilos * 1000)} جرام` : value;
 }
 
-export function ProductValueSelect({ id, label, value, values, onChange, disabled = false, zeroMeansUnset = false, hint, labelForValue }: {
+export function ProductValueSelect({ id, label, value, values, onChange, disabled = false, zeroMeansUnset = false, hint, labelForValue, labelDirection }: {
   id: string; label: string; value: unknown; values: string[]; onChange: (value: string) => void;
   disabled?: boolean; zeroMeansUnset?: boolean; hint?: string;
   labelForValue?: (value: string) => string;
+  labelDirection?: "right" | "left";
 }) {
   const text = value == null ? "" : String(value);
   const selected = text === "" ? (zeroMeansUnset ? "0" : "") : values.find((option) => Number(option) === Number(text)) ?? text;
+  const DirectionIcon = labelDirection === "right" ? ArrowRight : labelDirection === "left" ? ArrowLeft : null;
   return <div className="cp-field">
-    <label htmlFor={id}>{translate(label)}</label>
+    <label className={DirectionIcon ? "cp-direction-label" : undefined} htmlFor={id}><span>{translate(label)}</span>{DirectionIcon && <DirectionIcon size={14} aria-hidden="true" />}</label>
     <select id={id} value={selected} disabled={disabled}
       onChange={(event) => onChange(zeroMeansUnset && event.target.value === "0" ? "" : event.target.value)}>
       {!zeroMeansUnset && <option value="">{translate("غير محدد")}</option>}

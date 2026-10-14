@@ -80,6 +80,7 @@ const WebSocket = require("ws");
         customer = { ...customer, ...payload };
         data = customer;
       } else if (route === "/customers") data = [customer];
+      else if (route === "/categories") data = [{ id: "CAT01", name: "Banana bags", name_ar: "أكياس بنانة" }];
       else if (route === "/production-orders/8" && request.method === "PUT") {
         const payload = JSON.parse(request.postData);
         writes.push({ route, method: request.method, payload });
@@ -132,9 +133,9 @@ const WebSocket = require("ws");
     };
     const screenshot = async (name) => {
       await evaluate("Promise.allSettled(document.getAnimations().filter(a=>a.effect?.target instanceof Element && a.effect.target.closest('[role=dialog]')).map(a=>a.finished))");
-      await fs.mkdir("screenshots", { recursive: true });
+      await fs.mkdir("generated-artifacts/customer-production-checks", { recursive: true });
       const result = await send("Page.captureScreenshot", { format: "png" });
-      await fs.writeFile(`screenshots/${name}.png`, Buffer.from(result.data, "base64"));
+      await fs.writeFile(`generated-artifacts/customer-production-checks/${name}.png`, Buffer.from(result.data, "base64"));
     };
 
     if (process.argv.includes("--capture-only")) {
@@ -159,7 +160,7 @@ const WebSocket = require("ws");
       await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });
       await navigate("/customers");
       await openCustomer();
-      verify(`${width}: no customer code input`, await evaluate("!document.querySelector('[role=dialog] input[name=id], [role=dialog] #id') && document.querySelectorAll('[role=dialog] input').length===6"));
+      verify(`${width}: no customer code input`, await evaluate("!document.querySelector('[role=dialog] input[name=id], [role=dialog] #id') && document.querySelectorAll('[role=dialog] input:not([readonly])').length===6"));
       verify(`${width}: only representatives endpoint choices`, await evaluate("document.querySelector('#customer-sales-rep').options.length"), 2);
       verify(`${width}: modal/page do not overflow`, await evaluate("document.documentElement.scrollWidth <= innerWidth && document.querySelector('[role=dialog]').getBoundingClientRect().width<=innerWidth"));
       if (width > 700) {
@@ -201,6 +202,30 @@ const WebSocket = require("ws");
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('إضافة منتج')).click()");
     await wait("!!document.querySelector('[role=dialog]')");
     verify("product editor can open after creation", await evaluate("document.querySelector('[role=dialog]').textContent.includes('منتج')"));
+    await wait("!!document.querySelector('#cp-category option[value=CAT01]')");
+    verify("category displays only its name, retaining ID as value",
+      await evaluate("document.querySelector('#cp-category option[value=CAT01]').textContent"), "أكياس بنانة");
+    verify("right-facing label has a physical right arrow",
+      await evaluate("!!document.querySelector('label[for=cp-right] svg.lucide-arrow-right[aria-hidden=true]')"));
+    verify("left-facing label has a physical left arrow",
+      await evaluate("!!document.querySelector('label[for=cp-left] svg.lucide-arrow-left[aria-hidden=true]')"));
+    const beforeFacingChecks = writes.length;
+    await input("#cp-width", "10");
+    for (const side of ["right", "left"]) {
+      await input("#cp-right", side === "right" ? "6" : "0");
+      await input("#cp-left", side === "left" ? "6" : "0");
+      await click(".cp-save");
+      await wait("document.querySelector('.cp-error')?.textContent.includes('نصف العرض')");
+      verify(`${side} side exceeding half the width is blocked without writes`, writes.length, beforeFacingChecks);
+      verify(`${side} invalid side cannot be bypassed with mismatch confirmation`,
+        await evaluate("!document.querySelector('.cp-facing-warning')"));
+    }
+    for (const width of [390, 768, 1280]) {
+      await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      verify(`facing labels and arrows fit at ${width}px`, await evaluate("(()=>{const d=document.querySelector('[role=dialog]');return d.scrollWidth<=d.clientWidth+1&&['cp-right','cp-left'].every(id=>{const label=document.querySelector('label[for='+id+']'),r=label.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&label.scrollWidth<=label.clientWidth+1})})()"));
+      await evaluate("document.getElementById('cp-right').scrollIntoView({block:'center'})");
+      await screenshot(`product-facing-rules-${width}`);
+    }
     await navigate("/customers");
     failReps = true;
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('إضافة عميل')).click()");

@@ -461,6 +461,7 @@ const english: Record<string, string> = {
   "لا توجد منتجات مسجلة لهذا العميل.": "This customer has no registered products.",
   "لا توجد منتجات مطابقة للبحث.": "No products match your search.",
   "لا توجد نتائج مطابقة.": "No matching results.",
+  "لا يمكن أن تتجاوز قيمة الجانب الأيمن أو الأيسر نصف العرض.": "Neither the right nor the left side may exceed half the width.",
   "لا توجد ورديات غير مكتملة.": "No incomplete shifts.",
   "لا توجد ورديات. أنشئ الوردية الأولى للبدء.": "No shifts found. Create the first shift to get started.",
   "لا تُحتسب الساعات أو الأجر قبل تسجيل وقت الانصراف الفعلي. يمكنك تصحيح استراحة مفتوحة والانصراف معًا.": "Hours and pay are not counted until actual checkout is recorded. You can correct an open break and checkout together.",
