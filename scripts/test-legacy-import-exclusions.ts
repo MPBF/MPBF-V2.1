@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { keepCurrentProductDimensions, legacyExclusion, roundProductDimensions } from "./lib/legacy-import-exclusions";
+import { keepCurrentProductDimensions, legacyExclusion, omitProductDesigns, roundProductDimensions } from "./lib/legacy-import-exclusions";
 
 for (const value of [null, "", " ", "0", "0.00", "0.000", "-0.0", "+0"]) {
   assert(legacyExclusion("customer_products", { width: value, thickness: "30" }));
@@ -53,6 +53,17 @@ assert.equal(roundProductDimensions({ width: "9007199254740992.5" }).row.width, 
 assert.equal(roundProductDimensions({ width: "-0.4" }).row.width, "-0.4");
 assert(legacyExclusion("customer_products", roundProductDimensions({ width: "0.4", thickness: "30" }).row));
 assert.equal(roundProductDimensions(result.row).changes.length, 0);
+const designs = { id: "1", cliche_front_design: "data:image/png;base64,original", cliche_back_design: null,
+  profile_image_url: "/keep-avatar", width: "20", notes: "Keep notes" };
+const designsBefore = JSON.stringify(designs), omitted = omitProductDesigns(designs);
+assert.equal(omitted.row.cliche_front_design, "");
+assert.equal(omitted.row.cliche_back_design, "");
+assert.equal(omitted.row.profile_image_url, designs.profile_image_url);
+assert.equal(omitted.row.notes, designs.notes);
+assert.equal(omitted.omitted.length, 1);
+assert.equal(JSON.stringify(designs), designsBefore);
+assert.deepEqual(omitProductDesigns({ id: "1" }).row, { id: "1" });
 console.log("PASS approved import exclusions: blank/zero dimensions, deleted users, decimals retained, unrelated rows and originals unchanged");
 console.log("PASS current dimensions: complete dimension set preserved, unrelated fields unchanged, absent/invalid current rows stay pending without invented values");
 console.log("PASS approved rounding and nameless exclusions: exact decimal rounding, named rows retained, no rounding of density/weights/text");
+console.log("PASS omitted designs: only design cells blanked, originals and profile images unchanged, blank is not explicit null");

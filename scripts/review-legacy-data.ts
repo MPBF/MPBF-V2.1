@@ -8,7 +8,8 @@
  *   customer_products=attached_assets/customer_products.xlsx
  *
  * Approved preparation options: --apply-approved-exclusions
- * --preserve-current-dimensions --round-dimensions --exclude-unnamed.
+ * --preserve-current-dimensions --round-dimensions --exclude-unnamed
+ * --omit-design-images.
  * These affect generated review copies only, never database records.
  */
 import { readFile, mkdir, writeFile } from "node:fs/promises";
@@ -21,7 +22,7 @@ import { discover, readRows, type Snapshot } from "../server/data-transfer/schem
 import { csvExport, parseFile } from "../server/data-transfer/files";
 import { makePreview, valueFor } from "../server/data-transfer/validation";
 import { protectedColumn } from "../server/data-transfer/policy";
-import { keepCurrentProductDimensions, legacyExclusion, productDimensionFields, roundProductDimensions } from "./lib/legacy-import-exclusions";
+import { keepCurrentProductDimensions, legacyExclusion, omitProductDesigns, productDimensionFields, roundProductDimensions } from "./lib/legacy-import-exclusions";
 import type { TransferFile, TransferMapping, TransferSchema, TransferTable } from "../shared/data-transfer";
 
 type Input = {
@@ -87,6 +88,7 @@ async function main() {
   const preserveDimensions = args.includes("--preserve-current-dimensions");
   const roundDimensions = args.includes("--round-dimensions");
   const excludeUnnamed = args.includes("--exclude-unnamed");
+  const omitDesignImages = args.includes("--omit-design-images");
   const outIndex = args.indexOf("--out"), output = args[outIndex + 1];
   const root = path.resolve("generated-artifacts") + path.sep;
   if (outIndex < 0 || !output || !path.resolve(output).startsWith(root) || !output.endsWith(".xlsx"))
@@ -94,6 +96,7 @@ async function main() {
   const inputArgs = args.filter((arg, index) => arg !== "--read-only" && arg !== "--apply-approved-exclusions" &&
     arg !== "--preserve-current-dimensions" &&
     arg !== "--round-dimensions" && arg !== "--exclude-unnamed" &&
+    arg !== "--omit-design-images" &&
     index !== outIndex && index !== outIndex + 1);
   if (!inputArgs.length || inputArgs.length > 3) throw Error("Provide one to three table=filename inputs");
   const inputs: Input[] = [];
@@ -160,10 +163,25 @@ async function main() {
         input.sourceRows = retainedRows;
       }
     }
+    const omittedDesigns: unknown[][] = [];
+    if (omitDesignImages) {
+      const input = inputs.find(input => input.table === "customer_products");
+      if (input) input.file.tables[0].rows = input.file.tables[0].rows.map((source, index) => {
+        const result = omitProductDesigns(source);
+        for (const design of result.omitted)
+          omittedDesigns.push([input.sourceRows[index], source.id, design.field, design.value.length,
+            digest(design.value), "ترك الحقل فارغًا في نسخة الاستيراد؛ لا مسح للصورة الحالية"]);
+        return result.row;
+      });
+    }
     const mappings = inputs.map(input => mappingFor(schema.tables.find(table => table.name === input.table)!, input.file));
     const combined: TransferFile = { source: "external", tables: inputs.flatMap(input => input.file.tables) };
     // Diagnostic matching only: local numeric IDs are NOT approved for actual import.
     const preview = makePreview(schema, combined, mappings, graph, true);
+    if (omitDesignImages && preview.some(row => row.table === "customer_products" &&
+      (["cliche_front_design", "cliche_back_design"].some(field => field in row.values) ||
+        row.changes.some(change => ["cliche_front_design", "cliche_back_design"].includes(change.column)))))
+      throw Error("Blank design fields unexpectedly produced an import or clearing operation");
     const book = new ExcelJS.Workbook();
     book.creator = "Modplast — read-only import review";
     const summary: unknown[][] = [], issues: unknown[][] = [], dimensions: unknown[][] = [];
@@ -267,6 +285,8 @@ async function main() {
       ["التواريخ", "أصلح كود الاستيراد فك الاقتباس الزائد. ورقة التواريخ توثق القيم قبل التصحيح وبعده دون تعديل الأصل."],
       ["التصحيحات اليدوية", "استخدم العمود الأخير في أوراق المشكلات لكتابة القيمة أو القرار الصحيح. لا تخمّن الاسم أو المقاس."],
       ["صور التصاميم", "لا تضاف الصور الطويلة إلى هذا التقرير؛ تعرض بصمتها وطولها فقط. الصور الأصلية باقية في ملفات المصدر."],
+      ["عدم استيراد الصور", omitDesignImages ? "حقول صور التصاميم فارغة حسب الاعتماد. اترك خيار مسح القيم الفارغة غير مفعّل لهذه الحقول؛ لا تمسح الصور الحالية."
+        : "لم يعتمد إفراغ حقول صور التصاميم من نسخ الاستيراد في هذه النسخة."],
       ["الفروقات", "قد تشمل الفروقات اختلاف تمثيل التاريخ أو العدد، لا اختلاف المعنى؛ لا توافق عليها بالجملة."],
       ["حدود التقرير", "التقرير يفحص التحقق والعلاقات الحالية؛ يلزم تكرار المعاينة والتحقق من القيود عند اعتماد التصحيحات."],
       ["الأمان", "الحقول الأمنية والمحسوبة غير قابلة للاستيراد؛ لا تُنقل كلمات مرور أو ربط تسجيل الدخول."],
@@ -283,6 +303,7 @@ async function main() {
     sheet(book, "التقريب المعتمد", ["سطر Excel", "معرف المنتج", "الحقل", "قبل", "بعد", "الاعتماد"], roundedDimensions);
     sheet(book, "المقاسات المعلقة", ["سطر Excel", "معرف المنتج", "سبب التعليق", "القرار المعتمد"], pendingDimensions);
     sheet(book, "صور التصاميم", ["سطر Excel", "معرف المنتج", "الحقل", "عدد الحروف", "نوع الصورة", "SHA256", "المقارنة", "التوصية", "القرار المعتمد"], images);
+    sheet(book, "الصور غير المستوردة", ["سطر Excel", "معرف المنتج", "الحقل", "عدد الحروف الأصلي", "SHA256", "الإجراء المعتمد"], omittedDesigns);
     sheet(book, "تطابق هويات المستخدمين", ["الجدول", "سطر Excel", "المعرف", "الحقل", "قيمة التطوير", "قيمة المصدر", "التحذير"], identity);
     sheet(book, "الحقول المستثناة", ["الجدول", "الحقل", "السبب"], excluded);
     sheet(book, "تصحيح التواريخ الآمن", ["الجدول", "سطر Excel", "المعرف", "الحقل", "قبل", "بعد", "الإجراء"], corrections);
@@ -298,9 +319,12 @@ async function main() {
       verify.getWorksheet("تصحيح التواريخ الآمن")?.rowCount !== corrections.length + 1)
       throw Error("Report row-count verification failed");
     let archive: string | null = null;
+    const preparedFiles: string[] = [];
     if (applyExclusions) {
       const zip = new JSZip();
       const manifest: unknown[] = [];
+      const filesDirectory = output.replace(/\.xlsx$/, "-files");
+      await mkdir(filesDirectory, { recursive: true });
       for (const input of inputs) {
         const source = input.file.tables[0], table = schema.tables.find(table => table.name === input.table)!;
         // Never place authentication/control fields in the new import files.
@@ -321,6 +345,9 @@ async function main() {
           roundTrip.tables[0].rows.some(row => legacyExclusion(input.table, row, { excludeUnnamed })))
           throw Error("Prepared file failed exact round-trip or exclusion verification");
         zip.file(`${input.table}.csv`, csv);
+        const csvPath = path.join(filesDirectory, `${input.table}.csv`);
+        await writeFile(csvPath, csv);
+        preparedFiles.push(csvPath);
         manifest.push({ table: input.table, originalRows: input.originalCount, rows: normalized.length,
           excluded: input.originalCount - normalized.length, sourceSHA256: input.sourceHash,
           csvSHA256: digest(csv), removedSecurityHeaders: source.headers.filter(header => protectedColumn.test(header)) });
@@ -329,11 +356,13 @@ async function main() {
       zip.file("manifest.json", JSON.stringify({ reviewOnly: true, databaseWrites: false,
         preserveCurrentDimensions: preserveDimensions, preservedProductIds: [...preservedProductIds],
         roundRemainingDimensions: roundDimensions, roundedDimensionCells: roundedDimensions.length, excludeUnnamed,
+        omitDesignImages, omittedDesignCells: omittedDesigns.length,
         pendingDimensionProducts: pendingDimensions.length, files: manifest }, null, 2));
-      zip.file("اقرأني.txt", "هذه نسخ مراجعة وليست موافقة على الاستيراد.\nفك الضغط ثم اختر CSV من بطاقة الجدول المناسبة؛ لا ترفع ZIP في أداة الاستيراد.\nصيغة CSV محمية للحفاظ على النصوص والأرقام الدقيقة؛ يزيل المستورد علامة الحماية تلقائيًا.\nاستبعدت السجلات المحددة حسب الاعتماد وفكت الاقتباسات الزائدة من التواريخ فقط.\nأزيلت حقول الأمان من نسخة المستخدمين. الصور وباقي القيم محفوظة دون تغيير.\n" +
+      zip.file("اقرأني.txt", "هذه نسخ مراجعة وليست موافقة على الاستيراد.\nفك الضغط ثم اختر CSV من بطاقة الجدول المناسبة؛ لا ترفع ZIP في أداة الاستيراد.\nترتيب المعاينة: المستخدمون ثم العملاء ثم منتجات العملاء، مع مراجعة روابط المعرّفات الرقمية قبل التأكيد.\nصيغة CSV محمية للحفاظ على النصوص والأرقام الدقيقة؛ يزيل المستورد علامة الحماية تلقائيًا.\nاستبعدت السجلات المحددة حسب الاعتماد وفكت الاقتباسات الزائدة من التواريخ فقط.\nأزيلت حقول الأمان من نسخة المستخدمين؛ لم تغير بقية القيم خارج التصحيحات الموثقة.\n" +
         (preserveDimensions ? "اعتمدت المقاسات الحالية أولًا للمنتجات الموجودة؛ الحالات غير الموجودة موثقة في ورقة التقريب المعتمد أو المقاسات المعلقة حسب الاعتماد.\n" : "لم يعتمد استخدام المقاسات الحالية لهذه النسخة.\n") +
         (roundDimensions ? "قربت الكسور المتبقية في مقاسات المنتجات فقط إلى أقرب عدد صحيح حسب الاعتماد؛ لم تقرب الكثافة أو الأوزان.\n" : "") +
         (excludeUnnamed ? "حذفت من نسخ الاستيراد فقط السجلات التي لا يوجد لها اسم عربي ولا إنجليزي.\n" : "") +
+        (omitDesignImages ? "حقول صور التصاميم فارغة حسب الاعتماد. لا تحدد حقول الصور ضمن خيار مسح القيم الفارغة؛ الصور الحالية تبقى محفوظة. لا تستورد صورًا جديدة من هذه الملفات.\n" : "") +
         "لا تزال بعض السجلات تحتاج مراجعة. لا تختَر تطبيق جميع الفروقات تلقائيًا.\nالملفات الأصلية والقاعدة لم تتغير. التقرير يقارن قاعدة التطوير فقط، وليس قاعدة الإنتاج.\n");
       archive = output.replace(/\.xlsx$/, "-prepared.zip");
       await writeFile(archive, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
@@ -351,7 +380,8 @@ async function main() {
       differences: changes.length, excludedRecords: excludedRecords.length,
       preservedProductDimensions: preservedProductIds.size, pendingDimensionProducts: pendingDimensions.length,
       roundedDimensionCells: roundedDimensions.length,
-      archive, verified: true }));
+      omittedDesignCells: omittedDesigns.length,
+      archive, preparedFiles, verified: true }));
   } finally {
     await db.query("ROLLBACK").catch(() => undefined);
     db.release();
