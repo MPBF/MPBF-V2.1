@@ -209,6 +209,12 @@ const WebSocket = require("ws");
       await evaluate("!!document.querySelector('label[for=cp-right] svg.lucide-arrow-right[aria-hidden=true]')"));
     verify("left-facing label has a physical left arrow",
       await evaluate("!!document.querySelector('label[for=cp-left] svg.lucide-arrow-left[aria-hidden=true]')"));
+    verify("new product defaults to kilo",
+      await evaluate("document.querySelector('#cp-cut-unit').value"), "كيلو");
+    verify("new product defaults to 1000 grams while storing one kilogram",
+      await evaluate("document.querySelector('#cp-unit-weight').value==='1'&&document.querySelector('#cp-unit-weight option:checked').textContent==='1000 جرام'"));
+    verify("new product defaults packing to 20",
+      await evaluate("document.querySelector('#cp-unit-quantity').value"), "20");
     const beforeFacingChecks = writes.length;
     await input("#cp-width", "10");
     for (const side of ["right", "left"]) {
@@ -223,6 +229,10 @@ const WebSocket = require("ws");
     for (const width of [390, 768, 1280]) {
       await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
       verify(`facing labels and arrows fit at ${width}px`, await evaluate("(()=>{const d=document.querySelector('[role=dialog]');return d.scrollWidth<=d.clientWidth+1&&['cp-right','cp-left'].every(id=>{const label=document.querySelector('label[for='+id+']'),r=label.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&label.scrollWidth<=label.clientWidth+1})})()"));
+      verify(`left-facing arrow follows Arabic text at ${width}px`,
+        await evaluate("(()=>{const l=document.querySelector('label[for=cp-left]');return l.querySelector('svg').getBoundingClientRect().right<=l.querySelector('span').getBoundingClientRect().left})()"));
+      verify(`facing controls have half their former width at ${width}px`,
+        await evaluate("['cp-right','cp-left'].every(id=>{const c=document.getElementById(id),p=c.closest('.cp-field');return Math.abs(c.getBoundingClientRect().width-p.getBoundingClientRect().width/2)<1})"));
       await evaluate("document.getElementById('cp-right').scrollIntoView({block:'center'})");
       await screenshot(`product-facing-rules-${width}`);
     }
