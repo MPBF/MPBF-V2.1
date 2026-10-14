@@ -6,6 +6,10 @@
  *   --out generated-artifacts/legacy-import-review.xlsx \
  *   users=attached_assets/users.xlsx customers=attached_assets/customers.xlsx \
  *   customer_products=attached_assets/customer_products.xlsx
+ *
+ * Approved preparation options: --apply-approved-exclusions
+ * --preserve-current-dimensions --round-dimensions --exclude-unnamed.
+ * These affect generated review copies only, never database records.
  */
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -17,7 +21,7 @@ import { discover, readRows, type Snapshot } from "../server/data-transfer/schem
 import { csvExport, parseFile } from "../server/data-transfer/files";
 import { makePreview, valueFor } from "../server/data-transfer/validation";
 import { protectedColumn } from "../server/data-transfer/policy";
-import { keepCurrentProductDimensions, legacyExclusion, productDimensionFields } from "./lib/legacy-import-exclusions";
+import { keepCurrentProductDimensions, legacyExclusion, productDimensionFields, roundProductDimensions } from "./lib/legacy-import-exclusions";
 import type { TransferFile, TransferMapping, TransferSchema, TransferTable } from "../shared/data-transfer";
 
 type Input = {
@@ -81,12 +85,15 @@ async function main() {
   if (!args.includes("--read-only")) throw Error("Explicit --read-only flag is required");
   const applyExclusions = args.includes("--apply-approved-exclusions");
   const preserveDimensions = args.includes("--preserve-current-dimensions");
+  const roundDimensions = args.includes("--round-dimensions");
+  const excludeUnnamed = args.includes("--exclude-unnamed");
   const outIndex = args.indexOf("--out"), output = args[outIndex + 1];
   const root = path.resolve("generated-artifacts") + path.sep;
   if (outIndex < 0 || !output || !path.resolve(output).startsWith(root) || !output.endsWith(".xlsx"))
     throw Error("Output must be an XLSX file under generated-artifacts/");
   const inputArgs = args.filter((arg, index) => arg !== "--read-only" && arg !== "--apply-approved-exclusions" &&
     arg !== "--preserve-current-dimensions" &&
+    arg !== "--round-dimensions" && arg !== "--exclude-unnamed" &&
     index !== outIndex && index !== outIndex + 1);
   if (!inputArgs.length || inputArgs.length > 3) throw Error("Provide one to three table=filename inputs");
   const inputs: Input[] = [];
@@ -99,7 +106,7 @@ async function main() {
     if (file.tables.length !== 1) throw Error("Each source must contain exactly one data worksheet");
     const source = file.tables[0], originalCount = source.rows.length, sourceRows: number[] = [];
     const retained = source.rows.filter((row, index) => {
-      const reason = applyExclusions ? legacyExclusion(match[1], row) : null;
+      const reason = applyExclusions ? legacyExclusion(match[1], row, { excludeUnnamed }) : null;
       if (reason) {
         excludedRecords.push([label[match[1]], index + 2, row.id, reason, "استبعاد من نسخة الاستيراد فقط؛ لا حذف من القاعدة"]);
         return false;
@@ -117,14 +124,16 @@ async function main() {
     const schema = await discover(db);
     const graph = await graphFor(schema, [...inputs.map(input => input.table), "roles", "sections"], db);
     const dimensionCorrections: unknown[][] = [], pendingDimensions: unknown[][] = [];
+    const roundedDimensions: unknown[][] = [];
     const preservedProductIds = new Set<string>();
-    if (preserveDimensions) {
+    if (preserveDimensions || roundDimensions) {
       const input = inputs.find(input => input.table === "customer_products");
       if (input) {
         const current = new Map(graph.customer_products.map(row => [row.id, row]));
-        input.file.tables[0].rows = input.file.tables[0].rows.map((source, index) => {
-          const result = keepCurrentProductDimensions(source, current.get(source.id ?? ""));
-          if (result.pending) pendingDimensions.push([input.sourceRows[index], source.id, result.pending, ""]);
+        const retainedRows: number[] = [];
+        input.file.tables[0].rows = input.file.tables[0].rows.flatMap((source, index) => {
+          const result = preserveDimensions ? keepCurrentProductDimensions(source, current.get(source.id ?? ""))
+            : { row: source, preserved: false, pending: null };
           if (result.preserved) {
             preservedProductIds.add(source.id!);
             for (const field of productDimensionFields) {
@@ -133,8 +142,22 @@ async function main() {
                   display(source[field]), display(result.row[field]), "اعتماد مقاس القاعدة الحالية في نسخة الاستيراد فقط"]);
             }
           }
-          return result.row;
+          const rounded = roundDimensions ? roundProductDimensions(result.row) : { row: result.row, changes: [] };
+          for (const change of rounded.changes)
+            roundedDimensions.push([input.sourceRows[index], source.id, change.field, change.before, change.after,
+              "تقريب المقاس المتبقي إلى أقرب عدد صحيح حسب اعتماد المستخدم"]);
+          if (result.pending && !rounded.changes.length)
+            pendingDimensions.push([input.sourceRows[index], source.id, result.pending, ""]);
+          const reason = applyExclusions ? legacyExclusion(input.table, rounded.row, { excludeUnnamed }) : null;
+          if (reason) {
+            excludedRecords.push([label[input.table], input.sourceRows[index], source.id, reason,
+              "استبعاد من نسخة الاستيراد فقط؛ لا حذف من القاعدة"]);
+            return [];
+          }
+          retainedRows.push(input.sourceRows[index]);
+          return [rounded.row];
         });
+        input.sourceRows = retainedRows;
       }
     }
     const mappings = inputs.map(input => mappingFor(schema.tables.find(table => table.name === input.table)!, input.file));
@@ -230,9 +253,15 @@ async function main() {
       ["الاستبعادات", applyExclusions
         ? "اعتمد المستخدم استبعاد مستخدمي deleted والمنتجات التي يكون عرضها أو سماكتها صفرًا أو فارغًا من ملفات الاستيراد فقط."
         : "لم تُطبّق استبعادات على ملفات المصدر في هذا التقرير."],
-      ["حالة الملفات المنقحة", "نسخ مراجعة لا تعني أن جميع الصفوف جاهزة للاستيراد؛ راجع المشكلات المتبقية. لم تُقرّب المقاسات أو تتغيّر حالة الحسابات."],
+      ["حالة الملفات المنقحة", "نسخ مراجعة لا تعني أن جميع الصفوف جاهزة للاستيراد؛ راجع المشكلات المتبقية. لم تتغيّر حالة الحسابات."],
+      ["السجلات بلا أسماء", excludeUnnamed ? "استبعدت من نسخ الاستيراد السجلات التي لا يوجد لها اسم عربي ولا إنجليزي؛ لا حذف من القاعدة."
+        : "لم يعتمد استبعاد السجلات بلا أسماء في هذه النسخة."],
+      ["التقريب المعتمد", roundDimensions ? "قربت الكسور المتبقية في مقاسات المنتجات فقط إلى أقرب صحيح، مع تثبيت المقاسات الحالية المعتمدة أولًا. لا تقريب للكثافة أو الأوزان أو المعاملات."
+        : "لم يعتمد تقريب المقاسات في هذه النسخة."],
       ["اعتماد المقاسات الحالية", preserveDimensions
-        ? "ثبتت المقاسات الحالية للمنتجات الموجودة ذات الكسور حسب الاعتماد. المنتجات غير الموجودة لم تعطَ مقاسات تخمينية؛ راجع ورقة المقاسات المعلقة."
+        ? roundDimensions
+          ? "ثبتت المقاسات الحالية المعتمدة أولًا، ثم قربت الكسور المتبقية في المنتجات غير الموجودة وفق الاعتماد اللاحق؛ راجع ورقة التقريب المعتمد."
+          : "ثبتت المقاسات الحالية للمنتجات الموجودة ذات الكسور حسب الاعتماد. المنتجات غير الموجودة لم تعطَ مقاسات تخمينية؛ راجع ورقة المقاسات المعلقة."
         : "لم يعتمد تغيير المقاسات إلى مقاسات القاعدة الحالية في هذه النسخة."],
       ["المعرفات", "المطابقة الرقمية للتشخيص فقط. يجب التحقق من هويات المستخدمين وربط الأدوار والأقسام قبل الاستيراد."],
       ["التواريخ", "أصلح كود الاستيراد فك الاقتباس الزائد. ورقة التواريخ توثق القيم قبل التصحيح وبعده دون تعديل الأصل."],
@@ -251,6 +280,7 @@ async function main() {
     sheet(book, "أسماء العملاء الناقصة", ["سطر Excel", "المعرف", "اسم المصدر", "الاسم العربي", "الاسم الحالي", "وجود السجل", "التوصية", "الاسم الصحيح"], names);
     sheet(book, "مقاسات تحتاج مراجعة", ["سطر Excel", "معرف المنتج", "الحقل", "الاسم", "قيمة المصدر", "قيمة التطوير", "التصنيف", "التوصية", "القرار أو المقاس الصحيح"], dimensions);
     sheet(book, "المقاسات الحالية المعتمدة", ["سطر Excel", "معرف المنتج", "الحقل", "قيمة الملف الأصلية", "قيمة النسخة المصححة", "الاعتماد"], dimensionCorrections);
+    sheet(book, "التقريب المعتمد", ["سطر Excel", "معرف المنتج", "الحقل", "قبل", "بعد", "الاعتماد"], roundedDimensions);
     sheet(book, "المقاسات المعلقة", ["سطر Excel", "معرف المنتج", "سبب التعليق", "القرار المعتمد"], pendingDimensions);
     sheet(book, "صور التصاميم", ["سطر Excel", "معرف المنتج", "الحقل", "عدد الحروف", "نوع الصورة", "SHA256", "المقارنة", "التوصية", "القرار المعتمد"], images);
     sheet(book, "تطابق هويات المستخدمين", ["الجدول", "سطر Excel", "المعرف", "الحقل", "قيمة التطوير", "قيمة المصدر", "التحذير"], identity);
@@ -288,7 +318,7 @@ async function main() {
         const roundTrip = await parseFile(Buffer.from(csv), `${input.table}.csv`, async () => { throw Error("Unexpected JSON"); });
         if (JSON.stringify(roundTrip.tables[0].rows) !== JSON.stringify(normalized) ||
           roundTrip.tables[0].headers.some(header => protectedColumn.test(header)) ||
-          roundTrip.tables[0].rows.some(row => legacyExclusion(input.table, row)))
+          roundTrip.tables[0].rows.some(row => legacyExclusion(input.table, row, { excludeUnnamed })))
           throw Error("Prepared file failed exact round-trip or exclusion verification");
         zip.file(`${input.table}.csv`, csv);
         manifest.push({ table: input.table, originalRows: input.originalCount, rows: normalized.length,
@@ -298,9 +328,12 @@ async function main() {
       zip.file("review.xlsx", await readFile(output));
       zip.file("manifest.json", JSON.stringify({ reviewOnly: true, databaseWrites: false,
         preserveCurrentDimensions: preserveDimensions, preservedProductIds: [...preservedProductIds],
+        roundRemainingDimensions: roundDimensions, roundedDimensionCells: roundedDimensions.length, excludeUnnamed,
         pendingDimensionProducts: pendingDimensions.length, files: manifest }, null, 2));
       zip.file("اقرأني.txt", "هذه نسخ مراجعة وليست موافقة على الاستيراد.\nفك الضغط ثم اختر CSV من بطاقة الجدول المناسبة؛ لا ترفع ZIP في أداة الاستيراد.\nصيغة CSV محمية للحفاظ على النصوص والأرقام الدقيقة؛ يزيل المستورد علامة الحماية تلقائيًا.\nاستبعدت السجلات المحددة حسب الاعتماد وفكت الاقتباسات الزائدة من التواريخ فقط.\nأزيلت حقول الأمان من نسخة المستخدمين. الصور وباقي القيم محفوظة دون تغيير.\n" +
-        (preserveDimensions ? "اعتمدت المقاسات الحالية في نسخة الاستيراد للمنتجات الموجودة ذات الكسور دون تقريب؛ الحالات التي لا يوجد لها مقاس حالي موثقة ومعلقة في التقرير.\n" : "لم تغير المقاسات العشرية.\n") +
+        (preserveDimensions ? "اعتمدت المقاسات الحالية أولًا للمنتجات الموجودة؛ الحالات غير الموجودة موثقة في ورقة التقريب المعتمد أو المقاسات المعلقة حسب الاعتماد.\n" : "لم يعتمد استخدام المقاسات الحالية لهذه النسخة.\n") +
+        (roundDimensions ? "قربت الكسور المتبقية في مقاسات المنتجات فقط إلى أقرب عدد صحيح حسب الاعتماد؛ لم تقرب الكثافة أو الأوزان.\n" : "") +
+        (excludeUnnamed ? "حذفت من نسخ الاستيراد فقط السجلات التي لا يوجد لها اسم عربي ولا إنجليزي.\n" : "") +
         "لا تزال بعض السجلات تحتاج مراجعة. لا تختَر تطبيق جميع الفروقات تلقائيًا.\nالملفات الأصلية والقاعدة لم تتغير. التقرير يقارن قاعدة التطوير فقط، وليس قاعدة الإنتاج.\n");
       archive = output.replace(/\.xlsx$/, "-prepared.zip");
       await writeFile(archive, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
@@ -317,6 +350,7 @@ async function main() {
       identityConflicts: identity.length, temporalCorrections: corrections.length,
       differences: changes.length, excludedRecords: excludedRecords.length,
       preservedProductDimensions: preservedProductIds.size, pendingDimensionProducts: pendingDimensions.length,
+      roundedDimensionCells: roundedDimensions.length,
       archive, verified: true }));
   } finally {
     await db.query("ROLLBACK").catch(() => undefined);

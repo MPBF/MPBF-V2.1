@@ -126,3 +126,31 @@ mtime_ms = 1791960978011
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/00db8eb8-aa4a-43c4-bcae-b53fd2dcf039/3723efde-b281-4177-9e61-f54850018852"
 storage_version_token = "1791961088966686"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "42Sclm8qCFz1y8nR0yza6"
+uri = "file://generated-artifacts/legacy-import-rounded-named-review-prepared.zip"
+type = "unspecified"
+title = "حزمة البيانات بعد التقريب وحذف السجلات بلا أسماء"
+description = "نسخ مراجعة تضم 384 عميلًا و1,076 منتجًا و63 مستخدمًا. جرى تقريب المقاسات المتبقية واستبعاد السجلات بلا اسمين، دون تعديل قاعدة البيانات أو الملفات الأصلية. ما زال عائق صور التصاميم الكبيرة موضحًا في التقرير."
+logical_id = "64c456c8-4405-4b0e-b36e-c9a40fa647e2"
+content_hash = "sha256:b47c5363c167f0ce8bb36b5a3633383ff8fea2d442c445678c879aa34c567995"
+size = 1417621
+mtime_ms = 1791962155075
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/64c456c8-4405-4b0e-b36e-c9a40fa647e2/bb085608-1584-49af-b451-3497630aba89"
+storage_version_token = "1791962188400362"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "UsxsQFnyR6BuNiS9YgtXr"
+uri = "file://generated-artifacts/legacy-import-rounded-named-review.xlsx"
+type = "table"
+title = "تقرير التنظيف والتقريب المحدث"
+description = "توثيق السجلات الـ23 المستبعدة من نسخ الاستيراد، والمقاسات الحالية المحفوظة، وتقريب جانبي المنتج 20552 من 13.5 إلى 14، ونتائج فحص العلاقات والمشكلات التقنية المتبقية."
+logical_id = "586cd165-00ec-4bae-9793-9a677443ea8c"
+content_hash = "sha256:146d21e26c411667ae771797b07b8563eb9db76feabfa458384ab08d1b6b60da"
+size = 289831
+mtime_ms = 1791962153751
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/586cd165-00ec-4bae-9793-9a677443ea8c/1f3cd904-688f-4ae4-a666-90b678142461"
+storage_version_token = "1791962189660829"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
