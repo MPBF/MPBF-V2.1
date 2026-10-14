@@ -180,6 +180,7 @@ const english: Record<string, string> = {
   "القسم": "Section",
   "القيمة الحالية المحفوظة:": "Current saved value:",
   "القيمة الحالية:": "Current value:",
+  "القيمة النهائية": "Final value",
   "القيمة القديمة محفوظة كما هي حتى تختار بديلاً.": "The existing legacy value will be kept unless you choose a replacement.",
   "الكثافة": "Density",
   "الكميات أدناه مطلوبة ومخططة وليست سجلاً للإنتاج المنفذ.": "The quantities below are requested and planned, not a record of completed production.",

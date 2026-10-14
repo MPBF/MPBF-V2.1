@@ -229,6 +229,9 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
   const selectedRep = form.sales_rep_id;
   const selectedRepMissing = Boolean(selectedRep) && !representatives.some((rep) => String(rep.id) === selectedRep);
   const existingRepLabel = localizedName(row.sales_rep_name_ar || row.sales_rep?.display_name_ar, row.sales_rep_name || row.sales_rep?.display_name, translate("المندوب الحالي"));
+  const drawerPreview = drawerEdited
+    ? form.drawer_letter && form.drawer_number ? `${form.drawer_letter}-${form.drawer_number}` : ""
+    : originalDrawer;
 
   return <div className="modal-backdrop customer-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
     <div className="modal customer-modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
@@ -306,6 +309,10 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
                 <option value="">{translate("اختر")}</option>
                 {DRAWER_NUMBERS.map((number) => <option key={number} value={number}>{number}</option>)}
               </select>
+            </div>
+            <div className="field">
+              <label htmlFor="customer-drawer-code">{translate("القيمة النهائية")}</label>
+              <input id="customer-drawer-code" value={drawerPreview} readOnly dir="ltr" />
             </div>
             {editing && originalDrawer && !parsedOriginalDrawer.letter && <p className="customer-modal-drawer-legacy">
               <span>{translate("القيمة القديمة محفوظة كما هي حتى تختار بديلاً.")}</span>
