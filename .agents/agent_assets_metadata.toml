@@ -70,3 +70,31 @@ mtime_ms = 1791956206522
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/d3bae342-cb3b-4cd4-99b2-184165de0bc4/044b28d8-86f7-4f0f-a7b6-44f93d26fc41"
 storage_version_token = "1791956350161322"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "ZABu0LdIzj11KaAPQR32S"
+uri = "file://generated-artifacts/legacy-import-filtered-review-prepared.zip"
+type = "unspecified"
+title = "حزمة البيانات بعد الاستبعادات المعتمدة"
+description = "ثلاثة ملفات CSV للمراجعة: 1,076 منتجًا و63 مستخدمًا و388 عميلًا، مع تقرير الاستبعاد والفروقات. لم تتغير القاعدة أو الملفات الأصلية؛ تبقى مشكلات تحتاج اعتمادًا قبل التطبيق."
+logical_id = "a356030e-d111-44c1-8711-689dd2556b94"
+content_hash = "sha256:14d50be953ed7f87b27c47a3a51a4c8740220730b34e6bda627f13b601f58ca4"
+size = 1421368
+mtime_ms = 1791960658754
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/a356030e-d111-44c1-8711-689dd2556b94/573d9820-ec34-469b-abe0-d441e1aba253"
+storage_version_token = "1791960718863570"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "tOzY1K3T1lLxZ7U_0Zoiy"
+uri = "file://generated-artifacts/legacy-import-filtered-review.xlsx"
+type = "table"
+title = "تقرير المراجعة بعد الاستبعاد"
+description = "قائمة بالسجلات الـ19 المستبعدة من نسخ الاستيراد فقط، والمشكلات والفروقات المتبقية، مع خانات للتصحيحات المعتمدة."
+logical_id = "20b533ac-a907-429b-9325-059091c5e4ca"
+content_hash = "sha256:2b8127e7c802009f7a15cb6f3db0009758c40950c3a02153cebe5264bf85cbcc"
+size = 290537
+mtime_ms = 1791960657622
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/20b533ac-a907-429b-9325-059091c5e4ca/3b7e4a1e-d9ed-4bf9-9c41-aa41bd04fc91"
+storage_version_token = "1791960720263003"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

@@ -7,18 +7,23 @@
  *   users=attached_assets/users.xlsx customers=attached_assets/customers.xlsx \
  *   customer_products=attached_assets/customer_products.xlsx
  */
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
 import { pool } from "../server/db";
 import { discover, readRows, type Snapshot } from "../server/data-transfer/schema";
-import { parseFile } from "../server/data-transfer/files";
+import { csvExport, parseFile } from "../server/data-transfer/files";
 import { makePreview, valueFor } from "../server/data-transfer/validation";
 import { protectedColumn } from "../server/data-transfer/policy";
+import { legacyExclusion } from "./lib/legacy-import-exclusions";
 import type { TransferFile, TransferMapping, TransferSchema, TransferTable } from "../shared/data-transfer";
 
-type Input = { table: string; filename: string; file: TransferFile };
+type Input = {
+  table: string; filename: string; file: TransferFile; originalCount: number;
+  sourceRows: number[]; sourceHash: string;
+};
 const label: Record<string, string> = {
   users: "المستخدمون", customers: "العملاء", customer_products: "منتجات العملاء",
   width: "العرض", left_facing: "الجنب الأيسر", right_facing: "الجنب الأيمن",
@@ -74,19 +79,35 @@ async function graphFor(schema: TransferSchema, names: string[], db: Parameters<
 async function main() {
   const args = process.argv.slice(2);
   if (!args.includes("--read-only")) throw Error("Explicit --read-only flag is required");
+  const applyExclusions = args.includes("--apply-approved-exclusions");
   const outIndex = args.indexOf("--out"), output = args[outIndex + 1];
   const root = path.resolve("generated-artifacts") + path.sep;
   if (outIndex < 0 || !output || !path.resolve(output).startsWith(root) || !output.endsWith(".xlsx"))
     throw Error("Output must be an XLSX file under generated-artifacts/");
-  const inputArgs = args.filter((arg, index) => arg !== "--read-only" && index !== outIndex && index !== outIndex + 1);
+  const inputArgs = args.filter((arg, index) => arg !== "--read-only" && arg !== "--apply-approved-exclusions" &&
+    index !== outIndex && index !== outIndex + 1);
   if (!inputArgs.length || inputArgs.length > 3) throw Error("Provide one to three table=filename inputs");
   const inputs: Input[] = [];
+  const excludedRecords: unknown[][] = [];
   for (const arg of inputArgs) {
     const match = /^(users|customers|customer_products)=(.+\.xlsx)$/.exec(arg);
     if (!match || inputs.some(input => input.table === match[1])) throw Error("Invalid or duplicate source table");
-    const file = await parseFile(await readFile(match[2]), match[2], async () => { throw Error("Only XLSX is accepted"); });
+    const bytes = await readFile(match[2]);
+    const file = await parseFile(bytes, match[2], async () => { throw Error("Only XLSX is accepted"); });
     if (file.tables.length !== 1) throw Error("Each source must contain exactly one data worksheet");
-    inputs.push({ table: match[1], filename: match[2], file });
+    const source = file.tables[0], originalCount = source.rows.length, sourceRows: number[] = [];
+    const retained = source.rows.filter((row, index) => {
+      const reason = applyExclusions ? legacyExclusion(match[1], row) : null;
+      if (reason) {
+        excludedRecords.push([label[match[1]], index + 2, row.id, reason, "استبعاد من نسخة الاستيراد فقط؛ لا حذف من القاعدة"]);
+        return false;
+      }
+      sourceRows.push(index + 2);
+      return true;
+    });
+    inputs.push({ table: match[1], filename: match[2],
+      file: { ...file, tables: [{ ...source, rows: retained }] }, originalCount,
+      sourceRows, sourceHash: createHash("sha256").update(bytes).digest("hex") });
   }
   const db = await pool.connect();
   try {
@@ -116,7 +137,7 @@ async function main() {
           ? "حقل أمني: لا ينقل عبر أداة الجداول" : "حقل محسوب أو غير قابل للكتابة: يحتفظ به الملف الأصلي فقط"]);
       }
       for (let index = 0; index < source.rows.length; index++) {
-        const raw = source.rows[index], row = rows[index], live = current.get(raw.id ?? ""), excelRow = index + 2;
+        const raw = source.rows[index], row = rows[index], live = current.get(raw.id ?? ""), excelRow = input.sourceRows[index];
         for (const column of table.columns.filter(column => column.type === "date" || column.type.startsWith("timestamp"))) {
           const before = raw[column.name];
           if (!before || !mapping.columns[column.name]) continue;
@@ -183,6 +204,10 @@ async function main() {
       ["النطاق", "مراجعة جميع الملفات أولًا بناءً على طلب المستخدم؛ ليس هذا الملف سند تنفيذ استيراد."],
       ["قاعدة البيانات", "لقطة قراءة فقط من قاعدة التطوير الحالية؛ لا تمثل القاعدة المنشورة."],
       ["عدم التغيير", "لم تُعدّل الملفات الأصلية أو السجلات، ولم تُحفظ معاينة أو نسخة في جداول الأداة."],
+      ["الاستبعادات", applyExclusions
+        ? "اعتمد المستخدم استبعاد مستخدمي deleted والمنتجات التي يكون عرضها أو سماكتها صفرًا أو فارغًا من ملفات الاستيراد فقط."
+        : "لم تُطبّق استبعادات على ملفات المصدر في هذا التقرير."],
+      ["حالة الملفات المنقحة", "نسخ مراجعة لا تعني أن جميع الصفوف جاهزة للاستيراد؛ راجع المشكلات المتبقية. لم تُقرّب المقاسات أو تتغيّر حالة الحسابات."],
       ["المعرفات", "المطابقة الرقمية للتشخيص فقط. يجب التحقق من هويات المستخدمين وربط الأدوار والأقسام قبل الاستيراد."],
       ["التواريخ", "أصلح كود الاستيراد فك الاقتباس الزائد. ورقة التواريخ توثق القيم قبل التصحيح وبعده دون تعديل الأصل."],
       ["التصحيحات اليدوية", "استخدم العمود الأخير في أوراق المشكلات لكتابة القيمة أو القرار الصحيح. لا تخمّن الاسم أو المقاس."],
@@ -192,6 +217,9 @@ async function main() {
       ["الأمان", "الحقول الأمنية والمحسوبة غير قابلة للاستيراد؛ لا تُنقل كلمات مرور أو ربط تسجيل الدخول."],
     ]);
     sheet(book, "ملخص", ["الجدول", "صفوف الملف", "معرفات موجودة", "معرفات غير موجودة", "سجلات مرفوضة حاليًا", "سجلات لها فروقات"], summary);
+    sheet(book, "أثر الاستبعاد", ["الجدول", "عدد السجلات الأصلي", "المستبعد", "المتبقي"], inputs.map(input =>
+      [label[input.table], input.originalCount, input.originalCount - input.file.tables[0].rows.length, input.file.tables[0].rows.length]));
+    sheet(book, "السجلات المستبعدة", ["الجدول", "سطر Excel الأصلي", "المعرف", "السبب", "النطاق"], excludedRecords);
     sheet(book, "مشكلات التحقق", ["الجدول", "سطر Excel", "المعرف", "الحقل", "المشكلة", "السبب الفني", "وجود السجل", "المتابعة", "التصحيح المعتمد"], issues);
     sheet(book, "المستخدمون المحذوفون", ["سطر Excel", "المعرف", "اسم المستخدم", "حالة المصدر", "معرف الدور", "اسم الدور في التطوير", "وجود السجل", "ملاحظة", "التوصية", "القرار المعتمد"], accounts);
     sheet(book, "أسماء العملاء الناقصة", ["سطر Excel", "المعرف", "اسم المصدر", "الاسم العربي", "الاسم الحالي", "وجود السجل", "التوصية", "الاسم الصحيح"], names);
@@ -211,11 +239,51 @@ async function main() {
       verify.getWorksheet("مشكلات التحقق")?.rowCount !== issues.length + 1 ||
       verify.getWorksheet("تصحيح التواريخ الآمن")?.rowCount !== corrections.length + 1)
       throw Error("Report row-count verification failed");
+    let archive: string | null = null;
+    if (applyExclusions) {
+      const zip = new JSZip();
+      const manifest: unknown[] = [];
+      for (const input of inputs) {
+        const source = input.file.tables[0], table = schema.tables.find(table => table.name === input.table)!;
+        // Never place authentication/control fields in the new import files.
+        // Retain all other source fields, including images and historical decimals.
+        const headers = source.headers.filter(header => !protectedColumn.test(header));
+        const normalized = source.rows.map(row => Object.fromEntries(headers.map(header => {
+          let value = row[header];
+          const column = table.columns.find(column => column.name === header);
+          if (value && column && (column.type === "date" || column.type.startsWith("timestamp"))) {
+            try { value = valueFor(column, value); } catch { /* Keep invalid values for review, never invent a date. */ }
+          }
+          return [header, value];
+        })));
+        const csv = csvExport(headers, normalized);
+        const roundTrip = await parseFile(Buffer.from(csv), `${input.table}.csv`, async () => { throw Error("Unexpected JSON"); });
+        if (JSON.stringify(roundTrip.tables[0].rows) !== JSON.stringify(normalized) ||
+          roundTrip.tables[0].headers.some(header => protectedColumn.test(header)) ||
+          roundTrip.tables[0].rows.some(row => legacyExclusion(input.table, row)))
+          throw Error("Prepared file failed exact round-trip or exclusion verification");
+        zip.file(`${input.table}.csv`, csv);
+        manifest.push({ table: input.table, originalRows: input.originalCount, rows: normalized.length,
+          excluded: input.originalCount - normalized.length, sourceSHA256: input.sourceHash,
+          csvSHA256: digest(csv), removedSecurityHeaders: source.headers.filter(header => protectedColumn.test(header)) });
+      }
+      zip.file("review.xlsx", await readFile(output));
+      zip.file("manifest.json", JSON.stringify({ reviewOnly: true, databaseWrites: false, files: manifest }, null, 2));
+      zip.file("اقرأني.txt", "هذه نسخ مراجعة وليست موافقة على الاستيراد.\nفك الضغط ثم اختر CSV من بطاقة الجدول المناسبة؛ لا ترفع ZIP في أداة الاستيراد.\nصيغة CSV محمية للحفاظ على النصوص والأرقام الدقيقة؛ يزيل المستورد علامة الحماية تلقائيًا.\nاستبعدت السجلات المحددة حسب الاعتماد وفكت الاقتباسات الزائدة من التواريخ فقط.\nأزيلت حقول الأمان من نسخة المستخدمين. بقيت المقاسات العشرية والصور وباقي القيم دون تغيير.\nلا تزال بعض السجلات تحتاج مراجعة. لا تختَر تطبيق جميع الفروقات تلقائيًا.\nالملفات الأصلية والقاعدة لم تتغير. التقرير يقارن قاعدة التطوير فقط، وليس قاعدة الإنتاج.\n");
+      archive = output.replace(/\.xlsx$/, "-prepared.zip");
+      await writeFile(archive, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+      const reopened = await JSZip.loadAsync(await readFile(archive), { checkCRC32: true });
+      if (!reopened.file("review.xlsx") || inputs.some(input => !reopened.file(`${input.table}.csv`)))
+        throw Error("Prepared archive verification failed");
+    }
+    for (const input of inputs)
+      if (createHash("sha256").update(await readFile(input.filename)).digest("hex") !== input.sourceHash)
+        throw Error("An original source changed during preparation");
     console.log(JSON.stringify({ output, readOnly: true, tables: summary, issueEntries: issues.length,
       affectedAccounts: accounts.length, missingCustomerNames: names.length,
       dimensionEntries: dimensions.length, designImages: images.length,
       identityConflicts: identity.length, temporalCorrections: corrections.length,
-      differences: changes.length, verified: true }));
+      differences: changes.length, excludedRecords: excludedRecords.length, archive, verified: true }));
   } finally {
     await db.query("ROLLBACK").catch(() => undefined);
     db.release();
