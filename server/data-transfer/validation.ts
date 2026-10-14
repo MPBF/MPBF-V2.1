@@ -2,6 +2,24 @@ import type { TransferColumn, TransferFile, TransferMapping, TransferPreviewRow,
 import { approved, hash, type Snapshot } from "./schema";
 import { fail, MAX_ROWS, privateSettingKey } from "./policy";
 
+// Legacy spreadsheets serialize Date values as JSON strings (including quotes).
+// Decode only temporal columns; ordinary text and JSON must remain exact.
+function temporalText(value: string): string {
+  const text = value.trim();
+  if (!text.startsWith('"')) return text;
+  try {
+    const decoded: unknown = JSON.parse(text);
+    if (typeof decoded === "string") return decoded;
+  } catch { /* The temporal validator below rejects malformed quoted values. */ }
+  return text;
+}
+
+function validCalendarDay(year: number, month: number, day: number): boolean {
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1 &&
+    day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+}
+
 export function valueFor(column: TransferColumn, value: unknown): string | null {
   if (value === null) {
     if (!column.nullable) fail("Required field cannot be cleared");
@@ -28,9 +46,21 @@ export function valueFor(column: TransferColumn, value: unknown): string | null 
     return ["true", "t"].includes(value) ? "t" : "f";
   }
   if (column.type === "date") {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || new Date(value).toISOString().slice(0, 10) !== value) fail("Invalid ISO date");
+    const text = temporalText(value);
+    const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    if (!date || !validCalendarDay(Number(date[1]), Number(date[2]), Number(date[3]))) fail("Invalid ISO date");
+    return text;
   }
-  if (column.type.startsWith("timestamp") && (!/^\d{4}-\d{2}-\d{2}[T ]/.test(value) || !Number.isFinite(Date.parse(value)))) fail("Invalid ISO timestamp");
+  if (column.type.startsWith("timestamp")) {
+    const text = temporalText(value);
+    const stamp = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(?:Z|([+-])(\d{2})(?::?(\d{2}))?)?$/.exec(text);
+    if (!stamp || !validCalendarDay(Number(stamp[1]), Number(stamp[2]), Number(stamp[3])) ||
+      Number(stamp[4]) > 23 || Number(stamp[5]) > 59 || Number(stamp[6]) > 59 ||
+      (stamp[9] !== undefined && (Number(stamp[9]) > 15 || Number(stamp[10] ?? 0) > 59)))
+      fail("Invalid ISO timestamp");
+    // Keep offset, wall-clock time and microsecond precision; never round via Date.
+    return text;
+  }
   if (["json", "jsonb"].includes(column.type)) {
     let parsed: unknown;
     try { parsed = JSON.parse(value); } catch { fail("Invalid JSON value"); }

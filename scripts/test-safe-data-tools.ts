@@ -91,6 +91,34 @@ try {
   await pool.query(readFileSync("migrations/0020_data_transfer.sql","utf8"));
   await pool.query(readFileSync("migrations/0021_finished_deliveries.sql","utf8"));
   version=(await tools.schema()).version;
+  await test("legacy quoted dates import exactly without accepting invalid calendar dates or changing ordinary text",async()=>{
+    const schema=await tools.schema();
+    const timestamp=schema.tables.find(t=>t.name==="customers")!.columns.find(c=>c.name==="created_at")!;
+    const date={...timestamp,type:"date"};
+    for(const text of ["2026-01-22T18:12:57.076Z","2024-02-29 23:59:59.123456+03","2026-10-13 01:02:03-05:30"]){
+      assert.equal(valueFor(timestamp,text),text);
+      assert.equal(valueFor(timestamp,JSON.stringify(text)),text);
+    }
+    assert.equal(valueFor(date,'"2024-02-29"'),"2024-02-29");
+    const textColumn={...timestamp,type:"text"};
+    assert.equal(valueFor(textColumn,'"2026-01-22T18:12:57.076Z"'),'"2026-01-22T18:12:57.076Z"');
+    for(const bad of ["2026-02-29T00:00:00Z","2026-02-30 00:00:00","2026-13-01T12:00:00Z","2026-01-22T24:00:00Z",
+      "2026-01-22T00:60:00Z","2026-01-22T00:00:60Z","2026-01-22T00:00:00+16:00","2026-01-22T00:00:00+03:99",
+      "2026-01-22T00:00:00Z extra",'"2026-01-22T00:00:00Z',JSON.stringify('"2026-01-22T00:00:00Z"'),"null","45678"]){
+      assert.throws(()=>valueFor(timestamp,bad),/Invalid ISO timestamp/);
+    }
+    for(const bad of ["2026-02-29","2026-02-30","2026-00-01","0000-01-01","not-a-date"])
+      assert.throws(()=>valueFor(date,bad),/Invalid ISO date/);
+    const wb=new ExcelJS.Workbook(),sheet=wb.addWorksheet("customers");
+    sheet.addRow(["id","name","created_at"]);
+    sheet.addRow(["LEGACY-DATE-TEST","Legacy date fixture",'"2026-01-22T18:12:57.076Z"']);
+    const parsed=await tools.readFile(1,Buffer.from(await wb.xlsx.writeBuffer()),"legacy-dates.xlsx");
+    const p=await tools.preview(1,version,parsed,[mapping("customers",["id","name","created_at"],"customers")]);
+    assert.equal(p.rows[0].status,"new");
+    assert.equal(p.rows[0].values.created_at,"2026-01-22T18:12:57.076Z");
+    await tools.apply(1,p.id,[],true);
+    assert.equal((await query("SELECT to_char(created_at,'YYYY-MM-DD HH24:MI:SS.MS') stamp FROM customers WHERE id='LEGACY-DATE-TEST'"))[0].stamp,"2026-01-22 18:12:57.076");
+  });
   await test("business tables and accounts are importable; secrets, internal tables and computed writes remain excluded",async()=>{
     const s=await tools.schema();
     assert.equal(s.ready,true);assert(!s.tables.some(t=>["sessions","data_transfer_previews","order_number_allocations"].includes(t.name)));
