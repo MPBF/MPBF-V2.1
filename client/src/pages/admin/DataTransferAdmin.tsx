@@ -25,6 +25,8 @@ const groups: Record<string, [string, string]> = {
 };
 const knownErrors: Record<string, [string, string]> = {
   "Unsafe identifier": ["اسم حقل غير آمن", "Unsafe field identifier"],
+  "Invalid ISO timestamp": ["التاريخ والوقت غير صالحين. استخدم تاريخًا مثل 2026-01-22T18:12:57.076Z.", "Invalid date and time. Use a timestamp such as 2026-01-22T18:12:57.076Z."],
+  "Invalid ISO date": ["التاريخ غير صالح. استخدم الصيغة سنة-شهر-يوم، مثل 2026-01-22.", "Invalid date. Use year-month-day, such as 2026-01-22."],
   "File too large": ["حجم الملف يتجاوز الحد المسموح", "The file exceeds the allowed size"],
   "Too many rows": ["عدد الصفوف يتجاوز الحد المسموح", "The file contains too many rows"],
   "Unsupported file type": ["نوع الملف غير مدعوم", "Unsupported file type"],
