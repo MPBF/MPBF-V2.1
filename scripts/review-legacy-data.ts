@@ -17,7 +17,7 @@ import { discover, readRows, type Snapshot } from "../server/data-transfer/schem
 import { csvExport, parseFile } from "../server/data-transfer/files";
 import { makePreview, valueFor } from "../server/data-transfer/validation";
 import { protectedColumn } from "../server/data-transfer/policy";
-import { legacyExclusion } from "./lib/legacy-import-exclusions";
+import { keepCurrentProductDimensions, legacyExclusion, productDimensionFields } from "./lib/legacy-import-exclusions";
 import type { TransferFile, TransferMapping, TransferSchema, TransferTable } from "../shared/data-transfer";
 
 type Input = {
@@ -80,11 +80,13 @@ async function main() {
   const args = process.argv.slice(2);
   if (!args.includes("--read-only")) throw Error("Explicit --read-only flag is required");
   const applyExclusions = args.includes("--apply-approved-exclusions");
+  const preserveDimensions = args.includes("--preserve-current-dimensions");
   const outIndex = args.indexOf("--out"), output = args[outIndex + 1];
   const root = path.resolve("generated-artifacts") + path.sep;
   if (outIndex < 0 || !output || !path.resolve(output).startsWith(root) || !output.endsWith(".xlsx"))
     throw Error("Output must be an XLSX file under generated-artifacts/");
   const inputArgs = args.filter((arg, index) => arg !== "--read-only" && arg !== "--apply-approved-exclusions" &&
+    arg !== "--preserve-current-dimensions" &&
     index !== outIndex && index !== outIndex + 1);
   if (!inputArgs.length || inputArgs.length > 3) throw Error("Provide one to three table=filename inputs");
   const inputs: Input[] = [];
@@ -114,6 +116,27 @@ async function main() {
     await db.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const schema = await discover(db);
     const graph = await graphFor(schema, [...inputs.map(input => input.table), "roles", "sections"], db);
+    const dimensionCorrections: unknown[][] = [], pendingDimensions: unknown[][] = [];
+    const preservedProductIds = new Set<string>();
+    if (preserveDimensions) {
+      const input = inputs.find(input => input.table === "customer_products");
+      if (input) {
+        const current = new Map(graph.customer_products.map(row => [row.id, row]));
+        input.file.tables[0].rows = input.file.tables[0].rows.map((source, index) => {
+          const result = keepCurrentProductDimensions(source, current.get(source.id ?? ""));
+          if (result.pending) pendingDimensions.push([input.sourceRows[index], source.id, result.pending, ""]);
+          if (result.preserved) {
+            preservedProductIds.add(source.id!);
+            for (const field of productDimensionFields) {
+              if (field in source && source[field] !== result.row[field])
+                dimensionCorrections.push([input.sourceRows[index], source.id, field,
+                  display(source[field]), display(result.row[field]), "اعتماد مقاس القاعدة الحالية في نسخة الاستيراد فقط"]);
+            }
+          }
+          return result.row;
+        });
+      }
+    }
     const mappings = inputs.map(input => mappingFor(schema.tables.find(table => table.name === input.table)!, input.file));
     const combined: TransferFile = { source: "external", tables: inputs.flatMap(input => input.file.tables) };
     // Diagnostic matching only: local numeric IDs are NOT approved for actual import.
@@ -208,6 +231,9 @@ async function main() {
         ? "اعتمد المستخدم استبعاد مستخدمي deleted والمنتجات التي يكون عرضها أو سماكتها صفرًا أو فارغًا من ملفات الاستيراد فقط."
         : "لم تُطبّق استبعادات على ملفات المصدر في هذا التقرير."],
       ["حالة الملفات المنقحة", "نسخ مراجعة لا تعني أن جميع الصفوف جاهزة للاستيراد؛ راجع المشكلات المتبقية. لم تُقرّب المقاسات أو تتغيّر حالة الحسابات."],
+      ["اعتماد المقاسات الحالية", preserveDimensions
+        ? "ثبتت المقاسات الحالية للمنتجات الموجودة ذات الكسور حسب الاعتماد. المنتجات غير الموجودة لم تعطَ مقاسات تخمينية؛ راجع ورقة المقاسات المعلقة."
+        : "لم يعتمد تغيير المقاسات إلى مقاسات القاعدة الحالية في هذه النسخة."],
       ["المعرفات", "المطابقة الرقمية للتشخيص فقط. يجب التحقق من هويات المستخدمين وربط الأدوار والأقسام قبل الاستيراد."],
       ["التواريخ", "أصلح كود الاستيراد فك الاقتباس الزائد. ورقة التواريخ توثق القيم قبل التصحيح وبعده دون تعديل الأصل."],
       ["التصحيحات اليدوية", "استخدم العمود الأخير في أوراق المشكلات لكتابة القيمة أو القرار الصحيح. لا تخمّن الاسم أو المقاس."],
@@ -224,6 +250,8 @@ async function main() {
     sheet(book, "المستخدمون المحذوفون", ["سطر Excel", "المعرف", "اسم المستخدم", "حالة المصدر", "معرف الدور", "اسم الدور في التطوير", "وجود السجل", "ملاحظة", "التوصية", "القرار المعتمد"], accounts);
     sheet(book, "أسماء العملاء الناقصة", ["سطر Excel", "المعرف", "اسم المصدر", "الاسم العربي", "الاسم الحالي", "وجود السجل", "التوصية", "الاسم الصحيح"], names);
     sheet(book, "مقاسات تحتاج مراجعة", ["سطر Excel", "معرف المنتج", "الحقل", "الاسم", "قيمة المصدر", "قيمة التطوير", "التصنيف", "التوصية", "القرار أو المقاس الصحيح"], dimensions);
+    sheet(book, "المقاسات الحالية المعتمدة", ["سطر Excel", "معرف المنتج", "الحقل", "قيمة الملف الأصلية", "قيمة النسخة المصححة", "الاعتماد"], dimensionCorrections);
+    sheet(book, "المقاسات المعلقة", ["سطر Excel", "معرف المنتج", "سبب التعليق", "القرار المعتمد"], pendingDimensions);
     sheet(book, "صور التصاميم", ["سطر Excel", "معرف المنتج", "الحقل", "عدد الحروف", "نوع الصورة", "SHA256", "المقارنة", "التوصية", "القرار المعتمد"], images);
     sheet(book, "تطابق هويات المستخدمين", ["الجدول", "سطر Excel", "المعرف", "الحقل", "قيمة التطوير", "قيمة المصدر", "التحذير"], identity);
     sheet(book, "الحقول المستثناة", ["الجدول", "الحقل", "السبب"], excluded);
@@ -268,8 +296,12 @@ async function main() {
           csvSHA256: digest(csv), removedSecurityHeaders: source.headers.filter(header => protectedColumn.test(header)) });
       }
       zip.file("review.xlsx", await readFile(output));
-      zip.file("manifest.json", JSON.stringify({ reviewOnly: true, databaseWrites: false, files: manifest }, null, 2));
-      zip.file("اقرأني.txt", "هذه نسخ مراجعة وليست موافقة على الاستيراد.\nفك الضغط ثم اختر CSV من بطاقة الجدول المناسبة؛ لا ترفع ZIP في أداة الاستيراد.\nصيغة CSV محمية للحفاظ على النصوص والأرقام الدقيقة؛ يزيل المستورد علامة الحماية تلقائيًا.\nاستبعدت السجلات المحددة حسب الاعتماد وفكت الاقتباسات الزائدة من التواريخ فقط.\nأزيلت حقول الأمان من نسخة المستخدمين. بقيت المقاسات العشرية والصور وباقي القيم دون تغيير.\nلا تزال بعض السجلات تحتاج مراجعة. لا تختَر تطبيق جميع الفروقات تلقائيًا.\nالملفات الأصلية والقاعدة لم تتغير. التقرير يقارن قاعدة التطوير فقط، وليس قاعدة الإنتاج.\n");
+      zip.file("manifest.json", JSON.stringify({ reviewOnly: true, databaseWrites: false,
+        preserveCurrentDimensions: preserveDimensions, preservedProductIds: [...preservedProductIds],
+        pendingDimensionProducts: pendingDimensions.length, files: manifest }, null, 2));
+      zip.file("اقرأني.txt", "هذه نسخ مراجعة وليست موافقة على الاستيراد.\nفك الضغط ثم اختر CSV من بطاقة الجدول المناسبة؛ لا ترفع ZIP في أداة الاستيراد.\nصيغة CSV محمية للحفاظ على النصوص والأرقام الدقيقة؛ يزيل المستورد علامة الحماية تلقائيًا.\nاستبعدت السجلات المحددة حسب الاعتماد وفكت الاقتباسات الزائدة من التواريخ فقط.\nأزيلت حقول الأمان من نسخة المستخدمين. الصور وباقي القيم محفوظة دون تغيير.\n" +
+        (preserveDimensions ? "اعتمدت المقاسات الحالية في نسخة الاستيراد للمنتجات الموجودة ذات الكسور دون تقريب؛ الحالات التي لا يوجد لها مقاس حالي موثقة ومعلقة في التقرير.\n" : "لم تغير المقاسات العشرية.\n") +
+        "لا تزال بعض السجلات تحتاج مراجعة. لا تختَر تطبيق جميع الفروقات تلقائيًا.\nالملفات الأصلية والقاعدة لم تتغير. التقرير يقارن قاعدة التطوير فقط، وليس قاعدة الإنتاج.\n");
       archive = output.replace(/\.xlsx$/, "-prepared.zip");
       await writeFile(archive, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
       const reopened = await JSZip.loadAsync(await readFile(archive), { checkCRC32: true });
@@ -283,7 +315,9 @@ async function main() {
       affectedAccounts: accounts.length, missingCustomerNames: names.length,
       dimensionEntries: dimensions.length, designImages: images.length,
       identityConflicts: identity.length, temporalCorrections: corrections.length,
-      differences: changes.length, excludedRecords: excludedRecords.length, archive, verified: true }));
+      differences: changes.length, excludedRecords: excludedRecords.length,
+      preservedProductDimensions: preservedProductIds.size, pendingDimensionProducts: pendingDimensions.length,
+      archive, verified: true }));
   } finally {
     await db.query("ROLLBACK").catch(() => undefined);
     db.release();
