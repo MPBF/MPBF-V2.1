@@ -98,3 +98,31 @@ mtime_ms = 1791960657622
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/20b533ac-a907-429b-9325-059091c5e4ca/3b7e4a1e-d9ed-4bf9-9c41-aa41bd04fc91"
 storage_version_token = "1791960720263003"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "kS-9jPZRzUUhNGMPM6AzY"
+uri = "file://generated-artifacts/legacy-import-current-dimensions-review-prepared.zip"
+type = "unspecified"
+title = "حزمة المراجعة مع اعتماد المقاسات الحالية"
+description = "تثبيت المقاسات الحالية لـ33 منتجًا، مع إبقاء المنتج 20552 معلقًا. تضم ملفات CSV وتقريرًا محدثًا؛ لم تتغير قاعدة البيانات أو الملفات الأصلية."
+logical_id = "4d2d80fb-4d63-4cf4-8c5f-2682fd127171"
+content_hash = "sha256:17b2d55b0b00925851ee0594d16b8a66e87e714fdaca71ee8d587290653cc07a"
+size = 1421505
+mtime_ms = 1791960979191
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/4d2d80fb-4d63-4cf4-8c5f-2682fd127171/38ad26cb-19b4-4db1-b67d-b385eda801c8"
+storage_version_token = "1791961087554598"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "x2azaFxmosgtTZinv9H7l"
+uri = "file://generated-artifacts/legacy-import-current-dimensions-review.xlsx"
+type = "table"
+title = "تقرير المقاسات المعتمدة والمشكلات المتبقية"
+description = "توثيق المقاسات التي ثبتت في نسخ التجهيز، والمنتج غير الموجود حاليًا، وأسماء العملاء الناقصة وبقية عوائق الاستيراد."
+logical_id = "00db8eb8-aa4a-43c4-bcae-b53fd2dcf039"
+content_hash = "sha256:e3326e58cd28a6fac4914e2ac1af8ece614bd127d217c4209e8aaab82fe8dd90"
+size = 288815
+mtime_ms = 1791960978011
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/00db8eb8-aa4a-43c4-bcae-b53fd2dcf039/3723efde-b281-4177-9e61-f54850018852"
+storage_version_token = "1791961088966686"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
