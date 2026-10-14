@@ -49,6 +49,7 @@ const WebSocket = require("ws");
     let failSave = false;
     let staleProduction = false;
     let profileProducts = [];
+    let nextCustomerNumber = 333;
     let customer = { id: "CID010", name: "Existing Customer", name_ar: "عميل تجريبي", phone: "0501234567",
       sales_rep_id: 7, sales_rep_name_ar: "مندوب تجريبي", is_active: true };
     let production = { id: 8, production_order_number: "123-01", order_id: 7, order_number: "123",
@@ -72,7 +73,7 @@ const WebSocket = require("ws");
         const payload = JSON.parse(request.postData);
         writes.push({ route, method: request.method, payload });
         status = failSave ? 400 : 201;
-        data = failSave ? { message: "فشل الحفظ التجريبي" } : (customer = { ...payload, id: "CID333" });
+        data = failSave ? { message: "فشل الحفظ التجريبي" } : (customer = { ...payload, id: `CID${nextCustomerNumber++}` });
       } else if (/^\/customers\/[^/]+\/detail$/.test(route)) data = { customer, products: profileProducts };
       else if (route === "/customers/CID010" && request.method === "PUT") {
         const payload = JSON.parse(request.postData);
@@ -120,12 +121,13 @@ const WebSocket = require("ws");
         if (await evaluate(expression)) return;
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
+      console.error("Browser wait diagnostics", await evaluate("({dialogs:[...document.querySelectorAll('[role=dialog]')].map(e=>({className:e.className,inert:e.inert,text:e.textContent.slice(0,200)})),active:document.activeElement?.outerHTML.slice(0,250)})"), errors, requests.slice(-5));
       throw new Error(`Timed out: ${expression}`);
     };
     const origin = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "http://127.0.0.1:5000";
     const navigate = async (route) => { await send("Page.navigate", { url: origin + route }); await wait("!!document.querySelector('.shell')"); };
     const click = async (selector) => evaluate(`(()=>{const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.offsetParent!==null);if(!e)throw Error('No visible button');e.click();return true})()`);
-    const input = async (selector, value) => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const p=e.tagName==='SELECT'?HTMLSelectElement:HTMLInputElement;Object.getOwnPropertyDescriptor(p.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}));return true})()`);
+    const input = async (selector, value) => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const p=e.tagName==='SELECT'?HTMLSelectElement:e.tagName==='TEXTAREA'?HTMLTextAreaElement:HTMLInputElement;Object.getOwnPropertyDescriptor(p.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}));return true})()`);
     const close = async () => { await click('[role="dialog"] header button'); await wait("!document.querySelector('[role=dialog]')"); };
     const openCustomer = async () => {
       await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('إضافة عميل')).click()");
@@ -236,6 +238,75 @@ const WebSocket = require("ws");
       await evaluate("document.getElementById('cp-right').scrollIntoView({block:'center'})");
       await screenshot(`product-facing-rules-${width}`);
     }
+    await input("#cp-width", "30");
+    await input("#cp-right", "5");
+    await input("#cp-left", "5");
+    await input("#cp-unit-weight", "0.25");
+    await input("#cp-unit-quantity", "5");
+    await input(".cp-modal textarea", "Keep the product draft during customer creation");
+    const inlineStart = writes.length;
+    const selectedBeforeInline = await evaluate("document.querySelector('#cp-customer').textContent");
+    await click("#cp-customer");
+    await wait("!!document.querySelector('.cp-customer-menu input')");
+    await input(".cp-customer-menu input", "Unregistered inline fixture");
+    verify("create action remains available with no matching customers",
+      await evaluate("document.querySelectorAll('#cp-customer-options [role=option]').length===0&&[...document.querySelectorAll('.cp-customer-menu button')].some(b=>b.textContent.includes('إضافة عميل جديد'))"));
+    verify("create action is outside the selectable customer list",
+      await evaluate("![...document.querySelectorAll('.cp-customer-menu button')].find(b=>b.textContent.includes('إضافة عميل جديد')).closest('[role=listbox]')"));
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+    verify("keyboard reaches add-customer action",
+      await evaluate("document.activeElement.textContent.includes('إضافة عميل جديد')"));
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: "\r", unmodifiedText: "\r" });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+    await wait("!!document.querySelector('.customer-modal')&&!document.querySelector('.customer-modal-submit').disabled");
+    verify("parent product dialog is inert while adding a customer",
+      await evaluate("document.querySelector('.cp-modal').inert"));
+    for (const width of [390, 768, 1280]) {
+      await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      verify(`nested customer dialog fits ${width}px`,
+        await evaluate("(()=>{const r=document.querySelector('.customer-modal').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&document.documentElement.scrollWidth<=innerWidth})()"));
+      await screenshot(`inline-customer-${width}`);
+    }
+    await input("#customer-name", "Cancelled inline fixture");
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await wait("!document.querySelector('.customer-modal')&&document.activeElement.id==='cp-customer'");
+    verify("Escape cancels only the child, preserving the product and selection",
+      await evaluate(`!!document.querySelector('.cp-modal')&&!document.querySelector('.cp-modal').inert&&document.querySelector('#cp-customer').textContent===${JSON.stringify(selectedBeforeInline)}&&document.querySelector('.cp-modal textarea').value==='Keep the product draft during customer creation'`));
+    verify("cancelled inline customer causes no writes", writes.length, inlineStart);
+    await click("#cp-customer");
+    await wait("!!document.querySelector('.cp-customer-menu')");
+    await evaluate("[...document.querySelectorAll('.cp-customer-menu button')].find(b=>b.textContent.includes('إضافة عميل جديد')).click()");
+    await wait("!!document.querySelector('.customer-modal')&&!document.querySelector('.customer-modal-submit').disabled");
+    await input("#customer-name", "Inline saved customer");
+    await input("#customer-name-ar", "عميل من القائمة");
+    await input("#customer-drawer-letter", "C");
+    await input("#customer-drawer-number", "24");
+    failSave = true;
+    await click(".customer-modal-submit");
+    await wait("!!document.querySelector('.customer-modal-save-error')&&!document.querySelector('.customer-modal-submit').disabled");
+    verify("inline customer failure keeps both forms and input values",
+      await evaluate("!!document.querySelector('.cp-modal')&&document.querySelector('#customer-name').value==='Inline saved customer'&&document.querySelector('#cp-width').value==='30'"));
+    failSave = false;
+    const beforeInlineSave = writes.length;
+    await evaluate("(()=>{const button=document.querySelector('.customer-modal-submit');button.click();button.click()})()");
+    await wait("!document.querySelector('.customer-modal')&&document.querySelector('#cp-customer').textContent.includes('عميل من القائمة')");
+    verify("inline customer saves once and is automatically selected", writes.length, beforeInlineSave + 1);
+    verify("inline customer uses existing API and drawer formatting",
+      writes.at(-1).route === "/customers" && writes.at(-1).payload.plate_drawer_code === "C-24");
+    verify("all entered product data remains unchanged",
+      await evaluate("document.querySelector('#cp-width').value==='30'&&document.querySelector('#cp-right').value==='5'&&document.querySelector('#cp-left').value==='5'&&document.querySelector('#cp-unit-weight').value==='0.25'&&document.querySelector('#cp-unit-quantity').value==='5'&&document.querySelector('.cp-modal textarea').value==='Keep the product draft during customer creation'"));
+    await wait("document.activeElement.id==='cp-customer'");
+    await click("#cp-customer");
+    await wait("!!document.getElementById('cp-customer-option-CID334')");
+    verify("saved customer occurs once in the dropdown",
+      await evaluate("document.querySelectorAll('#cp-customer-option-CID334').length"), 1);
+    await click(".cp-close");
+    await wait("!document.querySelector('.cp-modal')");
+    verify("customer persists independently after cancelling product",
+      customer.id === "CID334" && customer.name === "Inline saved customer");
+    verify("inline flow never submits a product or deletes the customer",
+      writes.slice(inlineStart).every(write => write.route === "/customers" && write.method === "POST"));
     await navigate("/customers");
     failReps = true;
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('إضافة عميل')).click()");

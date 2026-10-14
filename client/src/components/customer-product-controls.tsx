@@ -8,10 +8,11 @@ type CustomerPickerProps = {
   value: string;
   onChange: (id: string) => void;
   labelFor: (customer: Customer) => string;
+  onCreate?: () => void;
 };
 
 /** Search belongs to the dropdown, not to a second standalone form field. */
-export function CustomerPicker({ customers, value, onChange, labelFor }: CustomerPickerProps) {
+export function CustomerPicker({ customers, value, onChange, labelFor, onCreate }: CustomerPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -100,6 +101,11 @@ export function CustomerPicker({ customers, value, onChange, labelFor }: Custome
         </button>)}
         {!filtered.length && <div className="cp-customer-empty">{translate("لا يوجد عملاء مطابقون للبحث.")}</div>}
       </div>
+      {onCreate && <button type="button" className="cp-customer-create" onClick={() => {
+        setOpen(false);
+        setQuery("");
+        onCreate();
+      }}>{translate("إضافة عميل جديد")}</button>}
     </div>}
   </div>;
 }
