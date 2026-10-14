@@ -1,6 +1,7 @@
 import { localizedName, translate, translateError } from "../i18n";
 import { LoaderCircle, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { DRAWER_LETTERS, DRAWER_NUMBERS, joinDrawerCode, splitDrawerCode } from "../../../shared/customer-drawer";
 
 import "./CustomerModal.css";
 
@@ -18,6 +19,8 @@ type CustomerForm = {
   sales_rep_id: string;
   city: string;
   is_active: boolean;
+  drawer_letter: string;
+  drawer_number: string;
 };
 
 const toText = (value: unknown) => value == null ? "" : String(value);
@@ -25,6 +28,7 @@ const toBoolean = (value: unknown) => value === true || value === 1 || value ===
 const editableTextKeys = ["name", "name_ar", "tax_number", "phone", "city"] as const;
 
 function initialForm(row: Row): CustomerForm {
+  const drawer = splitDrawerCode(row.plate_drawer_code);
   return {
     name: toText(row.name),
     name_ar: toText(row.name_ar),
@@ -33,6 +37,8 @@ function initialForm(row: Row): CustomerForm {
     sales_rep_id: row.sales_rep_id == null ? "" : String(row.sales_rep_id),
     city: toText(row.city),
     is_active: row.id ? toBoolean(row.is_active) : true,
+    drawer_letter: drawer.letter,
+    drawer_number: drawer.number,
   };
 }
 
@@ -55,11 +61,14 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [drawerEdited, setDrawerEdited] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const saveLock = useRef(false);
   const live = useRef(true);
   const titleId = "customer-modal-title";
+  const originalDrawer = toText(row.plate_drawer_code);
+  const parsedOriginalDrawer = splitDrawerCode(row.plate_drawer_code);
 
   useEffect(() => {
     live.current = true;
@@ -106,6 +115,12 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
     setSaveError("");
   };
 
+  const setDrawer = (key: "drawer_letter" | "drawer_number", value: string) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setDrawerEdited(true);
+    setSaveError("");
+  };
+
   const close = () => { if (!saveLock.current) onClose(); };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -138,6 +153,10 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
     const name = form.name.trim();
     const nameAr = form.name_ar.trim();
     if (!name) { setSaveError(translate("اسم العميل بالإنجليزية مطلوب.")); return; }
+    if (Boolean(form.drawer_letter) !== Boolean(form.drawer_number)) {
+      setSaveError(translate("اختر حرف الدرج ورقمه معًا."));
+      return;
+    }
     const limits: Record<(typeof editableTextKeys)[number], number> = { name: 200, name_ar: 200, tax_number: 20, phone: 20, city: 50 };
     const invalidLength = editableTextKeys.some((key) =>
       (!editing || form[key] !== toText(row[key])) && form[key].trim().length > limits[key],
@@ -153,6 +172,10 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
     }
 
     let payload: Record<string, unknown>;
+    const drawerCode = joinDrawerCode(form.drawer_letter, form.drawer_number);
+    const drawerSelectionMatchesOriginal = Boolean(parsedOriginalDrawer.letter)
+      && parsedOriginalDrawer.letter === form.drawer_letter
+      && parsedOriginalDrawer.number === form.drawer_number;
     if (editing) {
       payload = {};
       for (const key of editableTextKeys) {
@@ -161,6 +184,9 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
       }
       if (currentRep !== originalRep) payload.sales_rep_id = currentRep;
       if (form.is_active !== toBoolean(row.is_active)) payload.is_active = form.is_active;
+      if (drawerEdited && !drawerSelectionMatchesOriginal) {
+        payload.plate_drawer_code = drawerCode;
+      }
     } else {
       payload = {
         name,
@@ -170,6 +196,7 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
         sales_rep_id: currentRep,
         city: form.city.trim(),
         is_active: form.is_active,
+        plate_drawer_code: drawerCode,
       };
     }
 
@@ -263,6 +290,27 @@ export default function CustomerModal({ row, onClose, onSaved }: { row: Row; onC
               <input id="customer-active" type="checkbox" checked={form.is_active} onChange={(event) => set("is_active", event.target.checked)} />
               <span><strong>{translate("عميل نشط")}</strong><small>{translate("يمكن استخدامه في الطلبات الجديدة")}</small></span>
             </label>
+          </div>
+
+          <div className="customer-modal-grid customer-modal-drawer">
+            <div className="field">
+              <label htmlFor="customer-drawer-letter">{translate("حرف الدرج")}</label>
+              <select id="customer-drawer-letter" value={form.drawer_letter} onChange={(event) => setDrawer("drawer_letter", event.target.value)} dir="ltr">
+                <option value="">{translate("اختر")}</option>
+                {DRAWER_LETTERS.map((letter) => <option key={letter} value={letter}>{letter}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="customer-drawer-number">{translate("رقم الدرج")}</label>
+              <select id="customer-drawer-number" value={form.drawer_number} onChange={(event) => setDrawer("drawer_number", event.target.value)} dir="ltr">
+                <option value="">{translate("اختر")}</option>
+                {DRAWER_NUMBERS.map((number) => <option key={number} value={number}>{number}</option>)}
+              </select>
+            </div>
+            {editing && originalDrawer && !parsedOriginalDrawer.letter && <p className="customer-modal-drawer-legacy">
+              <span>{translate("القيمة القديمة محفوظة كما هي حتى تختار بديلاً.")}</span>
+              <bdi dir="ltr">{originalDrawer}</bdi>
+            </p>}
           </div>
         </div>
 

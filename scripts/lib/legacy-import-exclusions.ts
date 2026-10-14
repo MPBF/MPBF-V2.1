@@ -1,6 +1,20 @@
 import type { TransferRow } from "../../shared/data-transfer";
 
 export const productDimensionFields = ["width", "left_facing", "right_facing", "thickness", "cutting_length_cm"] as const;
+export const productDesignFields = ["cliche_front_design", "cliche_back_design"] as const;
+
+export function omitProductDesigns(source: TransferRow) {
+  const row = { ...source };
+  const omitted: { field: string; value: string }[] = [];
+  for (const field of productDesignFields) {
+    if (!(field in source)) continue;
+    const value = source[field];
+    if (value) omitted.push({ field, value });
+    // Blank cells mean "do not import this field", not an explicit null/clear.
+    row[field] = "";
+  }
+  return { row, omitted };
+}
 
 export function roundProductDimensions(source: TransferRow) {
   const row = { ...source };
