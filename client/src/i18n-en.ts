@@ -59,6 +59,7 @@ const english: Record<string, string> = {
   "إضافة دور": "Add role",
   "إضافة سجل يدوي": "Add manual record",
   "إضافة عميل": "Add customer",
+  "إضافة عميل جديد": "Add new customer",
   "إضافة مستخدم": "Add user",
   "إضافة منتج": "Add product",
   "إضافة منتج عميل": "Add customer product",
