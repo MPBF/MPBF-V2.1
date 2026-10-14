@@ -56,3 +56,17 @@ mtime_ms = 1791309429000
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/e2e09243-ef17-499b-9ea9-3a42388e15ce/468751cf-866b-4af0-967d-622a89898e5b"
 storage_version_token = "1791309504875216"
 content_type = "text/html"
+
+[[outputs]]
+id = "U2D7FxON7zqU7LVW_VPpJ"
+uri = "file://generated-artifacts/legacy-import-review.xlsx"
+type = "table"
+title = "تقرير مراجعة بيانات القاعدة القديمة"
+description = "مراجعة الملفات الثلاثة مقابل قاعدة التطوير دون تعديل البيانات: مشكلات السجلات، المقاسات، المستخدمون المحذوفون، أسماء العملاء الناقصة، التصاميم، التواريخ والفروقات المقترحة. يتضمن خانات للتصحيحات المعتمدة."
+logical_id = "d3bae342-cb3b-4cd4-99b2-184165de0bc4"
+content_hash = "sha256:c4213def24afe4501e9a9439d0266f368a0b64e606ca366ab988bff621460797"
+size = 292416
+mtime_ms = 1791956206522
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:387ffb13-d9dd-4ad4-b62d-111597ce2ce4/d3bae342-cb3b-4cd4-99b2-184165de0bc4/044b28d8-86f7-4f0f-a7b6-44f93d26fc41"
+storage_version_token = "1791956350161322"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
