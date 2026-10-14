@@ -1,6 +1,6 @@
 import { localizedName, translate, translateError } from "../i18n";
 import { AlertCircle, Check, ChevronDown, CircleHelp, FileImage, LoaderCircle, Package, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type SyntheticEvent, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type SyntheticEvent, type KeyboardEvent } from "react";
 
 import { PRINTING_CYLINDERS, customerProductFacingNotice, deriveCustomerProductFields, isManualCuttingProduct, punchingOptions, type ProductInput } from "../../../shared/customer-product-fields";
 
@@ -8,6 +8,7 @@ import { buildCustomerProductDirtyPayload, buildCustomerProductPayload, customer
 import { CustomerPicker, ProductValueSelect, PRODUCT_SELECT_VALUES, unitWeightLabel } from "./customer-product-controls";
 import "./CustomerProductModal.css";
 import MasterBatchSwatch from "./MasterBatchSwatch";
+import CustomerModal from "./CustomerModal";
 
 type Row = Record<string, any>;
 type Props = {
@@ -68,6 +69,7 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
   const [error, setError] = useState("");
   const [facingWarning, setFacingWarning] = useState("");
   const [saving, setSaving] = useState(false);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const [imageStatus, setImageStatus] = useState<Record<Side, ImageStatus>>({ front: { loading: false, error: "" }, back: { loading: false, error: "" } });
   const [newFrontColor, setNewFrontColor] = useState("#bd4e41");
@@ -81,6 +83,7 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
   const fileTokens = useRef<Record<Side, number>>({ front: 0, back: 0 });
   const live = useRef(true);
   const saveLock = useRef(false);
+  const restoreCustomerFocus = useRef(false);
   const warningRef = useRef<HTMLDivElement>(null);
   const titleId = "customer-product-title";
 
@@ -94,6 +97,15 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
     const timer = window.setTimeout(() => modalRef.current?.querySelector<HTMLElement>("button, input, select, textarea")?.focus(), 0);
     return () => { window.clearTimeout(timer); returnFocus.current?.focus(); };
   }, []);
+  useLayoutEffect(() => {
+    modalRef.current?.toggleAttribute("inert", customerModalOpen);
+  }, [customerModalOpen]);
+  useEffect(() => {
+    if (!customerModalOpen && restoreCustomerFocus.current) {
+      restoreCustomerFocus.current = false;
+      document.getElementById("cp-customer")?.focus();
+    }
+  }, [customerModalOpen]);
   useEffect(() => {
     if (facingWarning) warningRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
   }, [facingWarning]);
@@ -156,8 +168,9 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
   const selectedBatch = options.colors.find((c) => String(c.id) === String(form.master_batch_id));
   const set = (key: keyof ProductInput, value: any) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const close = () => { if (!saving) onClose(); };
+  const close = () => { if (!saving && !customerModalOpen) onClose(); };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (customerModalOpen) return;
     if (event.key === "Escape") { event.stopPropagation(); if (colorOpen) { setColorOpen(false); return; } if (facingWarning) { setFacingWarning(""); modalRef.current?.querySelector<HTMLButtonElement>(".cp-save")?.focus(); return; } close(); return; }
     if (event.key !== "Tab" || !modalRef.current) return;
     const elements = [...modalRef.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter((el) => el.offsetParent !== null);
@@ -265,8 +278,9 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
     </div>;
   };
 
-  return <div className="cp-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-    <div className="cp-modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
+  return <>
+  <div className="cp-backdrop" onMouseDown={(e) => !customerModalOpen && e.target === e.currentTarget && close()}>
+    <div className="cp-modal" ref={modalRef} role="dialog" aria-modal={!customerModalOpen} aria-labelledby={titleId} onKeyDown={onKeyDown}>
       <div className="cp-head"><div className="cp-title"><span className="cp-mark"><Package size={20} /></span><div><h2 id={titleId}>{row.id ? translate("تعديل منتج العميل") : translate("إضافة منتج عميل")}</h2><p>{row.id ? translate("حدّث مواصفات المنتج مع الحفاظ على القيم الحالية.") : translate("عرّف المقاس والطباعة والتعبئة بدقة.")}</p></div></div><button className="cp-close" type="button" aria-label={translate("إغلاق النافذة")} onClick={close} disabled={saving}><X size={19} /></button></div>
       {optionError && <div className="cp-options-state" role="alert"><AlertCircle size={15} />{" "}{translate("تعذر تحميل خيارات النموذج.")}{" "}<button type="button" onClick={() => setRetryIndex((v) => v + 1)}>{translate("إعادة المحاولة")}</button><span className="cp-invalid">{optionError}</span></div>}
       {error && <div className="cp-error" role="alert">{error}</div>}
@@ -282,16 +296,16 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
         {loading ? <div className="cp-loading" aria-label={translate("جار تحميل الخيارات")} aria-busy="true"><i /><i /><i /><i /></div> : <>
           <section className="cp-section"><h3 className="cp-section-title"><span>01</span>{translate("العميل والتصنيف")}</h3>
             <div className="cp-grid cp-three">
-               <div className="cp-field"><label htmlFor="cp-customer">{translate("العميل")}{" "}<b aria-hidden="true">*</b></label>{fixedCustomerId ? <input id="cp-customer" value={customerName(options.customers.find((customer) => String(customer.id) === fixedCustomerId) || {}) || fixedCustomerId} readOnly aria-readonly="true" /> : <CustomerPicker customers={options.customers} value={String(form.customer_id || "")} onChange={(id) => set("customer_id", id)} labelFor={customerName} />}{fixedCustomerId && <span className="cp-hint">{translate("عميل الطلب · لا يمكن تغييره من هنا")}</span>}</div>
-              <div className="cp-field"><label htmlFor="cp-category">{translate("التصنيف")}</label><select id="cp-category" value={String(form.category_id || "")} onChange={(e) => changeCategory(e.target.value)}><option value="">{translate("غير محدد")}</option>{options.categories.map((c) => <option key={c.id} value={String(c.id)}>{name(c)} ({c.id})</option>)}{form.category_id && !category && <option value={String(form.category_id)}>{translate("التصنيف الحالي (")}{form.category_id}{translate(") — اختر تصنيفاً صالحاً")}</option>}</select></div>
+                <div className="cp-field"><label htmlFor="cp-customer">{translate("العميل")}{" "}<b aria-hidden="true">*</b></label>{fixedCustomerId ? <input id="cp-customer" value={customerName(options.customers.find((customer) => String(customer.id) === fixedCustomerId) || {}) || fixedCustomerId} readOnly aria-readonly="true" /> : <CustomerPicker customers={options.customers} value={String(form.customer_id || "")} onChange={(id) => set("customer_id", id)} labelFor={customerName} onCreate={() => setCustomerModalOpen(true)} />}{fixedCustomerId && <span className="cp-hint">{translate("عميل الطلب · لا يمكن تغييره من هنا")}</span>}</div>
+               <div className="cp-field"><label htmlFor="cp-category">{translate("التصنيف")}</label><select id="cp-category" value={String(form.category_id || "")} onChange={(e) => changeCategory(e.target.value)}><option value="">{translate("غير محدد")}</option>{options.categories.map((c) => <option key={c.id} value={String(c.id)}>{name(c)}</option>)}{form.category_id && !category && <option value={String(form.category_id)}>{translate("توجد علاقة محفوظة قديمة أو غير متاحة. ستبقى كما هي ما لم تختر بديلاً صالحاً.")}</option>}</select></div>
                <div className="cp-field"><label htmlFor="cp-item">{translate("الصنف")}</label><select id="cp-item" disabled={!form.category_id} value={String(form.item_id || "")} onChange={(e) => set("item_id", e.target.value)}><option value="">{form.category_id ? translate("غير محدد") : translate("اختر التصنيف أولاً")}</option>{legacyUncategorizedItem && <option value={String(form.item_id)}>{translate("الصنف الحالي (")}{form.item_id}{translate(") — دون تصنيف")}</option>}{categoryItems.map((i) => <option key={i.id} value={String(i.id)}>{name(i)}{i.code ? ` (${i.code})` : ""}</option>)}{form.item_id && !itemValid && <option value={String(form.item_id)}>{translate("الصنف الحالي (")}{form.item_id}{translate(") — لا يتبع التصنيف")}</option>}</select>{!itemValid && <span className="cp-invalid">{translate("يرجى اختيار صنف ضمن التصنيف الحالي أو مسح الصنف.")}</span>}</div>
             </div>
           </section>
           <section className="cp-section"><h3 className="cp-section-title"><span>02</span>{translate("المواصفات والأبعاد")}</h3>
             <div className="cp-grid cp-dimensions">
-              <ProductValueSelect label="الجانب الأيمن" id="cp-right" value={form.right_facing} values={PRODUCT_SELECT_VALUES.facing} onChange={(v) => set("right_facing", v)} />
+              <ProductValueSelect label="الجانب الأيمن" labelDirection="right" id="cp-right" value={form.right_facing} values={PRODUCT_SELECT_VALUES.facing} onChange={(v) => set("right_facing", v)} />
               <ProductValueSelect label="العرض (سم)" id="cp-width" value={form.width} values={PRODUCT_SELECT_VALUES.width} onChange={(v) => set("width", v)} />
-              <ProductValueSelect label="الجانب الأيسر" id="cp-left" value={form.left_facing} values={PRODUCT_SELECT_VALUES.facing} onChange={(v) => set("left_facing", v)} />
+              <ProductValueSelect label="الجانب الأيسر" labelDirection="left" id="cp-left" value={form.left_facing} values={PRODUCT_SELECT_VALUES.facing} onChange={(v) => set("left_facing", v)} />
               <div className="cp-field"><label>{translate("وصف المقاس المحسوب")}</label><div className="cp-readonly">{preview.size_caption || "—"}</div></div>
             </div>
             <div className="cp-grid cp-specifications">
@@ -359,7 +373,22 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
         </>}
         </fieldset>
       </form>
-      <div className="cp-footer"><span className="cp-footer-note"><CircleHelp size={13} /> {onDraftSaved ? translate("مسودة · يُحفظ المنتج عند حفظ الطلب") : translate("الحقول المحسوبة للقراءة فقط · السماكة العامة غير مرسلة")}</span><div className="cp-actions"><button className="cp-cancel" type="button" onClick={close} disabled={saving}>{translate("إلغاء")}</button><button className="cp-save" type="submit" form="cp-form" disabled={saving || loading || Boolean(optionError)}>{saving ? <><LoaderCircle size={16} className="cp-spin" />{" "}{translate("جارٍ الحفظ")}</> : <><Check size={16} />{onDraftSaved ? translate("إضافة إلى الطلب") : row.id ? translate("حفظ التعديلات") : translate("إضافة المنتج")}</>}</button></div></div>
+      <div className="cp-footer"><span className="cp-footer-note"><CircleHelp size={13} /> {onDraftSaved ? translate("مسودة · يُحفظ المنتج عند حفظ الطلب") : translate("الحقول المحسوبة للقراءة فقط · السماكة العامة غير مرسلة")}</span><div className="cp-actions"><button className="cp-cancel" type="button" onClick={close} disabled={saving || customerModalOpen}>{translate("إلغاء")}</button><button className="cp-save" type="submit" form="cp-form" disabled={saving || loading || Boolean(optionError) || customerModalOpen}>{saving ? <><LoaderCircle size={16} className="cp-spin" />{" "}{translate("جارٍ الحفظ")}</> : <><Check size={16} />{onDraftSaved ? translate("إضافة إلى الطلب") : row.id ? translate("حفظ التعديلات") : translate("إضافة المنتج")}</>}</button></div></div>
     </div>
-  </div>;
+  </div>
+  {customerModalOpen && <div className="cp-customer-child-layer">
+    <CustomerModal row={{}} onClose={() => {
+      restoreCustomerFocus.current = true;
+      setCustomerModalOpen(false);
+    }} onSaved={(saved) => {
+      setOptions((current) => ({
+        ...current,
+        customers: [...current.customers.filter((customer) => String(customer.id) !== String(saved.id)), saved],
+      }));
+      setForm((current) => ({ ...current, customer_id: String(saved.id) }));
+      restoreCustomerFocus.current = true;
+      setCustomerModalOpen(false);
+    }} />
+  </div>}
+  </>;
 }

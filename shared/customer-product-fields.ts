@@ -51,7 +51,7 @@ function nonnegativeNumber(value: unknown): number | null {
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
 }
 
-/** Blank facings mean zero; a missing width cannot establish the sum limit. */
+/** Blank facings mean zero; a missing width cannot establish width-relative limits. */
 export function customerProductFacingNotice(input: ProductInput): {
   kind: "blocking" | "warning"; message: string;
 } | null {
@@ -61,6 +61,9 @@ export function customerProductFacingNotice(input: ProductInput): {
   const width = positiveNumber(input.width);
   if (width !== null && left + right >= width) {
     return { kind: "blocking", message: "لا يمكن الحفظ: مجموع الجانب الأيمن والجانب الأيسر يساوي العرض أو يزيد عليه. يجب أن يكون مجموع الجانبين أقل من العرض." };
+  }
+  if (width !== null && (left > width / 2 || right > width / 2)) {
+    return { kind: "blocking", message: "لا يمكن أن تتجاوز قيمة الجانب الأيمن أو الأيسر نصف العرض." };
   }
   if (left !== right) {
     return { kind: "warning", message: "الجانب الأيمن لا يساوي الجانب الأيسر. هل تريد الاستمرار في الحفظ بهذه القيم؟" };

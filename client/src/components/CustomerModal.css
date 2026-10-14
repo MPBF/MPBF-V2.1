@@ -23,6 +23,29 @@
 .customer-modal-names { grid-template-columns: 1fr 1fr; }
 .customer-modal-contact { grid-template-columns: 1fr 1fr 1.15fr; }
 .customer-modal-extra { grid-template-columns: 1fr 1fr; align-items: center; }
+.customer-modal-drawer {
+  --drawer-gap: 14px;
+  grid-template-columns: calc((100% - var(--drawer-gap)) / 4) calc((100% - var(--drawer-gap)) / 4) minmax(0, 1fr);
+  max-width: 430px;
+  gap: 0 var(--drawer-gap);
+  align-items: end;
+}
+.customer-modal-drawer .field select { direction: ltr; text-align: left; min-height: 44px; height: 50px; }
+.customer-modal-drawer .field input { min-height: 44px; height: 50px; }
+.customer-modal-drawer-legacy {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -5px 0 15px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: #f7faf7;
+  color: var(--muted);
+  font-size: 11px;
+}
+.customer-modal-drawer-legacy bdi { color: var(--ink); font-family: "IBM Plex Mono", monospace; font-weight: 700; }
 .customer-modal-fields .field { min-width: 0; margin-bottom: 15px; }
 .customer-modal-fields .field input,
 .customer-modal-fields .field select { min-height: 42px; }
@@ -85,6 +108,12 @@
   .customer-modal-head h3 { font-size: 19px; }
   .customer-modal-fields { padding: 17px 16px 3px; }
   .customer-modal-grid { grid-template-columns: 1fr; }
+   .customer-modal-drawer {
+     --drawer-gap: 10px;
+     grid-template-columns: calc((100% - var(--drawer-gap)) / 4) calc((100% - var(--drawer-gap)) / 4) minmax(0, 1fr);
+     max-width: none;
+   }
+  .customer-modal-drawer-legacy { grid-column: 1 / -1; }
   .customer-modal-extra { gap: 0; }
   .customer-modal-active { margin-top: 0; }
   .customer-modal-alert { margin: 14px 16px 0; }

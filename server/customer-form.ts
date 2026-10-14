@@ -1,11 +1,13 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { insertCustomerSchema, roles, users } from "@shared/schema";
+import { DRAWER_CODE_PATTERN } from "../shared/customer-drawer";
 
 export const customerFormSchema = insertCustomerSchema.omit({ id: true }).extend({
   name: z.string().trim().min(1, "الاسم بالإنجليزية مطلوب").max(200),
   name_ar: z.string().trim().max(200).nullable().optional(),
   sales_rep_id: z.number().int().positive().nullable().optional(),
+  plate_drawer_code: z.string().trim().regex(DRAWER_CODE_PATTERN, "اختر حرفًا من A إلى Z ورقمًا من 1 إلى 100 للدرج").nullable().optional(),
 }).strict();
 
 // Identify the business role by its name, not a deployment-specific role ID.

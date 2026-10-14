@@ -1,5 +1,5 @@
 import { translate } from "../i18n";
-import { ChevronDown, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 type Customer = Record<string, any>;
@@ -8,10 +8,11 @@ type CustomerPickerProps = {
   value: string;
   onChange: (id: string) => void;
   labelFor: (customer: Customer) => string;
+  onCreate?: () => void;
 };
 
 /** Search belongs to the dropdown, not to a second standalone form field. */
-export function CustomerPicker({ customers, value, onChange, labelFor }: CustomerPickerProps) {
+export function CustomerPicker({ customers, value, onChange, labelFor, onCreate }: CustomerPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -100,6 +101,11 @@ export function CustomerPicker({ customers, value, onChange, labelFor }: Custome
         </button>)}
         {!filtered.length && <div className="cp-customer-empty">{translate("لا يوجد عملاء مطابقون للبحث.")}</div>}
       </div>
+      {onCreate && <button type="button" className="cp-customer-create" onClick={() => {
+        setOpen(false);
+        setQuery("");
+        onCreate();
+      }}>{translate("إضافة عميل جديد")}</button>}
     </div>}
   </div>;
 }
@@ -121,15 +127,17 @@ export function unitWeightLabel(value: string): string {
   return Number.isFinite(kilos) ? `${Math.round(kilos * 1000)} جرام` : value;
 }
 
-export function ProductValueSelect({ id, label, value, values, onChange, disabled = false, zeroMeansUnset = false, hint, labelForValue }: {
+export function ProductValueSelect({ id, label, value, values, onChange, disabled = false, zeroMeansUnset = false, hint, labelForValue, labelDirection }: {
   id: string; label: string; value: unknown; values: string[]; onChange: (value: string) => void;
   disabled?: boolean; zeroMeansUnset?: boolean; hint?: string;
   labelForValue?: (value: string) => string;
+  labelDirection?: "right" | "left";
 }) {
   const text = value == null ? "" : String(value);
   const selected = text === "" ? (zeroMeansUnset ? "0" : "") : values.find((option) => Number(option) === Number(text)) ?? text;
+  const DirectionIcon = labelDirection === "right" ? ArrowRight : labelDirection === "left" ? ArrowLeft : null;
   return <div className="cp-field">
-    <label htmlFor={id}>{translate(label)}</label>
+    <label className={DirectionIcon ? `cp-direction-label${labelDirection === "left" ? " cp-direction-label-left" : ""}` : undefined} htmlFor={id}><span>{translate(label)}</span>{DirectionIcon && <DirectionIcon size={14} aria-hidden="true" />}</label>
     <select id={id} value={selected} disabled={disabled}
       onChange={(event) => onChange(zeroMeansUnset && event.target.value === "0" ? "" : event.target.value)}>
       {!zeroMeansUnset && <option value="">{translate("غير محدد")}</option>}
