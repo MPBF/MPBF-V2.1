@@ -23,8 +23,15 @@
 .customer-modal-names { grid-template-columns: 1fr 1fr; }
 .customer-modal-contact { grid-template-columns: 1fr 1fr 1.15fr; }
 .customer-modal-extra { grid-template-columns: 1fr 1fr; align-items: center; }
-.customer-modal-drawer { grid-template-columns: 1fr 1fr; max-width: 430px; gap: 0 14px; }
-.customer-modal-drawer .field select { direction: ltr; text-align: left; min-height: 44px; }
+.customer-modal-drawer {
+  --drawer-gap: 14px;
+  grid-template-columns: calc((100% - var(--drawer-gap)) / 4) calc((100% - var(--drawer-gap)) / 4) minmax(0, 1fr);
+  max-width: 430px;
+  gap: 0 var(--drawer-gap);
+  align-items: end;
+}
+.customer-modal-drawer .field select { direction: ltr; text-align: left; min-height: 44px; height: 50px; }
+.customer-modal-drawer .field input { min-height: 44px; height: 50px; }
 .customer-modal-drawer-legacy {
   grid-column: 1 / -1;
   display: flex;
@@ -101,7 +108,11 @@
   .customer-modal-head h3 { font-size: 19px; }
   .customer-modal-fields { padding: 17px 16px 3px; }
   .customer-modal-grid { grid-template-columns: 1fr; }
-  .customer-modal-drawer { grid-template-columns: 1fr 1fr; max-width: none; gap: 0 10px; }
+   .customer-modal-drawer {
+     --drawer-gap: 10px;
+     grid-template-columns: calc((100% - var(--drawer-gap)) / 4) calc((100% - var(--drawer-gap)) / 4) minmax(0, 1fr);
+     max-width: none;
+   }
   .customer-modal-drawer-legacy { grid-column: 1 / -1; }
   .customer-modal-extra { gap: 0; }
   .customer-modal-active { margin-top: 0; }
