@@ -131,7 +131,7 @@ export function ProductValueSelect({ id, label, value, values, onChange, disable
   const selected = text === "" ? (zeroMeansUnset ? "0" : "") : values.find((option) => Number(option) === Number(text)) ?? text;
   const DirectionIcon = labelDirection === "right" ? ArrowRight : labelDirection === "left" ? ArrowLeft : null;
   return <div className="cp-field">
-    <label className={DirectionIcon ? "cp-direction-label" : undefined} htmlFor={id}><span>{translate(label)}</span>{DirectionIcon && <DirectionIcon size={14} aria-hidden="true" />}</label>
+    <label className={DirectionIcon ? `cp-direction-label${labelDirection === "left" ? " cp-direction-label-left" : ""}` : undefined} htmlFor={id}><span>{translate(label)}</span>{DirectionIcon && <DirectionIcon size={14} aria-hidden="true" />}</label>
     <select id={id} value={selected} disabled={disabled}
       onChange={(event) => onChange(zeroMeansUnset && event.target.value === "0" ? "" : event.target.value)}>
       {!zeroMeansUnset && <option value="">{translate("غير محدد")}</option>}
