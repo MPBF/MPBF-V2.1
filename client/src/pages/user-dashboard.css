@@ -62,7 +62,7 @@
 }
 .self-attendance {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(205px, 260px);
+  grid-template-columns: minmax(0, 1fr);
   border-inline-start: 4px solid var(--self-teal);
   background: linear-gradient(120deg, #fff 52%, #f2f8f5 100%);
 }
@@ -164,28 +164,6 @@
   animation: self-spin .65s linear infinite;
 }
 @keyframes self-spin { to { transform: rotate(360deg); } }
-.self-attendance-stat {
-  border-inline-start: 1px solid var(--self-line);
-  padding: 24px;
-  display: flex;
-  gap: 13px;
-  align-items: flex-start;
-  justify-content: center;
-}
-.self-stat-icon {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  border-radius: 10px;
-  color: var(--self-teal);
-  background: #e7f3ef;
-}
-.self-attendance-stat div { display: grid; gap: 1px; }
-.self-attendance-stat span:not(.self-stat-icon) { color: var(--self-muted); font-size: 12px; }
-.self-attendance-stat strong { font-size: 30px; line-height: 1.15; }
-.self-attendance-stat small { color: var(--self-muted); font-size: 11px; }
 .self-panel-heading {
   min-height: 70px;
   padding: 15px 19px;
@@ -439,8 +417,6 @@
   .self-attendance-main { padding: 18px 16px; }
   .self-attendance-main h3 { font-size: 21px; }
   .self-shift-context { padding: 11px 12px; }
-  .self-attendance-stat { border-inline-start: 0; border-top: 1px solid var(--self-line); padding: 13px 17px; justify-content: flex-start; align-items: center; }
-  .self-attendance-stat strong { font-size: 24px; }
   .self-attendance-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .self-attendance-btn { min-height: 46px; padding: 0 8px; font-size: 11px; }
   .self-panel-heading { min-height: 64px; padding: 12px 14px; }

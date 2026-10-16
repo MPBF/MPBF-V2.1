@@ -11,6 +11,7 @@ const WebSocket = require("ws");
   let chrome, ws, session, serial = 0, mode = "once", language = "ar";
   const pending = new Map(), errors = [], counts = {};
   let historyEvents = [];
+  let attendanceOverrides = {};
   const endpoints = ["attendance", "recipients", "messages", "requests", "violations"];
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const resetCounts = () => { for (const key of endpoints) counts[key] = 0; };
@@ -63,6 +64,7 @@ const WebSocket = require("ws");
             events: historyEvents, status: "out", month: "2026-10", daysPresent: 7, currentSession: null,
             activeShift: null, withinShiftWindow: false, serverNow: new Date().toISOString(),
             workedSeconds: 0, sessionStartedAt: null, actionTimes: {},
+            ...attendanceOverrides,
           };
         }
         await send("Fetch.fulfillRequest", { requestId, responseCode: 200,
@@ -154,10 +156,22 @@ const WebSocket = require("ws");
       punch(14, "check_out", "2026-11-01T00:00:00Z", "2026-10-31"),
     ];
     mode = "ok";
+    attendanceOverrides = {
+      currentSession: { id: 21, shiftDate: "2026-10-16", incomplete: false },
+      unresolvedIncompleteSession: { id: 20, shiftDate: "2026-10-13" },
+    };
     await fs.mkdir("generated-artifacts/self-attendance-checks", { recursive: true });
     for (language of ["ar", "en"]) for (const width of [1440, 768, 390, 320]) {
       resetCounts(); await open(width);
       await wait(`${ready}&&document.querySelectorAll('.self-attendance-day').length===4`);
+      assert.equal(await evaluate("document.querySelectorAll('.self-attendance-stat').length"), 0, "Remove the days aside, not just its text");
+      assert.ok(await evaluate("(()=>{const p=document.querySelector('.self-attendance'),m=p.querySelector('.self-attendance-main');return p.children.length===1&&Math.abs(m.getBoundingClientRect().width-p.clientWidth)<2})()"),
+        "Biometric content fills the available panel width");
+      assert.ok(await evaluate("(()=>{const t=document.querySelector('.self-attendance-main').textContent;return !['الموقع إلزامي لكل تسجيل.','تاريخ احتساب الوردية:','2026-10-16','2026-10-13'].some(x=>t.includes(x))})()"),
+        "Specified informational text is absent even when session metadata exists");
+      assert.equal(await evaluate("document.querySelector('.self-summary-item strong').textContent"), "7", "Preserve the top monthly attendance metric");
+      assert.equal(await evaluate("document.querySelectorAll('.self-attendance-btn').length"), 4, "Preserve every attendance action");
+      assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-btn')].every(b=>b.disabled)"), "No shift must still prevent attendance actions");
       assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.dataset.day)"),
         ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-31"]);
       assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.querySelectorAll('.self-attendance-day-event').length)"), [6, 4, 2, 2]);
@@ -174,6 +188,23 @@ const WebSocket = require("ws");
       await fs.writeFile(`generated-artifacts/self-attendance-checks/${language}-${width}.png`, Buffer.from(image.data, "base64"));
       console.log(`PASS ${language}/${width}: four day rows, all fourteen timestamps, repeated breaks, overnight/month boundaries, accessible horizontal layout`);
     }
+    attendanceOverrides = {
+      ...attendanceOverrides,
+      status: "working",
+      activeShift: { id: "fixture-shift", name: "Test shift", startTime: "07:00", endTime: "15:00", geofenceStatus: "enabled", radiusMeters: 100 },
+      withinShiftWindow: false,
+    };
+    await open(1440); await wait(ready);
+    assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-btn')].every(b=>b.disabled)&&!!document.querySelector('.self-window-warning')"),
+      "Out-of-window warning and disabled actions remain");
+    await send("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(navigator,'geolocation',{configurable:true,value:{getCurrentPosition(_success,error){error({code:1,PERMISSION_DENIED:1})}}})" });
+    attendanceOverrides.withinShiftWindow = true;
+    await open(390);
+    await wait(`${ready}&&!document.querySelector('.self-attendance-btn.action-break_start').disabled`);
+    await evaluate("document.querySelector('.self-attendance-btn.action-break_start').click()");
+    await wait(`${ready}&&!!document.querySelector('.self-alert-error')`);
+    assert.match(await evaluate("document.querySelector('.self-alert-error').textContent"), /location/i);
+    console.log("PASS full-width biometric panel; removed only requested copy/aside; top metrics, disabled/window guards and mandatory geolocation remain");
     assert.deepEqual(errors, []);
   } finally {
     ws?.close();

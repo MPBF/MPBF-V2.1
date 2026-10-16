@@ -1,5 +1,5 @@
 import i18n, { intlLocale, translate, translateError } from "../i18n";
-import { AlertCircle, ArrowDownLeft, ArrowUpLeft, CalendarDays, Check, Clock3, Coffee, FilePlus2, Fingerprint, LogIn, LogOut, MessageCircle, Navigation, Play, Send, ShieldAlert } from "lucide-react";
+import { AlertCircle, ArrowDownLeft, ArrowUpLeft, Check, Clock3, Coffee, FilePlus2, Fingerprint, LogIn, LogOut, MessageCircle, Navigation, Play, Send, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { NetworkRequestError, resilientFetch } from "../lib/resilient-fetch";
 import { attendanceCalendarDate, groupAttendanceEventsByDay } from "../lib/self-attendance-days";
@@ -280,9 +280,6 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
         <div className="self-attendance-main">
           <div className="self-section-kicker"><Fingerprint size={15} />{" "}{translate("نظام البصمة")}</div>
           <div className="self-attendance-status-line"><h3 id="self-attendance-title">{loading && !attendance ? translate("جارٍ تحميل الحالة…") : statusLabel}</h3><span className={`self-current-status is-${attendance?.status || "out"}`}>{statusLabel}</span></div>
-          <p>{translate("الموقع إلزامي لكل تسجيل. سيُطلب إذن الموقع عند تنفيذ كل إجراء.")}</p>
-          {attendance?.currentSession?.shiftDate && <p>{translate("تاريخ احتساب الوردية:")}{" "}<strong>{attendance.currentSession.shiftDate}</strong>{translate("، حتى لو كان الانصراف بعد منتصف الليل.")}</p>}
-          {attendance?.unresolvedIncompleteSession && <div className="self-window-warning" role="alert"><AlertCircle size={16} />{" "}{translate("وردية")}{" "}{attendance.unresolvedIncompleteSession.shiftDate}{" "}{translate("بلا انصراف. لا تُحتسب ساعاتها أو أجرها حتى تُصححها إدارة الموارد البشرية، ويمكنك بدء ورديتك الجديدة.")}</div>}
           <div className={`self-shift-context is-${attendance?.activeShift?.geofenceStatus || "none"}`}>
             <span className="self-shift-icon"><Navigation size={18} /></span>
             <div className="self-shift-copy">
@@ -319,10 +316,6 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
               {busy === action ? translate("جارٍ التحقق…") : translate(actionNames[action])}
             </button><time>{actionTime(attendance?.actionTimes[action])}</time></div>; })}
           </div>
-        </div>
-        <div className="self-attendance-stat">
-          <span className="self-stat-icon"><CalendarDays size={19} /></span>
-          <div><span>{translate("أيام الحضور")}</span><strong>{loading && !attendance ? "—" : attendance?.daysPresent ?? "—"}</strong><small>{attendance?.month ? monthName(attendance.month) : translate("الشهر الحالي")}</small></div>
         </div>
       </section>
 
