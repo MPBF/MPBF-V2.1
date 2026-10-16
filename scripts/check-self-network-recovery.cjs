@@ -10,6 +10,7 @@ const WebSocket = require("ws");
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), "self-network-"));
   let chrome, ws, session, serial = 0, mode = "once", language = "ar";
   const pending = new Map(), errors = [], counts = {};
+  let historyEvents = [];
   const endpoints = ["attendance", "recipients", "messages", "requests", "violations"];
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const resetCounts = () => { for (const key of endpoints) counts[key] = 0; };
@@ -59,7 +60,7 @@ const WebSocket = require("ws");
             return;
           }
           if (endpoint === "attendance") body = {
-            events: [], status: "out", month: "2026-10", daysPresent: 7, currentSession: null,
+            events: historyEvents, status: "out", month: "2026-10", daysPresent: 7, currentSession: null,
             activeShift: null, withinShiftWindow: false, serverNow: new Date().toISOString(),
             workedSeconds: 0, sessionStartedAt: null, actionTimes: {},
           };
@@ -94,6 +95,8 @@ const WebSocket = require("ws");
     await wait(`${ready}&&document.querySelector('.self-summary-item strong').textContent==='7'`);
     for (const key of endpoints) assert.equal(counts[key], 2, `${key}: one failure then recovery`);
     assert.equal(await evaluate("!!document.querySelector('.self-alert-error')"), false);
+    assert.equal(await evaluate("document.querySelectorAll('.self-attendance-day').length"), 0);
+    assert.equal(await evaluate("document.body.textContent.includes('لا توجد أحداث حضور مسجلة لهذا الشهر.')"), true);
     console.log("PASS all five sections recover from a transient failed fetch");
 
     mode = "all"; resetCounts();
@@ -129,6 +132,49 @@ const WebSocket = require("ws");
     await fs.writeFile("/tmp/self-network-recovery.png", Buffer.from(screenshot.data, "base64"));
     assert.deepEqual(errors, []);
     console.log("PASS English mobile recovery state, viewport fit and no runtime exceptions");
+
+    const punch = (id, action, occurred_at, shift_date = null) => ({
+      id, action, occurred_at, shift_date, session_id: shift_date ? Number(shift_date.slice(-2)) : null,
+      latitude: 24, longitude: 46, accuracy: 5,
+    });
+    historyEvents = [
+      punch(1, "check_in", "2026-10-01T04:00:00Z", "2026-10-01"),
+      punch(2, "break_start", "2026-10-01T06:00:00Z", "2026-10-01"),
+      punch(3, "break_end", "2026-10-01T06:15:00Z", "2026-10-01"),
+      punch(4, "break_start", "2026-10-01T08:00:00Z", "2026-10-01"),
+      punch(5, "break_end", "2026-10-01T08:10:00Z", "2026-10-01"),
+      punch(6, "check_out", "2026-10-01T12:00:00Z", "2026-10-01"),
+      punch(7, "check_in", "2026-10-02T16:00:00Z", "2026-10-02"),
+      punch(11, "check_in", "2026-10-02T22:00:00Z"),
+      punch(8, "break_start", "2026-10-02T23:00:00Z", "2026-10-02"),
+      punch(9, "break_end", "2026-10-02T23:10:00Z", "2026-10-02"),
+      punch(10, "check_out", "2026-10-03T00:00:00Z", "2026-10-02"),
+      punch(12, "check_out", "2026-10-03T04:00:00Z"),
+      punch(13, "check_in", "2026-10-31T16:00:00Z", "2026-10-31"),
+      punch(14, "check_out", "2026-11-01T00:00:00Z", "2026-10-31"),
+    ];
+    mode = "ok";
+    await fs.mkdir("generated-artifacts/self-attendance-checks", { recursive: true });
+    for (language of ["ar", "en"]) for (const width of [1440, 768, 390, 320]) {
+      resetCounts(); await open(width);
+      await wait(`${ready}&&document.querySelectorAll('.self-attendance-day').length===4`);
+      assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.dataset.day)"),
+        ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-31"]);
+      assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.querySelectorAll('.self-attendance-day-event').length)"), [6, 4, 2, 2]);
+      assert.deepEqual((await evaluate("[...document.querySelectorAll('.self-attendance-day-event time')].map(t=>t.dateTime)")).sort(),
+        historyEvents.map(e => e.occurred_at).sort(), "Every original event timestamp must survive grouping");
+      assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day-events')].every(r=>{const boxes=[...r.querySelectorAll('.self-attendance-day-event')].map(e=>e.getBoundingClientRect());return boxes.every(b=>Math.abs(b.top-boxes[0].top)<2||Math.abs(b.top+b.height/2-boxes[0].top-boxes[0].height/2)<2)})"),
+        "Each day's operations stay on the same horizontal row");
+      assert.equal(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"), true, "No page-wide horizontal overflow");
+      assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day-events')].every(r=>r.scrollWidth<=r.clientWidth+1||(r.tabIndex===0&&['auto','scroll'].includes(getComputedStyle(r).overflowX)))"),
+        "Overflowing operation rows remain keyboard-accessible and scrollable");
+      if (language === "en") assert.equal(await evaluate("/[\\u0600-\\u06ff]/.test(document.querySelector('.self-attendance-day-list').textContent)"), false);
+      await evaluate("document.querySelector('.self-attendance-day-list').scrollIntoView({block:'center'})");
+      const image = await send("Page.captureScreenshot", { format: "png" });
+      await fs.writeFile(`generated-artifacts/self-attendance-checks/${language}-${width}.png`, Buffer.from(image.data, "base64"));
+      console.log(`PASS ${language}/${width}: four day rows, all fourteen timestamps, repeated breaks, overnight/month boundaries, accessible horizontal layout`);
+    }
+    assert.deepEqual(errors, []);
   } finally {
     ws?.close();
     if (chrome && chrome.exitCode === null) await new Promise(resolve => {
