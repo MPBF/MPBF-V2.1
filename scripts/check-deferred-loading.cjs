@@ -235,7 +235,7 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
     };
     for (const lang of ["ar", "en"]) {
       language = lang; signedIn = false;
-      await open("/"); await wait("!!document.querySelector('.login-box input')");
+      await open("/"); await wait("!!document.querySelector('.login-redesign input')");
       // Observe idle time too: a late prefetch must not escape the login check.
       await new Promise(resolve => setTimeout(resolve, 1500));
       const loginAssets = assertLoginAssets(root, assets, initialAssets);

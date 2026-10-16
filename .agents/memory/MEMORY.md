@@ -105,3 +105,4 @@
 - [Product facing policy](customer-product-facing-policy.md) — each side must be ≤ half the width; category labels omit codes and side arrows retain physical direction.
 - [Mobile primary navigation](mobile-primary-navigation.md) — More keeps all authorized main pages reachable when the phone bottom bar cannot fit them.
 - [Thickness display policy](thickness-display-policy.md) — display original thickness only; universal thickness remains automatically stored for internal calculations.
+- [Login brand presentation](login-brand-presentation.md) — approved centered card; both factory-name languages precede the large logo and welcome text.
