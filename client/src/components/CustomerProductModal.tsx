@@ -14,7 +14,7 @@ type Row = Record<string, any>;
 type Props = {
   row: Record<string, any>; onClose: () => void; onSaved: () => void;
   fixedCustomerId?: string;
-  onDraftSaved?: (payload: ProductInput) => void;
+  onAddedToOrder?: (saved: Row) => void;
 };
 type Options = { customers: Row[]; categories: Row[]; items: Row[]; colors: Row[]; cylinders: string[] };
 type Named = { key: keyof Options; path: string };
@@ -59,7 +59,7 @@ async function loadAll(path: string, signal: AbortSignal): Promise<Row[]> {
 const imageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/avif"]);
 const idField = (side: Side) => side === "front" ? "cliche_front_design" : "cliche_back_design";
 
-export default function CustomerProductModal({ row, onClose, onSaved, fixedCustomerId, onDraftSaved }: Props) {
+export default function CustomerProductModal({ row, onClose, onSaved, fixedCustomerId, onAddedToOrder }: Props) {
   const [form, setForm] = useState<ProductInput>(() => initializeCustomerProductForm({
     ...row, ...(fixedCustomerId ? { customer_id: fixedCustomerId } : {}),
   }));
@@ -247,10 +247,6 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
     }
     saveLock.current = true; setSaving(true);
     try {
-      if (onDraftSaved) {
-        onDraftSaved(payload);
-        return;
-      }
       const response = await fetch(`/api/customer-products${row.id ? `/${encodeURIComponent(String(row.id))}` : ""}`, {
         method: row.id ? "PUT" : "POST", credentials: "include",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -260,6 +256,15 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(translateError(body.message || "تعذر حفظ المنتج. تحقق من البيانات وحاول مجدداً."));
+      if (onAddedToOrder) {
+        const saved = body?.data ?? body;
+        if (!saved || !Number.isInteger(Number(saved.id)) || Number(saved.id) <= 0 ||
+          String(saved.customer_id) !== String(fixedCustomerId)) {
+          throw new Error(translate("لم يُرجع الخادم بيانات المنتج المحفوظ. تحقق من منتجات العميل قبل المحاولة مجددًا."));
+        }
+        onAddedToOrder(saved);
+        return;
+      }
       onSaved();
     } catch (e) { setError((e as Error).message || "تعذر حفظ المنتج."); }
     finally { saveLock.current = false; if (live.current) setSaving(false); }
@@ -373,7 +378,7 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
         </>}
         </fieldset>
       </form>
-      <div className="cp-footer"><span className="cp-footer-note"><CircleHelp size={13} /> {onDraftSaved ? translate("مسودة · يُحفظ المنتج عند حفظ الطلب") : translate("الحقول المحسوبة للقراءة فقط")}</span><div className="cp-actions"><button className="cp-cancel" type="button" onClick={close} disabled={saving || customerModalOpen}>{translate("إلغاء")}</button><button className="cp-save" type="submit" form="cp-form" disabled={saving || loading || Boolean(optionError) || customerModalOpen}>{saving ? <><LoaderCircle size={16} className="cp-spin" />{" "}{translate("جارٍ الحفظ")}</> : <><Check size={16} />{onDraftSaved ? translate("إضافة إلى الطلب") : row.id ? translate("حفظ التعديلات") : translate("إضافة المنتج")}</>}</button></div></div>
+      <div className="cp-footer"><span className="cp-footer-note"><CircleHelp size={13} /> {onAddedToOrder ? translate("يُحفظ المنتج فورًا ضمن منتجات العميل، حتى عند إلغاء الطلب.") : translate("الحقول المحسوبة للقراءة فقط")}</span><div className="cp-actions"><button className="cp-cancel" type="button" onClick={close} disabled={saving || customerModalOpen}>{translate("إلغاء")}</button><button className="cp-save" type="submit" form="cp-form" disabled={saving || loading || Boolean(optionError) || customerModalOpen}>{saving ? <><LoaderCircle size={16} className="cp-spin" />{" "}{translate("جارٍ الحفظ")}</> : <><Check size={16} />{onAddedToOrder ? translate("إضافة إلى الطلب") : row.id ? translate("حفظ التعديلات") : translate("إضافة المنتج")}</>}</button></div></div>
     </div>
   </div>
   {customerModalOpen && <div className="cp-customer-child-layer">

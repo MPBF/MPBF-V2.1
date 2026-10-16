@@ -50,6 +50,10 @@ const WebSocket = require("ws");
     let staleProduction = false;
     let profileProducts = [];
     let nextCustomerNumber = 333;
+    const immediateProducts = process.argv.includes("--immediate-products");
+    let failProduct = false;
+    let failOrder = false;
+    const savedProducts = [];
     let customer = { id: "CID010", name: "Existing Customer", name_ar: "عميل تجريبي", phone: "0501234567",
       sales_rep_id: 7, sales_rep_name_ar: "مندوب تجريبي", is_active: true };
     let production = { id: 8, production_order_number: "123-01", order_id: 7, order_number: "123",
@@ -74,7 +78,23 @@ const WebSocket = require("ws");
         writes.push({ route, method: request.method, payload });
         status = failSave ? 400 : 201;
         data = failSave ? { message: "فشل الحفظ التجريبي" } : (customer = { ...payload, id: `CID${nextCustomerNumber++}` });
-      } else if (/^\/customers\/[^/]+\/detail$/.test(route)) data = { customer, products: profileProducts };
+      } else if (/^\/customers\/[^/]+\/detail$/.test(route)) data = { customer, products: [...profileProducts, ...savedProducts] };
+      else if (immediateProducts && route === "/orders/next-number") data = { order_number: "O0001" };
+      else if (immediateProducts && route === "/customer-products" && request.method === "POST") {
+        const payload = JSON.parse(request.postData);
+        writes.push({ route, method: request.method, payload });
+        await new Promise(resolve => setTimeout(resolve, 120));
+        if (failProduct) { status = 400; data = { message: "تعذر حفظ المنتج." }; }
+        else {
+          data = { ...payload, id: 1000 + savedProducts.length, category_name_ar: "أكياس بنانة", category_name: "Banana bags", size_caption: "40 × 50" };
+          savedProducts.push(data);
+        }
+      } else if (immediateProducts && route === "/orders/with-items" && request.method === "POST") {
+        const payload = JSON.parse(request.postData);
+        writes.push({ route, method: request.method, payload });
+        status = failOrder ? 400 : 201;
+        data = failOrder ? { message: "تعذر حفظ الطلب." } : { id: 7, ...payload };
+      }
       else if (route === "/customers/CID010" && request.method === "PUT") {
         const payload = JSON.parse(request.postData);
         writes.push({ route, method: request.method, payload });
@@ -139,6 +159,88 @@ const WebSocket = require("ws");
       const result = await send("Page.captureScreenshot", { format: "png" });
       await fs.writeFile(`generated-artifacts/customer-production-checks/${name}.png`, Buffer.from(result.data, "base64"));
     };
+
+    if (immediateProducts) {
+      const chooseCustomer = async () => {
+        await input("#order-customer", "عميل");
+        await wait("!!document.querySelector('#order-customer-list [role=option],.order-customer-options [role=option],[role=listbox] [role=option]')");
+        await click('[role=listbox] [role=option]');
+        await wait("!document.querySelector('.order-product-mode button:nth-child(2)').disabled");
+      };
+      const openOrder = async () => {
+        await navigate("/orders");
+        await wait("[...document.querySelectorAll('button')].some(b=>/إضافة\\s+طلب/.test(b.textContent))");
+        await evaluate("[...document.querySelectorAll('button')].find(b=>/إضافة\\s+طلب/.test(b.textContent)).click()");
+        await wait("!!document.querySelector('#order-customer')");
+        await chooseCustomer();
+      };
+      for (const width of [390, 1440]) {
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: width < 700 });
+        await openOrder();
+        await click(".order-product-mode button:nth-child(2)");
+        await wait("!!document.querySelector('#cp-width')&&!document.querySelector('.cp-save').disabled");
+        await input("#cp-category", "CAT01");
+        await input("#cp-width", "40");
+        await input("#cp-right", "5");
+        await input("#cp-left", "5");
+        await input("#cp-thickness", "20");
+        await input("#cp-notes", `immediate ${width}`);
+        verify(`${width}: immediate-save policy is visible`,
+          await evaluate("document.querySelector('.cp-footer-note').textContent.includes('حتى عند إلغاء الطلب')"));
+        failProduct = true;
+        await click(".cp-save");
+        await wait("!!document.querySelector('.cp-error')&&!document.querySelector('.cp-save').disabled");
+        verify(`${width}: failed product save retains both forms and fields`,
+          await evaluate(`!!document.querySelector('.order-create-modal')&&document.querySelector('#cp-notes').value==='immediate ${width}'`));
+        failProduct = false;
+        const before = writes.filter(write => write.route === "/customer-products").length;
+        await evaluate("(()=>{const b=document.querySelector('.cp-save');b.click();b.click()})()");
+        await wait("!document.querySelector('.cp-modal')");
+        verify(`${width}: double click saves exactly once`,
+          writes.filter(write => write.route === "/customer-products").length, before + 1);
+        const product = savedProducts.at(-1);
+        verify(`${width}: product belongs to selected customer`, product.customer_id, "CID010");
+        verify(`${width}: line becomes existing saved product`,
+          await evaluate("document.querySelector('.order-product-mode button').getAttribute('aria-pressed')==='true'&&!document.querySelector('.order-product-draft')"));
+        await input("#order-quantity-1", "12.5");
+        failOrder = true;
+        await click(".order-create-save");
+        await wait("!!document.querySelector('.order-create-alert[role=alert]')&&!document.querySelector('.order-create-save').disabled");
+        failOrder = false;
+        await click(".order-create-save");
+        await wait("!document.querySelector('.order-create-modal')");
+        const orderWrites = writes.filter(write => write.route === "/orders/with-items").slice(-2);
+        for (const write of orderWrites) {
+          verify(`${width}: order sends saved product ID`, Number(write.payload.items[0].customer_product_id), product.id);
+          verify(`${width}: order never sends new_product`, Object.hasOwn(write.payload.items[0], "new_product"), false);
+        }
+        verify(`${width}: order retry does not recreate product`,
+          writes.filter(write => write.route === "/customer-products").length, before + 1);
+        await openOrder();
+        await click(".order-product-mode button:nth-child(2)");
+        await wait("!!document.querySelector('#cp-width')&&!document.querySelector('.cp-save').disabled");
+        await input("#cp-category", "CAT01");
+        await input("#cp-width", "40");
+        await input("#cp-right", "5");
+        await input("#cp-left", "5");
+        await input("#cp-thickness", "20");
+        await input("#cp-notes", `cancelled order ${width}`);
+        await click(".cp-save");
+        await wait("!document.querySelector('.cp-modal')");
+        const productsBeforeCancel = savedProducts.length;
+        await click(".order-create-cancel");
+        await wait("!document.querySelector('.order-create-modal')");
+        await navigate("/customers/CID010");
+        await wait(`document.querySelectorAll('main tbody tr').length===${productsBeforeCancel}`);
+        verify(`${width}: saved product survives order cancellation`,
+          await evaluate(`document.querySelectorAll('main tbody tr').length===${productsBeforeCancel}`));
+        await screenshot(`immediate-product-${width}`);
+      }
+      verify("no unexpected writes", writes.every(write => ["/customer-products", "/orders/with-items"].includes(write.route)));
+      verify("no browser runtime errors", errors, []);
+      console.log(`Immediate product browser checks passed: ${checks}; fixture APIs only.`);
+      return;
+    }
 
     if (process.argv.includes("--capture-only")) {
       for (const width of [390, 768, 1024]) {
