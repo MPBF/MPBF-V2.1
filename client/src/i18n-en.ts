@@ -1,4 +1,6 @@
 const english: Record<string, string> = {
+  "مرحبا بك في نظام مودرن": "Welcome to the Modern System",
+  "سجل دخولك الى النظام": "Sign in to the system",
   " (تأكيد مطلوب)": " (confirmation required)",
   " · غير نشط": " · Inactive",
   "(اختياري)": "(Optional)",
