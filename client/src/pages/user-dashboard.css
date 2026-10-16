@@ -191,10 +191,10 @@
 .self-attendance-day-list { padding: 1px 19px 6px; min-width: 0; }
 .self-attendance-day {
   display: grid;
-  grid-template-columns: minmax(145px, 190px) minmax(0, 1fr);
-  align-items: center;
-  gap: 14px;
-  min-height: 66px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 2px;
+  padding: 10px 0;
   border-bottom: 1px solid #edf2f0;
   min-width: 0;
 }
@@ -208,22 +208,23 @@
 }
 .self-attendance-day-events {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
   max-width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  padding: 9px 2px;
-  scrollbar-color: #b8ccc5 transparent;
-  scrollbar-width: thin;
+  overflow-x: hidden;
+  padding: 3px 2px 5px;
 }
 .self-attendance-day-events:focus-visible { outline: 2px solid var(--self-teal); outline-offset: 2px; }
 .self-attendance-day-event {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   min-height: 38px;
   padding: 6px 10px;
   border: 1px solid var(--self-line);
@@ -438,8 +439,8 @@
   .self-admin-leave-dates .self-submit { grid-column: auto; justify-self: stretch; }
   .self-attendance-assessment-note { margin-inline: 14px; }
   .self-attendance-day-list { padding-inline: 12px; }
-  .self-attendance-day { grid-template-columns: minmax(96px, 112px) minmax(0, 1fr); gap: 9px; min-height: 62px; }
-  .self-attendance-day-date { font-size: 10px; }
+  .self-attendance-day { gap: 2px; }
+  .self-attendance-day-date { font-size: 12px; }
   .self-attendance-day-events { gap: 6px; }
   .self-attendance-day-event { gap: 6px; padding-inline: 8px; }
   .self-attendance-event-action, .self-attendance-day-event time { font-size: 10px; }
@@ -460,6 +461,6 @@
   .self-attendance-actions { grid-template-columns: repeat(2,minmax(0, 1fr)); }
   .self-message-top, .self-request-top { flex-wrap: wrap; }
   .self-leave-date-fields { grid-template-columns: minmax(0, 1fr); }
-  .self-attendance-day { grid-template-columns: minmax(88px, 96px) minmax(0, 1fr); gap: 7px; }
-  .self-attendance-day-date { font-size: 9px; }
+  .self-attendance-day { gap: 2px; }
+  .self-attendance-day-date { font-size: 12px; }
 }
