@@ -63,7 +63,7 @@ function SpecificationRow({ row, index }: { row: OrderPrintProduction; index: nu
     </td>
     <td dir="ltr">{product ? sizeText(product) : "—"}</td>
     <td dir="ltr">{roundedWithUnit(product?.cutting_length_cm, "cm")}</td>
-    <td dir="ltr">{roundedWithUnit(product?.universal_thickness, "MIC")}</td>
+    <td dir="ltr">{printNumberText(product?.thickness)}</td>
     <td>{safeText(product?.raw_material)}</td>
     <td>
       <div className="opp-color-cell">
@@ -130,7 +130,7 @@ export default function OrderPrintSheet({ data, branding }: { data: OrderPrintDe
       <colgroup><col style={{ width: "2.5%" }} /><col style={{ width: "13.5%" }} /><col style={{ width: "8%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "7%" }} /><col style={{ width: "9%" }} /><col style={{ width: "5%" }} /><col style={{ width: "6%" }} /><col style={{ width: "6%" }} /><col style={{ width: "12%" }} /><col style={{ width: "20%" }} /></colgroup>
       <thead><tr>
         <th>{bilingual("#", "#")}</th><th>{bilingual("الصنف", "Item")}</th><th>{bilingual("المقاس / الواجهات", "Size / Facings")}</th>
-        <th>{bilingual("طول القص", "Cut length")}</th><th>{bilingual("السماكة العامة", "Thickness · MIC")}</th>
+        <th>{bilingual("طول القص", "Cut length")}</th><th>{bilingual("السماكة", "Thickness")}</th>
         <th>{bilingual("المادة", "Material")}</th><th>{bilingual("اللون", "Color")}</th><th>{bilingual("الطباعة", "Printed")}</th>
         <th>{bilingual("السلندر", "Cylinder")}</th><th>{bilingual("التخريم", "Punching")}</th>
         <th>{bilingual("الكمية", "Quantity")}</th><th>{bilingual("ملاحظات", "Notes")}</th>

@@ -13,7 +13,7 @@
 - [Plastic-roll products skip cutting](roll-products-skip-cutting.md) — name-detected roll items bypass cutting (film→[printing]→done→hall); gate order 'done' on filmDone; pinning created_at avoids cut_completed_at CHECK violation.
 - [Film dashboard visibility](film-dashboard-visibility.md) — film-operator order list must filter `production_stage='film'`; film_completed only set by Final Roll button, so quantity-complete orders otherwise linger.
 - [Roll-create stage trust](roll-create-stage-trust.md) — roll-create routes must force stage='film' & strip client transition fields; only server logic advances to printing (inline-printing bypass risk).
-- [Universal thickness film eligibility](universal-thickness-eligibility.md) — film machine min/max_thickness matches order universal_thickness (computed col), never raw thickness.
+- [Original-thickness machine limits](machine-thickness-eligibility.md) — machine min/max thickness refers to original thickness, not universal thickness; the user explicitly corrected the earlier assumption.
 - [Printing cylinder units](printing-cylinder-units.md) — legacy inch-marked cylinder values must work with numeric capability limits; preserve frozen snapshots and reject unknown units.
 - [Production queue estimates](production-queue-estimates.md) — finish estimate uses configured shift hours, per-order size-appropriate capacity (width buckets), and gates finish date on machine status.
 - [Machine type value inconsistency](machine-type-values.md) — machines.type holds mixed values ('Printer'/'Cutter' vs 'printing'/'cutting' vs 'extruder'); any type-keyed logic must normalize/lowercase and accept both variants.
@@ -103,3 +103,5 @@
 - [Package firewall lockfiles](package-firewall-lockfiles.md) — parent upgrades can retain blocked transitives; verify compatible patched resolutions with a clean install.
 - [Customer drawer format](customer-drawer-format.md) — A–Z plus 1–100 saved as C-24; new selections must not rewrite historical codes on unrelated edits.
 - [Product facing policy](customer-product-facing-policy.md) — each side must be ≤ half the width; category labels omit codes and side arrows retain physical direction.
+- [Mobile primary navigation](mobile-primary-navigation.md) — More keeps all authorized main pages reachable when the phone bottom bar cannot fit them.
+- [Thickness display policy](thickness-display-policy.md) — display original thickness only; universal thickness remains automatically stored for internal calculations.
