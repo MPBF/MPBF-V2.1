@@ -108,3 +108,33 @@ describe("film limits use original product thickness", () => {
     expect(tx.query).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("film machine material capabilities", () => {
+  it.each([
+    ["HDPE\\LDPE", "HDPE"], ["HDPE\\LDPE", "LDPE"],
+    ["HDPE/LDPE", "HDPE"], ["HDPE/LDPE", "LDPE"],
+    [" hdpe \\ ldpe ", " ldpe "], [" HDPE ", "hdpe"],
+    ["LDPE", "ldpe"], ["Regrind", " regrind "],
+  ])("accepts supported material %s → %s", async (machineMaterial, rawMaterial) => {
+    await expect(machine(txFor({ type: "extruder", raw_material_type: machineMaterial }), "F1", "film",
+      { ...product, raw_material: rawMaterial })).resolves.toMatchObject({ status: "active" });
+  });
+  it.each([
+    ["HDPE\\LDPE", "Regrind"], ["HDPE\\LDPE", "HDPE-PLUS"],
+    ["HDPE\\LDPE", "PE"], ["HDPE\\LDPE", ""], ["HDPE\\LDPE", null],
+    ["HDPE", "LDPE"], ["LDPE", "HDPE"], ["Regrind", "HDPE"],
+  ])("rejects unsupported or missing material %s → %s", async (machineMaterial, rawMaterial) => {
+    await expect(machine(txFor({ type: "extruder", raw_material_type: machineMaterial }), "F1", "film",
+      { ...product, raw_material: rawMaterial })).rejects.toMatchObject({
+        status: 409, message: "المادة الخام لا تطابق الماكينة",
+      });
+  });
+  it.each([null, "", "MIX", " mix "])("preserves the existing unrestricted material capability %s", async machineMaterial => {
+    await expect(machine(txFor({ type: "extruder", raw_material_type: machineMaterial }), "F1", "film",
+      { ...product, raw_material: "Regrind" })).resolves.toMatchObject({ status: "active" });
+  });
+  it.each(["printing", "cutting"] as const)("does not apply film-material limits to %s", async stage => {
+    await expect(machine(txFor({ type: stage === "printing" ? "printer" : "cutter", raw_material_type: "HDPE" }),
+      "P1", stage, { ...product, raw_material: "LDPE" })).resolves.toMatchObject({ status: "active" });
+  });
+});

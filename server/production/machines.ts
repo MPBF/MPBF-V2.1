@@ -43,8 +43,10 @@ export async function machine(tx: Connection, id: string, stage: ProductionStage
       stage === "cutting" && !inRange(product.cutting_length_cm, selected.min_length_cm, selected.max_length_cm) ||
       stage === "printing" && !inRange(printingCylinderInches(product.printing_cylinder), selected.min_cylinder_inch, selected.max_cylinder_inch))
     throw new ProductionError("مواصفات المنتج خارج حدود الماكينة أو غير مكتملة", "The product specifications are missing or outside the machine limits.");
-  if (stage === "film" && selected.raw_material_type && selected.raw_material_type !== "MIX" &&
-      selected.raw_material_type !== product.raw_material)
+  const machineMaterial = selected.raw_material_type?.trim().toUpperCase();
+  const productMaterial = product.raw_material?.trim().toUpperCase();
+  if (stage === "film" && machineMaterial && machineMaterial !== "MIX" &&
+      !machineMaterial.split(/[\\/]/).some(material => material.trim() === productMaterial))
     throw new ProductionError("المادة الخام لا تطابق الماكينة", "The raw material is incompatible with this machine.");
   if (stage === "printing" && selected.max_print_colors != null &&
       Math.max(product.front_print_colors?.length ?? 0, product.back_print_colors?.length ?? 0) > selected.max_print_colors)
