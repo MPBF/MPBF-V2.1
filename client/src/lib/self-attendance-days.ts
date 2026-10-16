@@ -43,6 +43,6 @@ export function groupAttendanceEventsByDay<T extends DatedAttendanceEvent>(
       delete row.status;
     } else days.set(day, { events: [event] });
   }
-  return [...days].sort(([a], [b]) => a.localeCompare(b))
+  return [...days].sort(([a], [b]) => b.localeCompare(a))
     .map(([day, row]) => ({ day, events: row.events, ...(row.events.length === 0 && row.status ? { status: row.status } : {}) }));
 }

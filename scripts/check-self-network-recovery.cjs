@@ -205,8 +205,8 @@ const WebSocket = require("ws");
       assert.equal(await evaluate("document.querySelectorAll('.self-attendance-btn').length"), 4, "Preserve every attendance action");
       assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-btn')].every(b=>b.disabled)"), "No shift must still prevent attendance actions");
       assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.dataset.day)"),
-        ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-31"]);
-      assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.querySelectorAll('.self-attendance-day-event').length)"), [6, 4, 2, 2]);
+        ["2026-10-31", "2026-10-03", "2026-10-02", "2026-10-01"], "Newest accounting day is first");
+      assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.querySelectorAll('.self-attendance-day-event').length)"), [2, 2, 4, 6]);
       assert.deepEqual((await evaluate("[...document.querySelectorAll('.self-attendance-day-event time')].map(t=>t.dateTime)")).sort(),
         historyEvents.map(e => e.occurred_at).sort(), "Every original event timestamp must survive grouping");
       assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day')].every(r=>{const date=r.querySelector('.self-attendance-day-date').getBoundingClientRect(),events=r.querySelector('.self-attendance-day-events').getBoundingClientRect();return events.top>=date.bottom&&Math.abs(date.left-events.left)<3})"),
@@ -225,6 +225,9 @@ const WebSocket = require("ws");
       ];
       await evaluate("document.querySelector('.page-hero-refresh').click()");
       await wait(`${ready}&&document.querySelectorAll('.self-attendance-day').length===6`);
+      assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.dataset.day)"),
+        ["2026-10-31", "2026-10-05", "2026-10-04", "2026-10-03", "2026-10-02", "2026-10-01"],
+        "Attendance, absence and leave share the same newest-first ordering");
       const absentLabel = language === "ar" ? "غائب" : "Absent", leaveLabel = language === "ar" ? "إجازة" : "Leave";
       assert.ok((await evaluate("document.querySelector('[data-day=\"2026-10-04\"]').textContent")).includes(absentLabel));
       assert.ok((await evaluate("document.querySelector('[data-day=\"2026-10-05\"]').textContent")).includes(leaveLabel));
