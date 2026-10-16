@@ -129,7 +129,6 @@ export default function RoleSwitcher({ user, placement }: RoleSwitcherProps) {
         control: "تغيير الدور",
         testing: "الدور قيد الاختبار",
         original: "دوري الأصلي",
-        return: "العودة إلى دوري الأصلي",
         title: "اختيار دور للاختبار",
         description: "ستُطبّق صلاحيات الدور المحدد على هذه الجلسة.",
         warning: "تنبيه: الإجراءات تحفظ بيانات حقيقية. لا يتغير الدور المحفوظ لحسابك.",
@@ -146,7 +145,6 @@ export default function RoleSwitcher({ user, placement }: RoleSwitcherProps) {
         control: "Change role",
         testing: "Currently testing",
         original: "My original role",
-        return: "Return to my original role",
         title: "Choose a role to test",
         description: "The selected role's permissions will apply to this session.",
         warning: "Changes write real data. Your account's saved role will not change.",
@@ -191,8 +189,6 @@ export default function RoleSwitcher({ user, placement }: RoleSwitcherProps) {
     }
   };
 
-  const restoreOriginal = () => applyChoice(originalRole.id);
-
   return (
     <section className={`rs-root rs-${placement}`} aria-label={arabic ? "معاينة الأدوار" : "Role preview"}>
       <button className={`rs-trigger${preview.active ? " is-active" : ""}`} type="button" ref={triggerRef} onClick={openChooser} aria-haspopup="dialog" aria-expanded={open} disabled={busy}>
@@ -203,12 +199,6 @@ export default function RoleSwitcher({ user, placement }: RoleSwitcherProps) {
         </span>
         <ChevronDown className="rs-trigger-chevron" size={16} aria-hidden="true" />
       </button>
-      {preview.active && (
-        <button className="rs-return" data-role-preview-action="restore" type="button" onClick={restoreOriginal} disabled={busy} aria-label={copy.return}>
-          {busy ? <Loader2 size={15} className="rs-spin" aria-hidden="true" /> : <RotateCcw size={15} aria-hidden="true" />}
-          <span>{copy.return}</span>
-        </button>
-      )}
       {error && !open && <div className="rs-error" role="alert">{error}</div>}
 
       {open && (
@@ -232,6 +222,7 @@ export default function RoleSwitcher({ user, placement }: RoleSwitcherProps) {
             <div className="rs-options" aria-label={copy.title}>
               <button
                  className={`rs-option${!preview.active ? " is-current" : ""}`}
+                 data-role-preview-action="restore"
                 type="button"
                 onClick={() => void applyChoice(originalRole.id)}
                 disabled={busy || loading}

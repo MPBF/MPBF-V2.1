@@ -26,5 +26,11 @@ business action run with broader permissions than the user intended. Stored
 admin snapshots would permit access after actual revocation.
 
 **How to apply:** preserve these boundaries when adding role controls, caching,
-or account restrictions. Always keep the return control reachable even while
-testing a role with no permissions.
+or account restrictions. Always keep the original-role option reachable inside
+the role chooser, even while testing a role with no permissions.
+
+The role chooser is the only restoration control; do not add a separate
+“العودة إلى دوري الأصلي” button.
+
+**Why:** the user explicitly requested removing the separate button and keeping
+restoration within the role-selection list.

@@ -28,6 +28,9 @@
 .production .prod-header-machine-slot:empty { display:none; }
 .production .prod-header-machine-slot .prod-inline { flex-wrap:nowrap; }
 .production .prod-header-machine-slot .prod-chip { max-width:min(32vw,280px); overflow-wrap:anywhere; }
+.production .prod-header-machine-slot .prod-machine-picker { min-width:0; }
+.production .prod-header-machine-slot .prod-machine-change { max-width:min(32vw,280px); min-width:44px; overflow:hidden; }
+.production .prod-header-machine-slot .prod-machine-change span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .production .prod-header-machine-slot .prod-field { display:flex; align-items:center; gap:6px; }
 .production .prod-header-machine-slot .prod-field label { flex:none; }
 .production .prod-header-machine-slot .prod-field select { width:auto; min-width:120px; max-width:min(30vw,230px); min-height:44px; }
@@ -437,7 +440,41 @@
   .production .prod-heading-controls > .prod-btn.secondary { flex:none; }
   .production .operator-header .prod-eyebrow,
   .production .operator-header .prod-heading-copy > p { display:none; }
-  .production .operator-header .prod-heading h2 { white-space:nowrap; }
+  .production .operator-header {
+    display:grid; grid-template-columns:minmax(0,1fr) 44px minmax(44px,min(34vw,160px));
+    grid-template-areas:"copy refresh machine"; align-items:center; gap:6px;
+  }
+  .production .operator-header .prod-heading-copy { grid-area:copy; }
+  .production .operator-header .prod-heading h2 {
+    max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .production .operator-header .prod-heading-controls > .prod-header-refresh {
+    grid-area:refresh; width:44px; min-width:44px; height:44px; min-height:44px;
+    padding:0; gap:0; font-size:0; justify-content:center;
+  }
+  .production .operator-header .prod-header-refresh svg { flex:none; }
+  .production .operator-header .prod-header-refresh-label { display:none; }
+  .production .operator-header .prod-header-machine-slot {
+    grid-area:machine; flex:none; width:100%; max-width:none; min-width:0; justify-self:stretch;
+  }
+  .production .operator-header .prod-header-machine-slot .prod-machine-picker { width:100%; }
+  .production .operator-header .prod-header-machine-slot .prod-machine-change {
+    width:100%; max-width:none; min-width:44px; height:44px; min-height:44px;
+    padding:0 6px; gap:5px; justify-content:flex-start;
+  }
+  .production .operator-header .prod-header-machine-slot .prod-machine-change svg { width:16px; height:16px; flex:none; }
+  .production .operator-header .prod-header-machine-slot .prod-machine-change span { flex:1; }
+  .production .operator-header .prod-header-machine-slot .prod-machine-select {
+    display:grid; width:100%; grid-template-columns:minmax(0,1fr); gap:4px; align-items:stretch;
+  }
+  .production .operator-header .prod-header-machine-slot .prod-machine-select label { min-width:0; }
+  .production .operator-header .prod-header-machine-slot .prod-machine-select select {
+    width:100%; min-width:0; max-width:none; min-height:44px;
+  }
+  .production .operator-header .prod-heading-controls > .prod-btn.secondary {
+    grid-column:1/-1; grid-row:2; justify-self:start;
+  }
+  .production .operator-header:has(.prod-machine-select) .prod-heading-controls > .prod-btn.secondary { grid-row:3; }
   .prod-mark { display:none; }
   .prod-stat { grid-column:span 6; min-height:90px; padding:12px; }
   .prod-stat strong { font-size:22px; }
@@ -480,11 +517,6 @@
 @media(max-width:420px) {
   .production .prod-film-duration-item { grid-template-columns:1fr; }
   .production .prod-film-duration-times { grid-column:auto; }
-  .roll-operator .roll-operator-rolls,
-  .film-recorded-rolls {
-    grid-template-columns:minmax(0,160px);
-    justify-content:start;
-  }
 }
 @media(prefers-reduced-motion:reduce) {
   .production *, .production *::before, .production *::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; scroll-behavior:auto!important; }

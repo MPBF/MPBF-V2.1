@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, afterAll, describe, expect, it, jest } from "@je
 import { db } from "../server/db";
 import { roles, users, system_settings } from "../shared/schema";
 import { availableProductionViews } from "../client/src/lib/production-navigation";
+import { availablePlanningViews } from "../client/src/lib/planning-navigation";
 import { populateUser, enforcePasswordChange, requirePermission, withRolePreview } from "../server/auth";
 import rolePreviewRouter from "../server/role-preview";
 
@@ -201,7 +202,7 @@ describe("session-scoped administrator role testing", () => {
     expect(availableProductionViews(await me(cookie))).toEqual([]);
     await request("/me/role-preview", cookie, "DELETE");
     expect((await me(cookie)).production_role_binding).toEqual({ mode: "general", stages: [] });
-    expect(availableProductionViews(await me(cookie)).map(view => view.view)).toContain("management");
+    expect(availablePlanningViews(await me(cookie)).map(view => view.view)).toContain("management");
   });
   it("fails closed when the preview role is deleted, but keeps the original admin's return available", async () => {
     const cookie = await login();

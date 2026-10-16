@@ -309,7 +309,7 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
               <div className="cp-field"><label>{translate("وصف المقاس المحسوب")}</label><div className="cp-readonly">{preview.size_caption || "—"}</div></div>
             </div>
             <div className="cp-grid cp-specifications">
-              <ProductValueSelect label="السماكة (ميكرون)" id="cp-thickness" value={form.thickness} values={PRODUCT_SELECT_VALUES.thickness} onChange={(v) => set("thickness", v)} />
+              <ProductValueSelect label={translate("السماكة")} id="cp-thickness" value={form.thickness} values={PRODUCT_SELECT_VALUES.thickness} onChange={(v) => set("thickness", v)} />
               <ProductValueSelect label="الكثافة" id="cp-density" value={form.density} values={PRODUCT_SELECT_VALUES.density} onChange={(v) => set("density", v)} />
               <div className="cp-field"><label htmlFor="cp-punching">{translate("التخريم")}</label><select id="cp-punching" value={String(form.punching || "بدون")} onChange={(e) => set("punching", e.target.value)}>{(punchingOptions(categoryName) || []).map((p) => <option key={p} value={p}>{p}</option>)}{form.punching && !(punchingOptions(categoryName) || []).includes(String(form.punching)) && <option value={String(form.punching)}>{translate("القيمة الحالية:")}{" "}{String(form.punching)}</option>}</select></div>
                <div className="cp-field"><label>{translate("وزن الكيس (جرام)")}</label><div className="cp-readonly ltr">{preview.bag_weight_grams || "—"}</div></div>
@@ -373,7 +373,7 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
         </>}
         </fieldset>
       </form>
-      <div className="cp-footer"><span className="cp-footer-note"><CircleHelp size={13} /> {onDraftSaved ? translate("مسودة · يُحفظ المنتج عند حفظ الطلب") : translate("الحقول المحسوبة للقراءة فقط · السماكة العامة غير مرسلة")}</span><div className="cp-actions"><button className="cp-cancel" type="button" onClick={close} disabled={saving || customerModalOpen}>{translate("إلغاء")}</button><button className="cp-save" type="submit" form="cp-form" disabled={saving || loading || Boolean(optionError) || customerModalOpen}>{saving ? <><LoaderCircle size={16} className="cp-spin" />{" "}{translate("جارٍ الحفظ")}</> : <><Check size={16} />{onDraftSaved ? translate("إضافة إلى الطلب") : row.id ? translate("حفظ التعديلات") : translate("إضافة المنتج")}</>}</button></div></div>
+      <div className="cp-footer"><span className="cp-footer-note"><CircleHelp size={13} /> {onDraftSaved ? translate("مسودة · يُحفظ المنتج عند حفظ الطلب") : translate("الحقول المحسوبة للقراءة فقط")}</span><div className="cp-actions"><button className="cp-cancel" type="button" onClick={close} disabled={saving || customerModalOpen}>{translate("إلغاء")}</button><button className="cp-save" type="submit" form="cp-form" disabled={saving || loading || Boolean(optionError) || customerModalOpen}>{saving ? <><LoaderCircle size={16} className="cp-spin" />{" "}{translate("جارٍ الحفظ")}</> : <><Check size={16} />{onDraftSaved ? translate("إضافة إلى الطلب") : row.id ? translate("حفظ التعديلات") : translate("إضافة المنتج")}</>}</button></div></div>
     </div>
   </div>
   {customerModalOpen && <div className="cp-customer-child-layer">
