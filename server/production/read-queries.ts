@@ -26,13 +26,23 @@ export const masterBatchJSON = `CASE WHEN mb.id IS NULL THEN NULL ELSE jsonb_bui
 export const liveProduct = `jsonb_build_object('id',cp.id,'item_id',cp.item_id,'name',i.name,'name_ar',i.name_ar,
   'customer_name',c.name,'customer_name_ar',c.name_ar,'width',cp.width::text,
   'left_facing',cp.left_facing::text,'right_facing',cp.right_facing::text,
-  'universal_thickness',cp.universal_thickness::text,'cutting_length_cm',cp.cutting_length_cm,
+  'thickness',cp.thickness::text,'universal_thickness',cp.universal_thickness::text,'cutting_length_cm',cp.cutting_length_cm,
   'raw_material',cp.raw_material,'printing_cylinder',cp.printing_cylinder,'punching',cp.punching,
    'notes',cp.notes,'front_print_colors',cp.front_print_colors,'back_print_colors',cp.back_print_colors,
    'size_caption',cp.size_caption,'plate_drawer_code',c.plate_drawer_code,'master_batch',${masterBatchJSON})`;
 // Supplement only fields absent from older snapshots, without rewriting them
 // or replacing deliberately saved nulls. All original execution specs stay frozen.
-const displayedProduct = `e.product ||
+// Older execution snapshots did not contain raw thickness. Supply it only if
+// the original dimensions and universal thickness still match the live product.
+// Never derive a raw value from a rounded universal value or overwrite a saved null.
+export const snapshotWithDisplayThickness = `CASE WHEN cp.id IS NULL OR e.product ? 'thickness' THEN e.product
+  ELSE e.product || jsonb_build_object('thickness',
+    CASE WHEN (e.product->>'width') IS NOT DISTINCT FROM cp.width::text
+      AND (e.product->>'left_facing') IS NOT DISTINCT FROM cp.left_facing::text
+      AND (e.product->>'right_facing') IS NOT DISTINCT FROM cp.right_facing::text
+      AND (e.product->>'universal_thickness') IS NOT DISTINCT FROM cp.universal_thickness::text
+    THEN cp.thickness::text ELSE NULL END) END`;
+const displayedProduct = `${snapshotWithDisplayThickness} ||
   CASE WHEN e.product ? 'size_caption' THEN '{}'::jsonb ELSE jsonb_build_object('size_caption',
     CASE WHEN (e.product->>'width') IS NOT DISTINCT FROM cp.width::text
       AND (e.product->>'left_facing') IS NOT DISTINCT FROM cp.left_facing::text
@@ -62,27 +72,25 @@ export const orderSelect = `SELECT p.id,p.order_id,p.production_order_number,p.c
   LEFT JOIN LATERAL (SELECT sum(quantity_kg) quantity FROM factory_receipt_items WHERE production_order_id=p.id) received ON true
   ORDER BY p.id DESC`;
 export const rollSelect = `SELECT r.*,p.production_order_number,p.batch_number,p.status production_order_status,
-  o.order_number,o.status order_status,e.stage production_stage,e.product,e.is_printed,e.is_roll_product,
+  o.order_number,o.status order_status,e.stage production_stage,${snapshotWithDisplayThickness} product,e.is_printed,e.is_roll_product,
   ${productionActorJSON("roll_creator")} created_actor
   FROM factory_rolls r JOIN production_orders p ON p.id=r.production_order_id
   JOIN orders o ON o.id=p.order_id JOIN factory_execution e ON e.production_order_id=r.production_order_id
+  LEFT JOIN customer_products cp ON cp.id=p.customer_product_id
   LEFT JOIN users roll_creator ON roll_creator.id=r.created_by`;
 export const receiptSelect = `SELECT r.*,COALESCE((SELECT jsonb_agg(to_jsonb(ri)||jsonb_build_object(
+  'quantity_kg',ri.quantity_kg::text,
   'production_order_number',p.production_order_number,'location_name',l.name,'location_name_ar',l.name_ar) ORDER BY ri.id)
   FROM factory_receipt_items ri JOIN production_orders p ON p.id=ri.production_order_id
   JOIN factory_locations l ON l.id=ri.location_id WHERE ri.receipt_id=r.id),'[]'::jsonb) items
   FROM factory_receipts r`;
-export const inventorySelect = `SELECT inv.*,p.production_order_number,p.batch_number,p.status production_order_status,e.product,
-  l.name location_name,l.name_ar location_name_ar,
-  COALESCE(unit_stock.balances,'[]'::jsonb) unit_balances,
-  (inv.quantity_kg-COALESCE(unit_stock.weight,0))::text legacy_quantity_kg
+export const inventorySelect = `SELECT inv.*,p.production_order_number,p.batch_number,p.status production_order_status,${snapshotWithDisplayThickness} product,
+  l.name location_name,l.name_ar location_name_ar
   FROM factory_inventory inv
   JOIN factory_execution e ON e.production_order_id=inv.production_order_id
+  LEFT JOIN customer_products cp ON cp.id=p.customer_product_id
   JOIN production_orders p ON p.id=inv.production_order_id JOIN factory_locations l ON l.id=inv.location_id
-  LEFT JOIN LATERAL (
-    SELECT jsonb_agg(u.specification||jsonb_build_object('id',u.id,'unit_quantity',u.unit_quantity::text,'quantity_kg',u.quantity_kg::text) ORDER BY u.id) balances,
-      sum(u.quantity_kg) weight FROM factory_inventory_units u WHERE u.inventory_id=inv.id
-  ) unit_stock ON true`;
+  `;
 export const movementSelect = `SELECT m.*,r.voucher_number,ri.production_order_id,ri.location_id,p.production_order_number
   FROM factory_movements m JOIN factory_receipts r ON r.id=m.receipt_id
   JOIN factory_receipt_items ri ON ri.id=m.receipt_item_id JOIN production_orders p ON p.id=ri.production_order_id`;

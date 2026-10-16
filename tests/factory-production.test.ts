@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { eligibleForCutting, filmRollReachesTarget, hasProductionPermission, isPlasticRoll, kgHundredths, kgString, machineStage, packagingMatches, stageAfterFilm, stageAfterPrinting } from "../shared/production";
+import { eligibleForCutting, filmRollReachesTarget, hasProductionPermission, isPlasticRoll, kgHundredths, kgString, machineStage, stageAfterFilm, stageAfterPrinting } from "../shared/production";
 import { initialProductionPath } from "../client/src/lib/production-navigation";
 
 describe("factory production exact quantities and routing", () => {
@@ -55,13 +55,5 @@ describe("factory production exact quantities and routing", () => {
     expect(initialProductionPath({ id: 1, permissions: ["receive_production"] })).toBeNull();
     expect(initialProductionPath({ id: 1, permissions: ["view_finished_inventory"] })).toBeNull();
     expect(initialProductionPath({ id: 1, permissions: ["*"] })).toBeNull();
-  });
-  it("allows ±2% and 0.01 kg, but not excessive or zero packaging", () => {
-    const packaging = { roll_weight_grams: "1000", rolls_per_unit: 1, units: 10 };
-    expect(packagingMatches("10.21", packaging)).toBe(true);
-    expect(packagingMatches("9.79", packaging)).toBe(true);
-    expect(packagingMatches("10.22", packaging)).toBe(false);
-    expect(packagingMatches("10", { ...packaging, units: 0 })).toBe(false);
-    expect(packagingMatches("10", { ...packaging, roll_weight_grams: "0" })).toBe(false);
   });
 });

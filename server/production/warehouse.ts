@@ -1,5 +1,5 @@
-import { kgHundredths, kgString, packagingMatches, type ProductionUser, type ReceiptInput } from "../../shared/production";
-import { calculatePacking, PackingError } from "../../shared/production-packing";
+import { kgHundredths, kgString, type ProductionUser, type ReceiptInput } from "../../shared/production";
+import { normalizeReceiptQuantity, ReceiptQuantityError } from "../../shared/receipt-draft";
 import { available, execution, lockOrders, mutate, one, permission, ProductionError, rows, type ConnectionPool } from "./core";
 
 export class ProductionWarehouseService {
@@ -9,20 +9,15 @@ export class ProductionWarehouseService {
     return mutate(this.pool, actor, "receive", input, async tx => {
       if (!input.items.length || input.items.length > 100) throw new ProductionError("اختر من بند إلى 100 بند للاستلام.", "Choose 1 to 100 receipt lines.", 400);
       const items = input.items.map(item => {
-        if (item.packing) {
-          if (item.packaging) throw new ProductionError("لا تجمع طريقتي التعبئة في البند نفسه.", "Do not combine legacy and unit packing in one line.", 400);
-          let calculated;
-          try { calculated = calculatePacking(item.packing); }
-          catch (error) {
-            if (error instanceof PackingError) throw new ProductionError(error.message_ar, error.message_en, 400);
-            throw error;
-          }
-          if (item.quantity_kg !== undefined && kgHundredths(item.quantity_kg) !== kgHundredths(calculated.quantity_kg))
-            throw new ProductionError("وزن البند لا يطابق حساب التعبئة.", "Line weight does not match the packing calculation.", 400);
-          return {...item, quantity_kg: calculated.quantity_kg, calculated};
+        if ("packing" in item || "packaging" in item || "unit" in item || "unit_quantity" in item)
+          throw new ProductionError("سند الاستلام بالكيلو فقط ولا يقبل بيانات الوحدات أو التعبئة.", "Receipts accept kilograms only, without unit or packing data.", 400);
+        try {
+          if (typeof item.quantity_kg !== "string") throw new ReceiptQuantityError();
+          return {...item, quantity_kg: normalizeReceiptQuantity(item.quantity_kg)};
+        } catch (error) {
+          if (error instanceof ReceiptQuantityError) throw new ProductionError(error.message_ar, error.message_en, 400);
+          throw error;
         }
-        if (!item.quantity_kg) throw new ProductionError("أدخل بيانات التعبئة أو كمية الاستلام.", "Enter packing details or a receipt quantity.", 400);
-        return {...item, quantity_kg: item.quantity_kg, calculated: null};
       });
       const orders = await lockOrders(tx, input.items.map(i => i.production_order_id), false);
       if (orders.some(o => ["cancelled", "archived", "delivered"].includes(o.order_status)))
@@ -30,8 +25,6 @@ export class ProductionWarehouseService {
       // New receipts always move from the production hall to the one finished
       // hall. Keep old location_id payloads compatible, but never let them
       // select a different destination. Committed legacy replays remain exact.
-      const pairs = items.map(i => `${i.production_order_id}:${i.calculated?.packing_key ?? "legacy"}`);
-      if (new Set(pairs).size !== pairs.length) throw new ProductionError("بند الاستلام مكرر", "A receipt line is duplicated.", 400);
       for (const order of orders) {
         await execution(tx, order.id);
         const total = await available(tx, order.id);
@@ -41,8 +34,6 @@ export class ProductionWarehouseService {
       }
       for (const item of items) {
         if (kgHundredths(item.quantity_kg) <= 0n) throw new ProductionError("كمية الاستلام يجب أن تكون موجبة", "Receipt weight must be positive.", 400);
-        if (item.packaging && !packagingMatches(item.quantity_kg, item.packaging))
-          throw new ProductionError("وزن التعبئة لا يطابق الاستلام ضمن ±2% وهامش 0.01 كجم", "Packaging weight does not match receipt weight within ±2% plus 0.01 kg.", 400);
       }
       // Provision the fixed destination inside the receipt transaction, never
       // in a read endpoint or startup DDL. The lock also covers an empty table
@@ -60,30 +51,28 @@ export class ProductionWarehouseService {
         await tx.query("UPDATE factory_locations SET is_active=true WHERE id=$1", [destination.id]);
       // Sequence value and voucher are server-generated; gaps after rollback are normal.
       const { id } = await one<{ id: number }>(tx, "SELECT nextval(pg_get_serial_sequence('factory_receipts','id'))::int id");
+      // The hall advisory lock serializes new receipts. Historical prefixes are
+      // preserved; the FP-Rec series starts independently and cannot collide.
+      const { receipt_sequence } = await one<{ receipt_sequence: string }>(tx,
+        `SELECT (COALESCE(MAX(substring(voucher_number FROM '^FP-Rec([0-9]+)$')::bigint),0)+1)::text receipt_sequence
+         FROM factory_receipts WHERE voucher_number ~ '^FP-Rec[0-9]+$'`);
       const receipt = await one<{ id: number; voucher_number: string }>(tx,
         "INSERT INTO factory_receipts(id,voucher_number,created_by,notes) VALUES($1,$2,$3,$4) RETURNING *",
-        [id, `FR-${String(id).padStart(8, "0")}`, actor.id, input.notes ?? null]);
+        [id, `FP-Rec${receipt_sequence.padStart(4, "0")}`, actor.id, input.notes ?? null]);
       const savedItems = [];
       for (const [index, item] of items.entries()) {
         const exec = await execution(tx, item.production_order_id);
         const weight = kgString(kgHundredths(item.quantity_kg));
         const saved = await one<{ id: number }>(tx, `INSERT INTO factory_receipt_items
-          (receipt_id,production_order_id,customer_product_id,item_id,location_id,quantity_kg,packaging,line_number,packing)
-          VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb) RETURNING *`,
-        [id, item.production_order_id, exec.customer_product_id, exec.item_id, destination.id, weight,
-          item.packaging ? JSON.stringify(item.packaging) : null, index+1,
-          item.calculated ? JSON.stringify({...item.calculated.specification, quantity:item.calculated.unit_quantity}) : null]);
-        const inventory = await one<{id:number}>(tx, `INSERT INTO factory_inventory(production_order_id,customer_product_id,item_id,location_id,quantity_kg)
+          (receipt_id,production_order_id,customer_product_id,item_id,location_id,quantity_kg,line_number)
+          VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [id, item.production_order_id, exec.customer_product_id, exec.item_id, destination.id, weight, index+1]);
+        await tx.query(`INSERT INTO factory_inventory(production_order_id,customer_product_id,item_id,location_id,quantity_kg)
           VALUES($1,$2,$3,$4,$5) ON CONFLICT(customer_product_id,production_order_id,location_id) DO UPDATE
           SET quantity_kg=factory_inventory.quantity_kg+excluded.quantity_kg RETURNING id`,
         [item.production_order_id, exec.customer_product_id, exec.item_id, destination.id, weight]);
-        if (item.calculated) await tx.query(`INSERT INTO factory_inventory_units(inventory_id,packing_key,specification,unit_quantity,quantity_kg)
-          VALUES($1,$2,$3::jsonb,$4,$5) ON CONFLICT(inventory_id,packing_key) DO UPDATE SET
-          unit_quantity=factory_inventory_units.unit_quantity+excluded.unit_quantity,
-          quantity_kg=factory_inventory_units.quantity_kg+excluded.quantity_kg`,
-        [inventory.id,item.calculated.packing_key,JSON.stringify(item.calculated.specification),item.calculated.unit_quantity,weight]);
         await tx.query("INSERT INTO factory_movements(receipt_id,receipt_item_id,quantity_kg) VALUES($1,$2,$3)", [id, saved.id, weight]);
-        savedItems.push(saved);
+        savedItems.push({ ...saved, production_order_number: orders.find(order=>order.id===item.production_order_id)!.production_order_number });
       }
       return { ...receipt, items: savedItems };
     });

@@ -3,7 +3,7 @@ import type { FilmInput, ProductionRollDetail, ProductionRollRecord, ProductionS
 import type { FilmMixTracking } from "../../../shared/production-monitoring";
 
 export type ProductionRollLabel = {
-  roll: ProductionRollRecord;
+  roll: ProductionRollRecord & Partial<Pick<ProductionRollDetail, "printed_actor" | "cut_actor">>;
   qr: { url: string; image: string };
 };
 export class ProductionRequestError extends Error {

@@ -13,7 +13,7 @@
 - [Plastic-roll products skip cutting](roll-products-skip-cutting.md) — name-detected roll items bypass cutting (film→[printing]→done→hall); gate order 'done' on filmDone; pinning created_at avoids cut_completed_at CHECK violation.
 - [Film dashboard visibility](film-dashboard-visibility.md) — film-operator order list must filter `production_stage='film'`; film_completed only set by Final Roll button, so quantity-complete orders otherwise linger.
 - [Roll-create stage trust](roll-create-stage-trust.md) — roll-create routes must force stage='film' & strip client transition fields; only server logic advances to printing (inline-printing bypass risk).
-- [Universal thickness film eligibility](universal-thickness-eligibility.md) — film machine min/max_thickness matches order universal_thickness (computed col), never raw thickness.
+- [Original-thickness machine limits](machine-thickness-eligibility.md) — machine min/max thickness refers to original thickness, not universal thickness; the user explicitly corrected the earlier assumption.
 - [Printing cylinder units](printing-cylinder-units.md) — legacy inch-marked cylinder values must work with numeric capability limits; preserve frozen snapshots and reject unknown units.
 - [Production queue estimates](production-queue-estimates.md) — finish estimate uses configured shift hours, per-order size-appropriate capacity (width buckets), and gates finish date on machine status.
 - [Machine type value inconsistency](machine-type-values.md) — machines.type holds mixed values ('Printer'/'Cutter' vs 'printing'/'cutting' vs 'extruder'); any type-keyed logic must normalize/lowercase and accept both variants.
@@ -33,7 +33,6 @@
 - [WhatsApp 24h window & templates](whatsapp-24h-window-templates.md) — business-initiated sends MUST use approved templates; free-form text outside 24h logs "sent" but never delivers; no text fallback on template failure (kills SMS fallback).
 - [Multer fileFilter error handling](multer-filefilter-errors.md) — multer fileFilter/limit errors fire in middleware before the route try/catch; wrap upload.single in a callback to return a clean 400 instead of crashing.
 - [Worker-thread offload](worker-thread-offload.md) — offload CPU parsing via inline eval Worker (not a separate file); esbuild won't copy a worker file into dist; transfer ArrayBuffer, terminate on timeout.
-- [i18n duplicate translation blocks](i18n-duplicate-keys.md) — ar.json/en.json have duplicate sibling keys (e.g. two warehouse.print blocks); only the LAST wins, edit that one or new keys silently don't resolve.
 - [Literal-colon labels](i18n-literal-colons.md) — single-word colon labels can disappear through namespace parsing; check actual label text in both languages.
 - [gpt-5 temperature constraint](gpt5-temperature.md) — gpt-5 family 400s on any custom temperature (only default 1); gate the param on model, and the agent model lives in a DB row not just code defaults.
 - [OpenAI org header](openai-org-header.md) — new OpenAI clients must pass `organization: null`; SDK auto-sends OPENAI_ORG_ID env → 401 mismatched_organization against the Replit AI proxy key.
@@ -47,7 +46,7 @@
 - [PDF template path traversal](security-fixes.md) — /api/pdf/generate & generatePDFFromTemplate must resolve template paths and reject anything escaping the templates dir (was arbitrary file read for any authed user).
 - [Punching hook/banana detection](punching-hook-detection.md) — overrun % from substring match on punching (hook/علاقي/t-shirt=20%, banana/بنانة=10%, else 5%); new علاقي* variants auto-inherit, no enum.
 - [Dominant color extraction](color-extraction-clustering.md) — extractColors uses LAB weighted k-means + shade-merge → area-share %; ignoreWhite default true (bag substrate), % intentionally may not sum to 100.
-- [Backup restore generated columns](backup-restore-generated-columns.md) — restore needs per-row SAVEPOINTs and must strip GENERATED ALWAYS columns or one bad row aborts the whole transaction.
+- [Encrypted restore safety](backup-restore-generated-columns.md) — full-copy scope includes accounts; require external safety copy and atomic rollback, not legacy partial salvage.
 - [pdfkit Arabic rendering](pdfkit-arabic-rendering.md) — pass raw Unicode + features:["rtla"]; never reshape+bidi first (garbles text); pre-reverse digit runs & mirror brackets.
 - [Route tests under ts-jest](route-tests-jest-cjs.md) — mock routes/shared, notification-manager & storage or jest crashes (multer TDZ) or hangs; x-test-user header auth pattern.
 - [SSE vs gzip compression](sse-compression-buffering.md) — SSE endpoints must be excluded from compression() or browsers never receive events (curl works, misleading); in-app toasts need type "push" not "system".
@@ -95,4 +94,14 @@
 - [Prospective mix accounting](production-mix-accounting.md) — machine-wide FIFO, shortages allowed without later reconciliation; no second raw deduction or inferred screw/layer dosing.
 - [Order status design](order-status-design.md) — user requires colored order states and approved combining status/actions into two rows to save table width.
 - [Operator roll card sizing](operator-roll-card-sizing.md) — user approved small fixed-width roll cards that wrap, never stretch or squeeze as counts change.
-- [Warehouse hall card sizing](warehouse-hall-card-sizing.md) — user approved six ready-order cards per desktop row, fewer on smaller screens; scoped to the production hall.
+- [Warehouse hall card sizing](warehouse-hall-card-sizing.md) — six compact desktop cards, fewer on smaller screens; approved for hall-ready orders and finished stock, not raw or receipt cards.
+- [Planning order cards](planning-order-card-sizing.md) — user approved three compact desktop cards, not the warehouse six-card rule; preserve details and actions.
+- [Finished receipt workflow](finished-receipt-workflow.md) — kg-only receiving stays in the hall; finished-stock cards now support separate customer delivery deduction; no retired receipt units.
+- [Decimal JSON boundaries](postgres-json-decimal-boundary.md) — PostgreSQL NUMERIC becomes a JS number inside JSONB; preserve text at nested API boundaries and tolerate older numeric reads.
+- [Transient UI checks](transient-ui-verification.md) — capture loading text while detecting the element; a later browser call may run after it has disappeared.
+- [Database transfer policy](database-data-tool-policy.md) — new rows may be added; existing-row updates need explicit approval after preview, never automatic deletion.
+- [Package firewall lockfiles](package-firewall-lockfiles.md) — parent upgrades can retain blocked transitives; verify compatible patched resolutions with a clean install.
+- [Customer drawer format](customer-drawer-format.md) — A–Z plus 1–100 saved as C-24; new selections must not rewrite historical codes on unrelated edits.
+- [Product facing policy](customer-product-facing-policy.md) — each side must be ≤ half the width; category labels omit codes and side arrows retain physical direction.
+- [Mobile primary navigation](mobile-primary-navigation.md) — More keeps all authorized main pages reachable when the phone bottom bar cannot fit them.
+- [Thickness display policy](thickness-display-policy.md) — display original thickness only; universal thickness remains automatically stored for internal calculations.

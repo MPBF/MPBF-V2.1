@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 export * from "./production-schema";
 export * from "./raw-mixing-schema";
 export * from "./production-monitoring-schema";
+export * from "./transfer-schema";
 import {
   boolean,
   check,
@@ -542,7 +543,7 @@ export const customerProductsRelations = relations(customer_products, ({ one, ma
   item: one(items, { fields: [customer_products.item_id], references: [items.id] }),
   productionOrders: many(production_orders),
 }));
-export const machinesRelations = relations(machines, ({ one, many }) => ({
+export const machinesRelations = relations(machines, ({ one }) => ({
   section: one(sections, { fields: [machines.section_id], references: [sections.id] }),
 }));
 export const ordersRelations = relations(orders, ({ one, many }) => ({

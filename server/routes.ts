@@ -54,13 +54,15 @@ import { deliveryDateFromDays, orderDateInRiyadh } from "./order-delivery";
 import { getOrderDetails } from "./order-details";
 import { createPublicOrderPrintRouter, publicOrderPrintPath } from "./public-order-print";
 import { customerProductFacingNotice, deriveCustomerProductFields, PRINTING_CYLINDERS } from "@shared/customer-product-fields";
-import { authenticate, hashPassword, requireAnyPermission, requireAuth, requirePermission, resolveUser } from "./auth";
+import { authenticate, hashPassword, requireAnyPermission, requireAuth, requirePermission } from "./auth";
 import rolePreviewRouter from "./role-preview";
 import { canGrantPermissions, isProtectedProductionOrder, plannedFinalQuantity } from "./audit-rules";
 import { categoryProductionPlan } from "./category-production-plan";
 import hr from "./hr";
 import selfService from "./self-service";
 import factoryProduction from "./production/routes";
+import dataTransfer from "./data-transfer/routes";
+import databaseBackups from "./database-backups/routes";
 
 const router = Router();
 router.use(createPublicOrderPrintRouter(getOrderDetails));
@@ -635,6 +637,8 @@ router.use("/me/role-preview", rolePreviewRouter);
 router.use("/self", selfService);
 router.use("/hr", hr);
 router.use("/production", factoryProduction);
+router.use("/data-transfer", dataTransfer);
+router.use("/database-backups", databaseBackups);
 router.get("/public-branding", async (_req, res, next) => {
   try {
     const profile = (await db.select().from(company_profile).limit(1))[0] ?? null;

@@ -19,7 +19,7 @@ const orderFieldLabels: Record<string, string> = {
 const productFieldLabels: Record<string, string> = {
   id: "رقم المنتج", customer_id: "معرّف العميل", category_id: "معرّف الفئة", item_id: "معرّف الصنف",
   size_caption: "وصف المقاس", width: "العرض", left_facing: "واجهة يسار", right_facing: "واجهة يمين",
-  thickness: "السماكة الداخلية", universal_thickness: "السماكة العامة (MIC)", density: "الكثافة",
+  thickness: "السماكة", density: "الكثافة",
   bag_weight_grams: "وزن الكيس (غرام)", bags_per_kilo: "عدد الأكياس/كجم", printing_cylinder: "السلندر",
   cutting_length_cm: "طول القص (سم)", raw_material: "المادة الخام", master_batch_id: "معرّف اللون",
   is_printed: "مطبوعة", cutting_unit: "وحدة القص", punching: "التخريم", unit_weight_kg: "وزن الوحدة (كجم)",
@@ -36,9 +36,9 @@ const productionFieldLabels: Record<string, string> = {
 };
 
 function DetailFields({ data, labels, omit = [] }: { data: Record<string, unknown>; labels: Record<string, string>; omit?: string[] }) {
-  const numericFields = new Set(["quantity_kg", "final_quantity_kg", "width", "left_facing", "right_facing", "thickness", "universal_thickness", "density", "bag_weight_grams", "bags_per_kilo", "cutting_length_cm", "unit_weight_kg", "unit_quantity", "package_weight_kg", "delivery_days"]);
+  const numericFields = new Set(["quantity_kg", "final_quantity_kg", "width", "left_facing", "right_facing", "thickness", "density", "bag_weight_grams", "bags_per_kilo", "cutting_length_cm", "unit_weight_kg", "unit_quantity", "package_weight_kg", "delivery_days"]);
   const statusLabel = labels.status === "حالة الإنتاج" ? productionStatusLabel : orderStatusLabel;
-  return <dl className="odm-fields">{Object.entries(data).filter(([key]) => !omit.includes(key)).map(([key, value]) =>
+  return <dl className="odm-fields">{Object.entries(data).filter(([key]) => key !== "universal_thickness" && !omit.includes(key)).map(([key, value]) =>
     <div className="odm-field" key={key}>
       <dt>{translate(labels[key] ?? fieldLabel(key))}</dt>
       <dd dir={typeof value === "string" && /[a-z0-9]/i.test(value) ? "auto" : undefined}>

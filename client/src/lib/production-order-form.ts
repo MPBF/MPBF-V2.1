@@ -1,5 +1,5 @@
 type Row = Record<string, any>;
-import i18n, { intlLocale, localizedName, translate } from "../i18n";
+import { intlLocale, localizedName, translate } from "../i18n";
 
 export function productionQuantityPayload(value: string): { quantity_kg: string } {
   const quantity = value.trim()

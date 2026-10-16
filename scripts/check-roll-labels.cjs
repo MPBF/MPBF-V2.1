@@ -27,14 +27,18 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
   let ws, serial = 0, passed = 0, language = "en", failure = "", permissions = ["operate_film"];
   const pending = new Map(), errors = [], requests = [], historyRequests = [];
   const check = (name, actual, expected = true) => { assert.deepEqual(actual, expected, name); console.log(`PASS ${name}`); passed++; };
-  const product = { id: 1, item_id: "ITM01", name: "Film bag", name_ar: "كيس بلاستيك", customer_name: "Fixture", customer_name_ar: "اختبار" };
+  const product = { id: 1, item_id: "ITM01", name: "Film bag", name_ar: "كيس بلاستيك",
+    customer_name: "Fixture Customer", customer_name_ar: "عميل تجريبي", size_caption: "40 × 60 cm" };
   const rolls = Array.from({ length: 105 }, (_, index) => ({
     id: index + 1, production_order_id: 1, roll_number: `PO-00001-R${String(index + 1).padStart(3, "0")}`,
     production_order_number: "PO-00001", weight_kg: index ? "19.50" : "57.25", batch_number: index ? null : "BATCH-001",
     stage: "done", film_machine_id: "F1", created_by: 42, created_at: "2026-10-04T03:00:00Z",
-    production_minutes: 10, is_last_roll: false, printing_machine_id: null, printed_by: null, printed_at: null,
-    cutting_machine_id: null, cut_by: null, cut_completed_at: null, net_weight_kg: null, waste_kg: "0.00",
-    product, is_printed: false, is_roll_product: false,
+    production_minutes: 10, is_last_roll: false, printing_machine_id: "P1", printed_by: 43, printed_at: "2026-10-04T04:00:00Z",
+    cutting_machine_id: "C1", cut_by: 44, cut_completed_at: "2026-10-04T05:00:00Z", net_weight_kg: null, waste_kg: "0.00",
+    created_actor: { id: 42, username: "film.operator", display_name: null, display_name_ar: null, full_name: null },
+    printed_actor: { id: 43, username: "print.operator", display_name: null, display_name_ar: null, full_name: null },
+    cut_actor: { id: 44, username: "cut.operator", display_name: null, display_name_ar: null, full_name: null },
+    product, is_printed: true, is_roll_product: false,
   }));
   const images = await Promise.all(rolls.map(roll => QRCode.toDataURL(`https://factory.example.test/production/rolls/${roll.id}`, {
     width: 600, margin: 4, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" },
@@ -127,9 +131,15 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
       await evaluate("document.fonts.ready.then(()=>true)", pdfPage.sessionId);
     };
     // Real print-to-PDF, not merely emulated continuous print-media layout.
-    for (const lang of ["en", "ar"]) for (const count of [1, 2, 3, 100]) {
+    for (const lang of (process.argv.includes("--selection-only") ? [] : ["en", "ar"])) for (const count of [1, 2, 3, 100]) {
       const selected = rolls.slice(0, count).map(label);
       await content(buildRollLabelDocument(selected, lang));
+      check(`${lang} ${count} labels have bilingual customer names in order and no production-order row`,
+        await evaluate(`(()=>{const sheets=[...document.querySelectorAll('.label-sheet')];return sheets.every(s=>{const t=s.textContent;return t.indexOf('عميل تجريبي')>=0&&t.indexOf('عميل تجريبي')<t.indexOf('Fixture Customer')&&t.includes(${JSON.stringify(lang === "ar" ? "كيس بلاستيك" : "Film bag")})&&t.includes('40 × 60 cm')&&!s.querySelector('.field.order')})})()`, pdfPage.sessionId));
+      check(`${lang} ${count} identity lines are centered`,
+        await evaluate("[...document.querySelectorAll('.customer-name-ar,.customer-name-en,.item-size')].every(n=>getComputedStyle(n).textAlign==='center')", pdfPage.sessionId));
+      check(`${lang} ${count} stage usernames follow weight and precede batch`,
+        await evaluate("[...document.querySelectorAll('.label-sheet')].every(s=>{const a=s.querySelector('.stage-actors'),w=s.querySelector('.weight'),b=s.querySelector('.batch');return !!a&&(w.compareDocumentPosition(a)&Node.DOCUMENT_POSITION_FOLLOWING)&&(!b||(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING))&&['film.operator','print.operator','cut.operator'].every(t=>a.textContent.includes(t))})", pdfPage.sessionId));
       const { data } = await send("Page.printToPDF", {
         preferCSSPageSize: true, displayHeaderFooter: false, printBackground: true, scale: 1,
         marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
@@ -142,7 +152,9 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
       const texts = execFileSync("pdftotext", ["-layout", output, "-"], { encoding: "utf8" }).split("\f").slice(0, count);
       texts.forEach((text, index) => {
         assert.ok(text.includes(selected[index].roll.roll_number), `Missing roll on page ${index + 1}`);
-        assert.ok(text.includes("PO-00001"), "Missing order");
+        assert.ok(text.includes("Fixture Customer"), "Missing English customer name");
+        for (const username of ["film.operator", "print.operator", "cut.operator"])
+          assert.ok(text.includes(username), `Missing stage username ${username}`);
         assert.ok(text.includes(Number(selected[index].roll.weight_kg).toLocaleString("en-US")), "Missing weight");
         assert.ok(text.includes("ROLL IDENTIFICATION"), "Missing footer");
         assert.equal(text.includes("BATCH-001"), index === 0, "Batch is conditional");
@@ -154,6 +166,8 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
         const png = PNG.sync.read(await fs.readFile(`${raster}.png`));
         const decoded = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
         check(`${lang} printed QR decodes at Zebra 203 dpi`, decoded?.data, selected[0].qr.url);
+        await fs.mkdir("generated-artifacts/roll-label-checks", { recursive: true });
+        await fs.copyFile(`${raster}.png`, `generated-artifacts/roll-label-checks/${lang}-label.png`);
       }
     }
     const longRoll = { ...rolls[0], roll_number: "R".repeat(100), production_order_number: "P".repeat(50), batch_number: "B".repeat(50) };
@@ -171,7 +185,8 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
     const longPath = path.join(temp, "max-identifiers.pdf");
     await fs.writeFile(longPath, Buffer.from(longPdf.data, "base64"));
     const longText = execFileSync("pdftotext", [longPath, "-"], { encoding: "utf8" }).replace(/\s/g, "");
-    check("maximum identifiers survive real PDF pagination intact", ["R".repeat(100), "P".repeat(50), "B".repeat(50)].every(id => longText.includes(id)));
+    check("maximum visible identifiers survive real PDF pagination intact", ["R".repeat(100), "B".repeat(50)].every(id => longText.includes(id)));
+    check("removed production order stays absent from printed label", !longText.includes("P".repeat(50)));
     check("untrusted identifiers cannot inject executable markup", !buildRollLabelDocument([label({
       ...rolls[0], roll_number: '<img src=x onerror="window.evil=1">',
     })], "en").includes('<img src=x'));
@@ -180,6 +195,10 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
       catch { return true; }
     })());
 
+    if (process.argv.includes("--document-only")) {
+      console.log(`Verified ${passed} label-document and real 4×6 PDF checks; selection navigation intentionally excluded.`);
+      return;
+    }
     const ui = await page();
     await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/*" }] }, ui.sessionId);
     const origin = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "http://127.0.0.1:5000";
@@ -207,7 +226,10 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
         await navigate("/production/film");
         await wait("document.querySelectorAll('.roll-label-list input').length===50", ui.sessionId);
         check(`${lang} ${width} selection UI fits`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1", ui.sessionId));
-        check(`${lang} ${width} available without management permission`, await evaluate("document.querySelector('.roll-label-controls').innerText.length>80", ui.sessionId));
+        await evaluate("(()=>{const d=document.querySelector('.roll-label-controls');if(!d.open)d.querySelector('summary').click()})()", ui.sessionId);
+        await wait("document.querySelector('.roll-label-list input').getBoundingClientRect().width>0", ui.sessionId);
+        check(`${lang} ${width} available without management permission`,
+          await evaluate("document.querySelector('.roll-label-controls summary').getBoundingClientRect().height>0&&document.querySelector('.roll-label-list input').getBoundingClientRect().width>0", ui.sessionId));
       }
       await click(lang === "en" ? "Select results" : "تحديد النتائج");
       check(`${lang} only first bounded page selected`, await evaluate("document.querySelectorAll('.roll-label-list input:checked').length", ui.sessionId), 50);
@@ -239,9 +261,11 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
       await send("Target.closeTarget", { targetId: popup.targetId });
     }
     language = "en";
-    for (const [route, grant] of [["hall", "view_production_hall"], ["warehouse", "view_finished_inventory"]]) {
+    for (const [route, grant] of [["/warehouse/hall", "view_production_hall"], ["/warehouse/finished-inventory", "view_finished_inventory"]]) {
       permissions = [grant];
-      await navigate(`/production/${route}`);
+      await navigate(route);
+      await wait("!!document.querySelector('.roll-label-controls')", ui.sessionId);
+      await evaluate("(()=>{const d=document.querySelector('.roll-label-controls');if(!d.open)d.querySelector('summary').click()})()", ui.sessionId);
       await wait("document.querySelectorAll('.roll-label-list input').length===50", ui.sessionId);
       await evaluate("[...document.querySelectorAll('.roll-label-list input')].slice(0,2).forEach(i=>i.click())", ui.sessionId);
       await wait("document.querySelectorAll('.roll-label-list input:checked').length===2", ui.sessionId);

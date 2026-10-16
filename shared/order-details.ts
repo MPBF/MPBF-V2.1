@@ -37,7 +37,7 @@ export type OrderPrintProduct = {
   left_facing: string | null;
   right_facing: string | null;
   cutting_length_cm: number | null;
-  universal_thickness: string | null;
+  thickness: string | null;
   raw_material: string | null;
   printing_cylinder: string | null;
   punching: string | null;

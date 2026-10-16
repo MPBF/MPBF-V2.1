@@ -1,6 +1,6 @@
 ---
 name: Production hall ready-order card sizing
-description: User-approved six-card desktop layout scoped to ready orders in the Warehouse production hall.
+description: User-approved six-card desktop layout for production-hall ready orders and finished-stock cards.
 ---
 
 بطاقات الأوامر الجاهزة في صالة الإنتاج بصفحة المستودع تتسع لست بطاقات
@@ -11,7 +11,7 @@ description: User-approved six-card desktop layout scoped to ready orders in the
 في الصف، ووافق على تقليل العدد للشاشات الصغيرة. ثم نبّه إلى أنها
 «أصبحت طويلة جدًا» وطلب تقصيرها.
 
-**How to apply:** هذا التوجيه خاص بالأوامر الجاهزة في صالة الإنتاج،
-وليس ببطاقات الخام أو المخزون التام أو سندات الاستلام. حافظ على وضوح
+**How to apply:** هذا التوجيه خاص بالأوامر الجاهزة في صالة الإنتاج
+وبطاقات المخزون التام؛ وليس ببطاقات الخام أو سندات الاستلام. حافظ على وضوح
 الكميات وحالة الإنتاج وإمكانية تحديد الأوامر لاستلامها.
 تجنّب تحويل العناوين والكميات إلى كتل رأسية طويلة عند تثبيت عدد الأعمدة.

@@ -4,6 +4,7 @@ import { canApplyOrderAction, type OrderDisplayFolder, type OrderWorkspaceAction
 import { ORDER_FOLDER_KEYS, ORDER_FOLDER_LABELS } from "../lib/order-workspace";
 import { translate } from "../i18n";
 import "./OrderWorkspaceControls.css";
+import "./OrderTable.css";
 
 export type WorkspaceOrder = { id: number; status: string; display_folder?: OrderDisplayFolder };
 type Props = {

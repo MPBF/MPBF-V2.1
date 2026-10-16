@@ -1,12 +1,13 @@
 ---
-name: Backup restore — savepoints & generated columns
-description: Rules for the DB backup restore path in server/storage.ts
+name: Database restore safety and encrypted scope
+description: Full-copy scope, atomic replacement, derived values and sensitive-data boundaries
 ---
-- A failed INSERT inside the single restore transaction aborts it ("current transaction is aborted") and every following row spams the same warning; each row insert must be wrapped in a SAVEPOINT / ROLLBACK TO SAVEPOINT.
-- Backups dump GENERATED ALWAYS columns (e.g. customer_products.universal_thickness); restore must strip them per table via information_schema `is_generated = 'ALWAYS'` or every row fails with "cannot insert a non-DEFAULT value".
-- Log only the first real error per table plus a failed-row count — not one warning per row.
-- JS arrays in backup rows must be passed as-is to pg for real ARRAY columns ("malformed array literal" if JSON.stringify'd) but JSON.stringify'd for jsonb columns — check data_type='ARRAY' in information_schema per table.
-- Backups strip user passwords; restore must snapshot `users.password` before DELETE and re-apply after insert (only where NULL) or every login is wiped. Verified end-to-end 2026-08-04 via `scripts/test-backup-restore.ts` (full-cycle, 0 failed rows, counts match) and `scripts/test-restore-savepoints.ts` (mixed good/bad rows, savepoint continuity).
+- The user chose full system data in an encrypted backup, including accounts and permissions. Password hashes belong in that encrypted scope; service credentials and sessions do not. Keep excluded secrets unchanged, invalidate sessions after replacement, and do not treat this approval as permission to restore live data during development.
 
-**Why:** A restore once "completed" while inserting almost nothing, emitting 500+ identical aborted-transaction warnings that hid the real cause.
-**How to apply:** Any new bulk-insert/restore/import path that runs inside one transaction needs per-row savepoints and must exclude generated columns.
+**Why:** The user explicitly selected “كامل بيانات النظام بنسخة مشفّرة”; partial account exports cannot recover full system access, while reinstating old sessions or service secrets creates separate risks.
+**How to apply:** Keep full encrypted replacement separate from the additive/reviewed-update table import policy. Explain destructive effects, require a downloaded pre-restore safety copy and independent approval, and fail closed on changed data/schema or broken retained references.
+
+- Never report a full restore complete when rows failed. Abort and roll back the whole replacement, including sequence changes. Generated values must be recomputed rather than inserted; preserve exact numeric/array/JSON representations across backup boundaries.
+
+**Why:** A legacy restore once reported completion while inserting almost nothing; repeated aborted-transaction messages concealed the original generated-column failure.
+**How to apply:** Do not reuse the old partial-salvage/savepoint approach for full replacement. Verify restored content before commit and avoid nontransactional sequence resets.

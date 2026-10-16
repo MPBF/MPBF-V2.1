@@ -26,7 +26,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const cuttingCompactOnly = process.argv.includes("--cutting-compact-only") || cuttingActionOnly;
   const compactRollsOnly = process.argv.includes("--compact-rolls-only") || printingIconsOnly || cuttingCompactOnly;
   const planningNavigationOnly = process.argv.includes("--planning-navigation-only");
-  const compactControlsOnly = process.argv.includes("--compact-controls-only");
+  const thicknessDisplayOnly = process.argv.includes("--thickness-display-only");
+  const compactControlsOnly = process.argv.includes("--compact-controls-only") || thicknessDisplayOnly;
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
   const hallCompactOnly = process.argv.includes("--hall-compact-only");
   const rawMixingOnly = process.argv.includes("--raw-mixing-only");
@@ -45,7 +46,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const pending = new Map(), errors = [], writes = [], committed = new Map(), historyCalls = [], stateScopes = [];
   const check = (name, actual, expected = true) => { assert.deepEqual(actual, expected, name); console.log(`PASS ${name}`); passed++; };
   const product = { id: 1, item_id: "ITM01", name: "Plastic bag", name_ar: "كيس بلاستيك", customer_name: "Fixture customer", customer_name_ar: "عميل الاختبار",
-     width: "28", left_facing: "7", right_facing: "7", universal_thickness: "25", cutting_length_cm: 41, raw_material: "HDPE", printing_cylinder: '16"', punching: "بنانة", notes: null, front_print_colors: ["Red"], back_print_colors: [],
+     width: "28", left_facing: "7", right_facing: "7", thickness: "10", universal_thickness: "25", cutting_length_cm: 41, raw_material: "HDPE", printing_cylinder: '16"', punching: "بنانة", notes: null, front_print_colors: ["Red"], back_print_colors: [],
      size_caption:"28 + 7 + 7 cm",plate_drawer_code:"D-12",master_batch:{id:"BLUE",name:"Blue",name_ar:"أزرق",color_hex:"#2463EB"} };
   const duration = (machine_id = "F1", changes = {}) => ({
     machine_id, machine_name: machine_id === "F1" ? "Film One" : "Film Two",
@@ -69,7 +70,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     order(4, { is_printed: false, is_roll_product: true, ready_kg: "10.00", remaining_kg: "7.00", received_kg: "3.00" }),
     order(5, { is_roll_product: true }), order(6, { started_at: null, status: "completed", order_status: "completed" }), order(7, { order_status: "paused" }),
     order(8,{order_id:2,order_number:"ORDER-2",final_quantity_kg:"110.49",produced_kg:"10.51",
-      product:{...product,size_caption:"28.5 + 7.25 + 7.25 cm",universal_thickness:"25.6",
+      product:{...product,size_caption:"28.5 + 7.25 + 7.25 cm",thickness:"10.6",universal_thickness:"25.6",
         master_batch:{id:"TRANS",name:"Transparent",name_ar:"شفاف",color_hex:"#FFFFFF"}}}),
     order(9,{order_id:2,order_number:"ORDER-2",produced_kg:"120.00",
       product:{...product,name:"Special plastic bag with a long product name for a busy factory operator",
@@ -188,13 +189,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             }
             if(route==="/production/receipts"){
               const lines=input.items.map((line,index)=>{
-                const packing=line.packing;
-                const expected=packing
-                  ? (packing.unit==="kg"?Number(packing.quantity)
-                    :packing.method==="unit_weight"?Number(packing.quantity)*Number(packing.unit_weight_kg)
-                    :Number(packing.quantity)*packing.pieces_per_unit*Number(packing.piece_weight_grams)/1000).toFixed(2)
-                  :Number(line.quantity_kg).toFixed(2);
-                assert.equal(Number(line.quantity_kg).toFixed(2),expected,"receipt UI weight matches independent fixture conversion");
+                assert.deepEqual(Object.keys(line).sort(),["production_order_id","quantity_kg"],"receipt sends actual kg only");
+                const expected=Number(line.quantity_kg).toFixed(2);
                 return {...line,location_id:77,id:1000+index,line_number:index+1,quantity_kg:expected};
               });
               const requested=new Map();
@@ -202,24 +198,14 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
               if([...requested].some(([id,kg])=>kg>Number(state.orders.find(order=>order.id===id)?.remaining_kg||0))){
                 status=409;body={message:"كمية الاستلام تتجاوز المتاح",message_en:"Receipt exceeds available stock."};
               }else{
-                body={id:99+committed.size,voucher_number:"FR-00000099",created_at:"2026-10-10T08:30:00Z",created_by:42,notes:input.notes||null,items:lines};
+                body={id:99+committed.size,voucher_number:"FP-Rec0001",created_at:"2026-10-10T08:30:00Z",created_by:42,notes:input.notes||null,items:lines.map(line=>({...line,production_order_number:state.orders.find(order=>order.id===line.production_order_id)?.production_order_number}))};
                 for(const line of lines){
                   const target=state.orders.find(order=>order.id===line.production_order_id);
                   target.received_kg=(Number(target.received_kg)+Number(line.quantity_kg)).toFixed(2);
                   target.remaining_kg=(Number(target.ready_kg)-Number(target.received_kg)).toFixed(2);
                   let stock=archives.inventory.find(record=>record.production_order_id===target.id&&record.location_id===line.location_id);
-                  if(!stock){stock={id:500+archives.inventory.length,production_order_id:target.id,customer_product_id:1,item_id:"ITM01",location_id:line.location_id,quantity_kg:"0.00",legacy_quantity_kg:"0.00",production_order_number:target.production_order_number,batch_number:null,product:target.product,location_name:"Finished-goods hall",location_name_ar:"صالة المواد التامة",unit_balances:[]};archives.inventory.push(stock);}
-                  stock.legacy_quantity_kg??=stock.quantity_kg;
+                  if(!stock){stock={id:500+archives.inventory.length,production_order_id:target.id,customer_product_id:1,item_id:"ITM01",location_id:line.location_id,quantity_kg:"0.00",production_order_number:target.production_order_number,batch_number:null,product:target.product,location_name:"Finished-goods hall",location_name_ar:"صالة المواد التامة"};archives.inventory.push(stock);}
                   stock.quantity_kg=(Number(stock.quantity_kg)+Number(line.quantity_kg)).toFixed(2);
-                  stock.unit_balances??=[];
-                  if(line.packing){
-                    const {quantity,...specification}=line.packing;
-                    const signature=JSON.stringify(specification);
-                    let balance=stock.unit_balances.find(balance=>JSON.stringify(Object.fromEntries(Object.entries(balance).filter(([key])=>!["id","quantity_kg","unit_quantity"].includes(key))))===signature);
-                    if(!balance){balance={...specification,id:stock.unit_balances.length+1,unit_quantity:"0",quantity_kg:"0"};stock.unit_balances.push(balance);}
-                    balance.unit_quantity=(Number(balance.unit_quantity)+Number(quantity)).toFixed(4);
-                    balance.quantity_kg=(Number(balance.quantity_kg)+Number(line.quantity_kg)).toFixed(2);
-                  }else stock.legacy_quantity_kg=(Number(stock.legacy_quantity_kg)+Number(line.quantity_kg)).toFixed(2);
                 }
                 archives.receipts.push(structuredClone(body));
                 state.totals.inventory=archives.inventory.length;
@@ -335,7 +321,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       };
       for (const lang of ["ar","en"]) {
         language=lang;
-        for (const width of [390,768,1440]) {
+        for (const width of [390,768,920,1440]) {
           await send("Emulation.setDeviceMetricsOverride",{width,height:844,deviceScaleFactor:1,mobile:width===390});
           await navigate("/warehouse/hall");
           check(`${lang} ${width} receipt initially collapsed`,await evaluate("!document.querySelector('[data-receipt-voucher]')"));
@@ -343,24 +329,56 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           await wait("!!document.querySelector('[data-receipt-voucher]')");
           check(`${lang} ${width} selected orders are prefilled`,await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-order-1').value]"),["4","8"]);
           check(`${lang} ${width} voucher uses numbered table`,await evaluate("!!document.querySelector('.receipt-voucher-table thead')&&document.querySelectorAll('.receipt-voucher-table tbody tr').length===2"));
+          check(`${lang} ${width} only four kg receipt columns`,await evaluate("document.querySelectorAll('.receipt-voucher-table th').length"),4);
+          check(`${lang} ${width} metadata order matches the voucher`,await evaluate("[...document.querySelectorAll('.receipt-voucher-metadata-grid > [data-receipt-meta]')].map(node=>node.dataset.receiptMeta)"),["number","date","source","destination"]);
+          check(`${lang} ${width} all four metadata fields share one row`,await evaluate("new Set([...document.querySelectorAll('.receipt-voucher-metadata-grid > [data-receipt-meta]')].map(node=>Math.round(node.getBoundingClientRect().top))).size===1"));
+          check(`${lang} ${width} footer is preview save close`,await evaluate("[...document.querySelectorAll('.receipt-voucher-footer > button')].map(node=>node.textContent.trim())"),lang==="ar"?["معاينة","حفظ","إغلاق"]:["Preview","Save","Close"]);
           check(`${lang} ${width} accessible voucher`,await evaluate("document.querySelector('[data-receipt-voucher]').getAttribute('aria-modal')"),"true");
           check(`${lang} ${width} receipt fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1 && document.querySelector('[data-receipt-voucher]').getBoundingClientRect().width<=innerWidth"));
+          check(`${lang} ${width} compact receipt has no internal horizontal overflow`,await evaluate("document.querySelector('[data-receipt-voucher]').scrollWidth<=document.querySelector('[data-receipt-voucher]').clientWidth+1&&document.querySelector('.receipt-voucher-table-wrap').scrollWidth<=document.querySelector('.receipt-voucher-table-wrap').clientWidth+1"));
+          if(width===1440) {
+            check(`${lang} ${width} smaller desktop voucher`,await evaluate("document.querySelector('[data-receipt-voucher]').getBoundingClientRect().width<=960.5"));
+            check(`${lang} ${width} order columns remain adjacent`,await evaluate("getComputedStyle(document.querySelector('.receipt-voucher-table')).display==='table'&&new Set([...document.querySelectorAll('.receipt-voucher-table tbody tr:first-child > td')].map(cell=>Math.round(cell.getBoundingClientRect().top))).size===1"));
+          }
           check(`${lang} ${width} correct language direction`,await evaluate("document.querySelector('[data-receipt-voucher]').dir"),lang==="ar"?"rtl":"ltr");
           check(`${lang} ${width} source and destination`,await evaluate(`document.querySelector('[data-receipt-voucher]').innerText.includes(${jsLiteral(lang==="ar"?"صالة الإنتاج":"Production hall")})&&document.querySelector('[data-receipt-voucher]').innerText.includes(${jsLiteral(lang==="ar"?"المواد التامة":"Finished goods")})`));
           check(`${lang} ${width} no sublocation selection or prerequisite`,await evaluate("!document.querySelector('[id^=\"receipt-location-\"]')&&!document.querySelector('.receipt-voucher-alert')&&!document.querySelector('[data-receipt-submit]').disabled"));
-          await setInput("#receipt-unit-0","packet");
-          await setInput("#receipt-unit-quantity-0","2");
-          await setInput("#receipt-unit-weight-0","5");
-          await setInput("#receipt-unit-quantity-1","1");
-          await clickText(lang==="ar"?"إضافة سطر تعبئة":"Add packing line");
+          await setInput("#receipt-quantity-0","10.00");
+          await setInput("#receipt-quantity-1","1");
+          await clickText(lang==="ar"?"إضافة أمر إنتاج":"Add production order");
           await setInput("#receipt-order-2","4");
-          await setInput("#receipt-unit-2","roll");await setInput("#receipt-unit-quantity-2","3");
-          await setInput("#receipt-method-2","piece_weight");await setInput("#receipt-pieces-2","20");await setInput("#receipt-piece-weight-2","500");
+          await setInput("#receipt-quantity-2","30.00");
           await setInput("#receipt-notes","Retained voucher draft");
-          check(`${lang} ${width} fixed four units`,await evaluate("[...document.querySelector('#receipt-unit-0').options].map(option=>option.value)"),["kg","packet","roll","piece"]);
-          check(`${lang} ${width} both automatic conversions`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-quantity-2').value]"),["10.00","30.00"]);
+          check(`${lang} ${width} no unit, count or packing controls`,await evaluate("!document.querySelector('[data-receipt-unit],[data-receipt-factor],[data-receipt-method],[data-receipt-pieces],[data-receipt-unit-quantity]')"));
+          check(`${lang} ${width} exact entered kilograms are preserved`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-quantity-2').value]"),["10.00","30.00"]);
+          check(`${lang} ${width} requested kg is editable`,await evaluate("!document.querySelector('#receipt-quantity-0').readOnly"));
+          check(`${lang} ${width} date automatic and pending print disabled`,await evaluate("document.querySelector('[data-receipt-meta=\"date\"] bdi').textContent!=='—'&&document.querySelector('.receipt-voucher-print').disabled"));
+          check(`${lang} ${width} notes stay compact`,await evaluate("document.querySelector('#receipt-notes').getBoundingClientRect().height<=75"));
+          if(width===1440) check(`${lang} ${width} desktop rows stay short`,await evaluate("[...document.querySelectorAll('.receipt-voucher-table tbody tr')].every(row=>row.getBoundingClientRect().height<=160)"));
           check(`${lang} ${width} correct voucher total`,await evaluate("Number(document.querySelector('[data-receipt-total]').dataset.receiptTotal)"),41);
           check(`${lang} ${width} selected predefined product and customer`,await evaluate("document.querySelector('#receipt-order-0').selectedOptions[0].textContent.includes('PO-4')"));
+          check(`${lang} ${width} selected order is not repeated below dropdown`,await evaluate("!document.querySelector('.receipt-voucher-order-context')&&document.querySelector('#receipt-order-0').parentElement.children.length===1"));
+          check(`${lang} ${width} requested weight has no duplicate calculated caption`,await evaluate("!document.querySelector('.receipt-voucher-derived-total')"));
+          const writesBeforePreview=writes.length,stockBeforePreview=JSON.stringify(state.inventory);
+          await evaluate("document.querySelector('[data-receipt-preview-trigger]').click()");
+          await wait("!!document.querySelector('[data-receipt-preview]')");
+          check(`${lang} ${width} preview contains all draft lines`,await evaluate("document.querySelectorAll('[data-receipt-preview] .receipt-voucher-preview-row').length"),3);
+          check(`${lang} ${width} preview shows total and notes`,await evaluate("document.querySelector('.receipt-voucher-preview-total').textContent.includes('41')&&document.querySelector('.receipt-voucher-preview-notes').textContent.includes('Retained voucher draft')"));
+          check(`${lang} ${width} preview is read only`,await evaluate("!document.querySelector('[data-receipt-preview] input,[data-receipt-preview] select,[data-receipt-preview] textarea')"));
+          check(`${lang} ${width} preview fits the screen`,await evaluate("(()=>{const dialog=document.querySelector('[data-receipt-preview]'),rect=dialog.getBoundingClientRect();return rect.width<=innerWidth&&dialog.scrollWidth<=dialog.clientWidth+1})()"));
+          check(`${lang} ${width} preview sends no mutation`,writes.length,writesBeforePreview);
+          check(`${lang} ${width} preview leaves inventory unchanged`,JSON.stringify(state.inventory),stockBeforePreview);
+          await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Tab",code:"Tab",windowsVirtualKeyCode:9});
+          check(`${lang} ${width} preview contains keyboard focus`,await evaluate("document.querySelector('[data-receipt-preview]').contains(document.activeElement)"));
+          await evaluate("document.querySelector('[data-receipt-preview-back]').click()");
+          await wait("!document.querySelector('[data-receipt-preview]')");
+          check(`${lang} ${width} returning from preview restores its button focus`,await evaluate("document.activeElement.matches('[data-receipt-preview-trigger]')"));
+          check(`${lang} ${width} preview preserves draft fields`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-quantity-2').value,document.querySelector('#receipt-notes').value]"),["10.00","30.00","Retained voucher draft"]);
+          await evaluate("document.querySelector('[data-receipt-preview-trigger]').click()");
+          await wait("!!document.querySelector('[data-receipt-preview]')");
+          await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Escape",code:"Escape",windowsVirtualKeyCode:27});
+          await wait("!document.querySelector('[data-receipt-preview]')");
+          check(`${lang} ${width} Escape closes only preview`,await evaluate("!!document.querySelector('[data-receipt-voucher]')"));
           await evaluate("document.querySelector('.receipt-voucher-close').focus()");
           await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Tab",code:"Tab",windowsVirtualKeyCode:9,modifiers:8});
           await send("Input.dispatchKeyEvent",{type:"keyUp",key:"Tab",code:"Tab",windowsVirtualKeyCode:9,modifiers:8});
@@ -370,6 +388,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           check(`${lang} ${width} closing restores selection button focus`,await evaluate("document.activeElement.matches('[data-hall-receive-selected]')"));
           await openReceipt();
           check(`${lang} ${width} closing preserves unsaved draft`,await evaluate("[document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-notes').value]"),["10.00","Retained voucher draft"]);
+          await evaluate("document.querySelector('[data-receipt-voucher]').scrollTop=0");
+          check(`${lang} ${width} save action remains visible with multiple lines`,await evaluate("(()=>{const button=document.querySelector('[data-receipt-submit]'),rect=button.getBoundingClientRect(),dialog=document.querySelector('[data-receipt-voucher]').getBoundingClientRect();return rect.top>=dialog.top&&rect.bottom<=Math.min(dialog.bottom,innerHeight)+1&&document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2)?.closest('[data-receipt-submit]')===button})()"));
           if(lang==="ar"&&width===390){
             const shot=await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});
             await fs.writeFile("/tmp/unit-receipt-phone.png",Buffer.from(shot.data,"base64"));
@@ -379,36 +399,97 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
       }
       language="en";await navigate("/warehouse/hall");await openReceipt();
       await setInput("#receipt-order-0","4");
-      await setInput("#receipt-unit-quantity-0","48");
+      await setInput("#receipt-quantity-0","48");
       const beforeInvalid=writes.length;
-      await clickText("Save receipt voucher");
+      await clickText("Save");
       await wait("!!document.querySelector('.receipt-voucher-error')");
       check("over-available computed quantity is blocked",writes.length,beforeInvalid);
-      await setInput("#receipt-unit-quantity-0","24");
-      await clickText("Add packing line");
-      await clickText("Save receipt voucher");
+      await setInput("#receipt-quantity-0","24");
+      await clickText("Add production order");
+      await clickText("Save");
       check("incomplete line is not silently dropped",writes.length,beforeInvalid);
-      await setInput("#receipt-order-1","4");await setInput("#receipt-unit-quantity-1","24");
-      await clickText("Save receipt voucher");
+      await setInput("#receipt-order-1","4");await setInput("#receipt-quantity-1","24");
+      await clickText("Save");
       await wait("!!document.querySelector('.receipt-voucher-error')");
       check("aggregate same-order over-receipt is blocked",writes.length,beforeInvalid);
       await evaluate("document.querySelector('[aria-label=\"Remove line 2\"]').click()");
-      await setInput("#receipt-unit-0","packet");await setInput("#receipt-unit-quantity-0","2");await setInput("#receipt-unit-weight-0","5");
-      await clickText("Add packing line");await setInput("#receipt-order-1","8");await setInput("#receipt-unit-quantity-1","1");
-      await clickText("Add packing line");await setInput("#receipt-order-2","4");
-      await setInput("#receipt-unit-2","roll");await setInput("#receipt-unit-quantity-2","3");await setInput("#receipt-method-2","piece_weight");await setInput("#receipt-pieces-2","20");await setInput("#receipt-piece-weight-2","500");
+      await setInput("#receipt-quantity-0","10.00");
+      await clickText("Add production order");await setInput("#receipt-order-1","8");await setInput("#receipt-quantity-1","1");
+      await clickText("Add production order");await setInput("#receipt-order-2","4");
+      await setInput("#receipt-quantity-2","30.00");
       await setInput("#receipt-notes","Fixture voucher retry");
-      failWrite=true;await clickText("Save receipt voucher");
+      failWrite=true;await clickText("Save");
       await wait("!!document.querySelector('.receipt-voucher-error')");
       check("lost response preserves receipt draft",await evaluate("document.querySelector('#receipt-quantity-0').value"),"10.00");
-      check("uncertain receipt cannot change packing",await evaluate("document.querySelector('#receipt-unit-0').disabled&&document.querySelector('#receipt-unit-quantity-0').disabled"));
+      check("uncertain receipt cannot change order or kg",await evaluate("document.querySelector('#receipt-order-0').disabled&&document.querySelector('#receipt-quantity-0').disabled"));
       await evaluate("document.querySelector('.receipt-voucher-error button').click()");
       await wait("!!document.querySelector('[data-receipt-saved]')");
       const receiptWrites=writes.filter(write=>write.route==="/production/receipts");
       check("retry uses identical receipt request",receiptWrites[0].input,receiptWrites[1].input);
       check("receipt request does not select a sublocation",receiptWrites[0].input.items.every(line=>!("location_id" in line)));
+      check("receipt request contains order id and kg only",receiptWrites[0].input.items.every(line=>Object.keys(line).sort().join(",")==="production_order_id,quantity_kg"));
       check("retry commits only one voucher",[...committed.values()].filter(write=>write.route==="/production/receipts").length,1);
-      check("saved voucher number comes from server",await evaluate("document.querySelector('[data-receipt-voucher-number]').textContent"),"FR-00000099");
+      check("saved voucher number comes from server",await evaluate("document.querySelector('[data-receipt-voucher-number]').textContent"),"FP-Rec0001");
+      check("saved receipt supports A4 printing",await evaluate("!document.querySelector('.receipt-voucher-print').disabled"));
+      const writesBeforeSavedPreview=writes.length;
+      await evaluate("document.querySelector('[data-receipt-preview-trigger]').click()");
+      await wait("!!document.querySelector('[data-receipt-preview]')");
+      check("saved preview uses frozen receipt lines after the draft is cleared",await evaluate("document.querySelectorAll('[data-receipt-preview] .receipt-voucher-preview-row').length"),3);
+      check("saved preview shows real voucher number total and saved notes",await evaluate("document.querySelector('[data-receipt-preview]').textContent.includes('FP-Rec0001')&&document.querySelector('.receipt-voucher-preview-total').textContent.includes('41')&&document.querySelector('.receipt-voucher-preview-notes').textContent.includes('Fixture voucher retry')"));
+      check("saved preview sends no mutation",writes.length,writesBeforeSavedPreview);
+      await evaluate("document.querySelector('[data-receipt-preview-back]').click()");
+      await wait("!document.querySelector('[data-receipt-preview]')");
+      await evaluate(`(()=>{
+        const append=document.body.appendChild;
+        document.body.appendChild=function(node){
+          if(node instanceof HTMLIFrameElement && node.dataset.receiptPrintFrame){
+            node.addEventListener('load',()=>{node.contentWindow.print=()=>{window.__receiptPrintCalled=true}},true);
+          }
+          return append.call(this,node);
+        };
+        document.querySelector('.receipt-voucher-print').click();
+      })()`);
+      await wait("window.__receiptPrintCalled===true");
+      const printedHtml=await evaluate("document.querySelector('[data-receipt-print-frame]').contentDocument.documentElement.outerHTML");
+      check("print document uses persisted receipt and lines",printedHtml.includes("FP-Rec0001")&&printedHtml.includes("PO-4")&&printedHtml.includes("PO-8"));
+      check("print document excludes unsaved form and dashboard",!printedHtml.includes("receipt-order-0")&&!printedHtml.includes("sidebar"));
+      const {targetId:printTarget}=await send("Target.createTarget",{url:"about:blank"},undefined);
+      const {sessionId:printSession}=await send("Target.attachToTarget",{targetId:printTarget,flatten:true},undefined);
+      await send("Page.enable",{},printSession);
+      const {frameTree}=await send("Page.getFrameTree",{},printSession);
+      const savedPrintReceipt=[...committed.values()].find(write=>write.route==="/production/receipts").body;
+      const numericHistoryReceipt={...savedPrintReceipt,items:savedPrintReceipt.items.map(item=>({...item,quantity_kg:Number(item.quantity_kg)}))};
+      await evaluate(`(()=>{
+        window.__receiptPrintCalled=false;
+        document.querySelectorAll('[data-receipt-print-frame]').forEach(frame=>frame.remove());
+        return import('/src/lib/receipt-print.ts').then(module=>module.printReceipt(${jsLiteral(numericHistoryReceipt)},"en"));
+      })()`);
+      await wait("window.__receiptPrintCalled===true");
+      check("numeric receipt history prints without crashing and retains exact total",await evaluate("document.querySelector('[data-receipt-print-frame]').contentDocument.querySelector('.total').textContent.includes('41.00 kg')"));
+      const arabicPrintedHtml=await evaluate(`import('/src/lib/receipt-print.ts').then(module=>module.receiptPrintHtml(${jsLiteral(savedPrintReceipt)},"ar"))`);
+      for(const [printLanguage,sourceHtml] of [["en",printedHtml],["ar",arabicPrintedHtml]]) for(const count of [3,24,100]){
+        const boundaryHtml=sourceHtml.replace(/<tbody>[\s\S]*?<\/tbody>/,()=>{
+          const row=sourceHtml.match(/<tbody>([\s\S]*?)<\/tbody>/)[1].match(/<tr>[\s\S]*?<\/tr>/)[0];
+          return "<tbody>"+Array.from({length:count},(_,index)=>row.replace(/<td>1<\/td>/,`<td>${index+1}</td>`).replaceAll("PO-4",`PRINT-${String(index+1).padStart(3,"0")}`)).join("")+"</tbody>";
+        });
+        await send("Page.setDocumentContent",{frameId:frameTree.frame.id,html:boundaryHtml},printSession);
+        await send("Runtime.evaluate",{expression:"document.fonts.ready",awaitPromise:true},printSession);
+        const pdf=await send("Page.printToPDF",{printBackground:true,preferCSSPageSize:true,displayHeaderFooter:false},printSession);
+        const pdfPath=`/tmp/receipt-a4-${printLanguage}-${count}.pdf`;
+        await fs.writeFile(pdfPath,Buffer.from(pdf.data,"base64"));
+        const info=execFileSync("pdfinfo",[pdfPath],{encoding:"utf8"});
+        const size=info.match(/Page size:\s+([\d.]+) x ([\d.]+) pts/);
+        check(`${printLanguage} ${count}-line receipt is A4`,!!size&&Math.abs(Number(size[1])-595.28)<2&&Math.abs(Number(size[2])-841.89)<2);
+        const pages=execFileSync("pdftotext",["-layout",pdfPath,"-"],{encoding:"utf8"}).split("\f").filter(text=>text.trim());
+        check(`${printLanguage} ${count}-line receipt keeps every row`,Array.from({length:count},(_,index)=>`PRINT-${String(index+1).padStart(3,"0")}`).every(id=>pages.join("\n").includes(id)));
+        check(`${printLanguage} ${count}-line receipt has no duplicate rows`,(pages.join("\n").match(/PRINT-\d{3}/g)||[]).length,count);
+        check(`${printLanguage} ${count}-line receipt has no empty trailing page`,pages.length,Number(info.match(/Pages:\s+(\d+)/)[1]));
+        if(printLanguage==="en"){
+          check(`${count}-line receipt repeats table headings`,pages.filter(page=>page.includes("PRINT-")).every(page=>page.includes("Production order")));
+          check(`${count}-line receipt closes with total and signatures`,pages.at(-1).includes("Voucher total")&&pages.at(-1).includes("Received by"));
+        }
+      }
+      await send("Target.closeTarget",{targetId:printTarget},undefined);
       check("saved voucher timestamp comes from server",await evaluate("document.querySelector('[data-receipt-created-at]').dataset.receiptCreatedAt"),"2026-10-10T08:30:00Z");
       check("success clears submitted draft",await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-notes').value]"),["","",""]);
       await setInput("#receipt-notes","New unsaved voucher");
@@ -422,11 +503,9 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         for(const width of [390,768,1440]){
           await send("Emulation.setDeviceMetricsOverride",{width,height:844,deviceScaleFactor:1,mobile:width===390});
           await navigate("/warehouse/finished-inventory");
-          await wait("!!document.querySelector('.warehouse-balance-spec')");
-          const stockText=await evaluate("document.querySelector('.warehouse-finished-view').innerText");
-          check(`${lang} ${width} finished stock shows packet and roll counts`,stockText.includes(lang==="ar"?"باكت":"Packet")&&stockText.includes(lang==="ar"?"رول":"Roll"));
-          check(`${lang} ${width} actual unit counts are not kg counts`,await evaluate("(()=>{const counts=[...document.querySelectorAll('.warehouse-balance-spec strong')].map(node=>node.innerText);return counts.some(value=>/^2(?:\\.0+)?\\s+(باكت|Packet)$/.test(value))&&counts.some(value=>/^3(?:\\.0+)?\\s+(رول|Roll)$/.test(value))})()"));
-          check(`${lang} ${width} historical kg remains explicit`,stockText.includes(lang==="ar"?"وزن تاريخي":"Legacy weight"));
+          await wait("!!document.querySelector('.warehouse-inventory-card')");
+          check(`${lang} ${width} finished stock displays actual kg`,await evaluate("[...document.querySelectorAll('.warehouse-inventory-card')].some(card=>card.innerText.includes('PO-4')&&/\\b40(?:\\.0+)?\\s+kg\\b/.test(card.innerText))"));
+          check(`${lang} ${width} finished stock has no unit counts or legacy split`,await evaluate("!document.querySelector('.warehouse-balance-spec')"),true);
           check(`${lang} ${width} no sublocation management`,await evaluate("!document.querySelector('#location-name')&&!document.querySelector('#location-name-ar')"));
           check(`${lang} ${width} finished stock fits screen`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
           if(lang==="ar"&&width===1440){await evaluate("document.querySelector('.warehouse-inventory-card').scrollIntoView({block:'start'})");const shot=await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});await fs.writeFile("/tmp/unit-finished-inventory.png",Buffer.from(shot.data,"base64"));}
@@ -490,7 +569,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            if(lang==="ar")await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false}).then(image=>fs.writeFile(`/tmp/warehouse-hall-${width}.png`,Buffer.from(image.data,"base64")));
            permissions=["view_finished_inventory"];
            await navigate("/warehouse/finished-inventory");
-           await wait("!!document.querySelector('.warehouse-finished-view .prod-record')");
+           await wait("!!document.querySelector('.warehouse-finished-view .warehouse-inventory-card')");
            check(`${lang} ${width}: finished contents shown immediately as cards`,await evaluate("getComputedStyle(document.querySelector('.warehouse-finished-view .prod-list')).display==='grid'"));
            check(`${lang} ${width}: finished inventory fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
          }
@@ -584,11 +663,18 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
            })()`);
            const tracks = width >= 1100 ? 3 : width >= 700 ? 2 : 1;
            check(`${label}: compact order columns`, compactOrders.map(list=>list.columns), [tracks,tracks]);
-           check(`${label}: active and unstarted orders retained`, compactOrders.map(list=>list.count), [7,2]);
+           check(`${label}: active and unstarted orders retained`, compactOrders.map(list=>list.count), [7,1]);
            check(`${label}: compact orders contained without overflow`, compactOrders.every(list=>list.contained&&list.contentFits));
+           if(compactOrders.some(list=>list.heights.some(height=>height>470))){
+             console.log("Oversized cards",compactOrders.map(list=>({heights:list.heights,text:list.text})));
+             await fs.writeFile("/tmp/planning-compact-failure.png",Buffer.from((await send("Page.captureScreenshot",{format:"png"})).data,"base64"));
+           }
            check(`${label}: cards remain compact without clipping`, compactOrders.every(list=>list.heights.every(height=>height<=470)));
            check(`${label}: same-width cards fill rows`, compactOrders.every(list=>list.firstRow===Math.min(list.count,tracks)&&Math.max(...list.widths)-Math.min(...list.widths)<1));
            check(`${label}: start and history remain usable`, compactOrders.every(list=>list.actionsFit));
+           await evaluate("document.querySelector('.prod-management-duration summary').click()");
+           check(`${label}: duration remains available and fits expanded card`,await evaluate("(()=>{const card=document.querySelector('.prod-management-order');return !!card.querySelector('.prod-management-duration[open] .prod-film-duration-times')&&card.scrollWidth<=card.clientWidth+1})()"));
+           await evaluate("document.querySelector('.prod-management-duration summary').click()");
            check(`${label}: order and product identity visible`, compactOrders[0].text.some(text=>text.includes("PO-9")&&text.includes("ORDER-2")&&text.includes(lang==="en"?"Special plastic bag":"كيس بلاستيك خاص")));
            const beforeHistory=historyCalls.length;
            await evaluate("document.querySelector('.planning-page .prod-list .prod-order .prod-history summary').click()");
@@ -717,9 +803,9 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
        await navigate("/production/film");
        for (const lang of ["ar", "en"]) {
          language = lang;
-         for (const width of [320, 390, 430, 768, 1440]) {
+         for (const width of (thicknessDisplayOnly ? [390, 1440] : [320, 390, 430, 768, 1440])) {
            await send("Emulation.setDeviceMetricsOverride", { width, height: 950, deviceScaleFactor: 1, mobile: width < 500 });
-           for (const stage of ["film", "printing", "cutting"]) {
+           for (const stage of (thicknessDisplayOnly ? ["film"] : ["film", "printing", "cutting"])) {
              permissions = stage === "film"
                ? ["view_home", "view_user_dashboard", "view_film_dashboard", "view_mixing", "view_production", "operate_film"]
                : ["view_home", "view_user_dashboard", `view_${stage}_dashboard`, `operate_${stage}`];
@@ -727,13 +813,33 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
              const label = `${lang} ${width} ${stage}`;
              await evaluate(`localStorage.removeItem('mpbf-production-machine:42:${stage}')`);
              await navigate(`/production/${stage}`);
-             await wait("!!document.querySelector('[data-production-machine-slot] .prod-chip')");
+             await wait("!!document.querySelector('[data-production-machine-change]')");
+             if (thicknessDisplayOnly) {
+               await wait("!!document.querySelector('[data-production-order-id=\"2\"] .film-spec-grid')");
+               check(`${label}: raw thickness is displayed instead of universal microns`,
+                 await evaluate("(()=>{const text=document.querySelector('[data-production-order-id=\"2\"] .film-spec-grid').innerText;return text.includes('10')&&!text.includes('25')&&!text.includes('µm')})()"));
+               check(`${label}: fractional raw thickness follows whole-number display`,
+                 await evaluate("document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('11')"));
+             }
              check(`${label}: one refresh in header`, await evaluate("document.querySelectorAll('[data-production-header-refresh]').length"), 1);
              check(`${label}: refresh is beside title`, await evaluate("(()=>{const a=document.querySelector('.prod-heading h2').getBoundingClientRect(),b=document.querySelector('[data-production-header-refresh]').getBoundingClientRect();return Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>0})()"));
-             check(`${label}: one top machine control`, await evaluate("document.querySelectorAll('[data-production-machine-slot] .prod-inline').length"), 1);
+             check(`${label}: one top machine control`, await evaluate("document.querySelectorAll('[data-production-machine-change]').length"), 1);
+             check(`${label}: machine name appears only inside its change button`,
+               await evaluate("!document.querySelector('[data-production-machine-slot] .prod-chip')&&!/\\b(?:F1|F2|P1|C1)\\b/.test(document.querySelector('[data-production-machine-change]').innerText)"));
+             if (width <= 700) {
+               check(`${label}: refresh is icon-only with an accessible label`,
+                 await evaluate("document.querySelector('[data-production-header-refresh]').innerText.trim()===''&&!!document.querySelector('[data-production-header-refresh]').getAttribute('aria-label')"));
+               check(`${label}: title, refresh and machine share the same row`,
+                 await evaluate("(()=>{const r=['.prod-heading h2','[data-production-header-refresh]','[data-production-machine-change]'].map(s=>document.querySelector(s).getBoundingClientRect());return Math.min(...r.map(x=>x.bottom))-Math.max(...r.map(x=>x.top))>0})()"));
+             }
              check(`${label}: machine card removed`, await evaluate("![...document.querySelectorAll('.prod-card h3')].some(node=>node.innerText==='Machine'||node.innerText==='الماكينة')"));
              check(`${label}: machine choice is above tabs/orders`, await evaluate("document.querySelector('[data-production-machine-slot]').getBoundingClientRect().bottom<=document.querySelector('.prod-view-nav').getBoundingClientRect().top+1"));
              check(`${label}: top controls fit viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+             await evaluate("document.querySelectorAll('.film-recorded-rolls,.roll-operator-rolls').forEach(g=>{for(let p=g.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true})");
+             check(`${label}: roll grids keep the intended responsive column count`,
+               await evaluate(`[...document.querySelectorAll('.film-recorded-rolls,.roll-operator-rolls')].every(g=>getComputedStyle(g).gridTemplateColumns.split(' ').length===${width <= 700 ? 2 : width < 900 ? 4 : width < 1100 ? 6 : 8})`));
+             check(`${label}: compact roll cards contain their contents`,
+               await evaluate("[...document.querySelectorAll('.film-recorded-roll,.roll-operator-roll')].every(c=>c.scrollWidth<=c.clientWidth+1)"));
              check(`${label}: touch controls are usable`, await evaluate("[...document.querySelectorAll('.prod-heading button')].every(node=>node.getBoundingClientRect().height>=43.99)"));
              check(`${label}: actual operator is not read-only`, await evaluate("!document.querySelector('.production-app').innerText.includes('Read-only')&&!document.querySelector('.production-app').innerText.includes('عرض فقط')"));
              check(`${label}: operator has only its stage and associated tools`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), stage === "film" ? 2 : 1);
@@ -749,6 +855,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
              if (stage === "film") check(`${label}: refreshing preserves draft weight`, await evaluate("document.querySelector('[data-production-order-id=\"2\"] .film-weight-field input').value"), "12.5");
              await evaluate("document.querySelector('[data-production-machine-slot] button').click()");
              await wait(`!!document.querySelector('#machine-${stage}')`);
+             check(`${label}: machine options contain names, not codes`,
+               await evaluate(`[...document.querySelector('#machine-${stage}').options].every(o=>!/\\b(?:F1|F2|P1|C1)\\b/.test(o.textContent))`));
              check(`${label}: only one editable machine select`, await evaluate(`document.querySelectorAll('#machine-${stage}').length`), 1);
              check(`${label}: machine editor also fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
              const selection = stage === "film" ? "F2" : stage === "printing" ? "P1" : "C1";
@@ -757,11 +865,15 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
              check(`${label}: selection saves immediately`, await evaluate(`localStorage.getItem('mpbf-production-machine:42:${stage}')`), selection);
              check(`${label}: change remains available at top`, await evaluate("!!document.querySelector('[data-production-machine-slot] button')"));
              await navigate(`/production/${stage}`);
-             await wait("!!document.querySelector('[data-production-machine-slot] .prod-chip')");
-             check(`${label}: selected machine persists after reload`, await evaluate("document.querySelector('[data-production-machine-slot] .prod-chip').innerText.includes(" + jsLiteral(selection) + ")"));
-             if (lang === "ar" && [390, 1440].includes(width) && stage === "film") {
+             const selectedMachine = state.machines.find(machine => machine.id === selection);
+             const selectedName = lang === "ar" ? selectedMachine.name_ar : selectedMachine.name;
+             await wait(`document.querySelector('[data-production-machine-change]')?.textContent.trim()===${jsLiteral(selectedName)}`);
+             check(`${label}: selected machine name persists after reload`,
+               await evaluate("document.querySelector('[data-production-machine-change]').textContent.trim()"), selectedName);
+             if (lang === "ar" && [390, 1440].includes(width)) {
                const image = await send("Page.captureScreenshot", { format: "png" });
-               await fs.writeFile(`/tmp/production-compact-${width}.png`, Buffer.from(image.data, "base64"));
+               await fs.mkdir("generated-artifacts/operator-header", { recursive: true });
+               await fs.writeFile(`generated-artifacts/operator-header/${stage}-${width}.png`, Buffer.from(image.data, "base64"));
              }
            }
          }
@@ -1186,13 +1298,13 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             check(`${lang} ${width} remaining is planned minus produced`,await evaluate("document.querySelector('[data-production-order-id=\"2\"] .film-order-metrics > div:nth-child(2) strong').innerText"),"100 kg");
             check(`${lang} ${width} compute before rounding, preserve decimal data`,await evaluate("document.querySelector('[data-production-order-id=\"8\"] .film-order-metrics > div:nth-child(2) strong').innerText"),"100 kg");
             check(`${lang} ${width} overproduction never shows negative remaining`,await evaluate("document.querySelector('[data-production-order-id=\"9\"] .film-order-metrics > div:nth-child(2) strong').innerText"),"0 kg");
-            check(`${lang} ${width} operating specs round to whole numbers`,await evaluate("document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('29 + 7 + 7 cm')&&document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('26 µm')"));
+            check(`${lang} ${width} operating specs round to whole numbers`,await evaluate("document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('29 + 7 + 7 cm')&&document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('11')"));
             check(`${lang} ${width} all numeric metrics have no decimal fractions`,await evaluate("[...document.querySelectorAll('.film-order-metrics strong')].every(node=>!/[.٫][0-9٠-٩]/.test(node.innerText))"));
             check(`${lang} ${width} final roll label is concise`,await evaluate("document.querySelector('[data-production-order-id=\"2\"] .film-last-roll').innerText"),lang==="en"?"Final roll":"آخر رول");
             check(`${lang} ${width} roll weight label localized`,await evaluate("document.querySelector('label[for=\"weight-2\"]').innerText"),lang==="en"?"Roll weight (kg)":"وزن الرول (كجم)");
             check(`${lang} ${width} product name larger and emphasized`,await evaluate("[...document.querySelectorAll('.film-order-identity p')].every(node=>parseFloat(getComputedStyle(node).fontSize)>=16&&Number(getComputedStyle(node).fontWeight)>=600)"));
             check(`${lang} ${width} saved decimal quantities unchanged`,[state.orders.find(order=>order.id===8).final_quantity_kg,state.orders.find(order=>order.id===8).produced_kg],["110.49","10.51"]);
-            check(`${lang} ${width} real size material and micron thickness`,await evaluate("['28 + 7 + 7 cm','HDPE','25 µm'].every(value=>document.querySelector('[data-production-order-id=\"2\"] .film-spec-grid').innerText.includes(value))"));
+            check(`${lang} ${width} real size material and raw thickness`,await evaluate("['28 + 7 + 7 cm','HDPE','10'].every(value=>document.querySelector('[data-production-order-id=\"2\"] .film-spec-grid').innerText.includes(value))"));
             check(`${lang} ${width} film color not printing ink`,await evaluate(`document.querySelector('[data-production-order-id="2"] .film-color-spec').innerText.includes(${jsLiteral(lang==="en"?"Blue":"أزرق")})`));
             check(`${lang} ${width} transparent color striped`,await evaluate("document.querySelector('[data-production-order-id=\"8\"] .master-batch-swatch').dataset.transparent"),"true");
             check(`${lang} ${width} ordinary white remains solid`,await evaluate("document.querySelector('[data-production-order-id=\"9\"] .master-batch-swatch').dataset.transparent"),"false");
@@ -1311,7 +1423,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         customer_name_ar:"اسم عميل طويل متعدد الكلمات لاختبار وضوح العرض على شاشة الهاتف"}
     })),order(94,{order_id:2,order_number:"ORDER-2",status:"pending",started_at:null,stage:null}),
       order(95,{product:{...product,size_caption:null,width:null,left_facing:null,right_facing:null,
-        raw_material:null,universal_thickness:null,master_batch:null}}));
+        raw_material:null,thickness:null,universal_thickness:null,master_batch:null}}));
     const beforeStressWrites=writes.length;
     for(const lang of ["ar","en"]){
       language=lang;
@@ -1429,10 +1541,10 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     check("receiver-only navigation opens hall", await evaluate("location.pathname"), "/warehouse/hall");
     await evaluate("document.querySelector('[data-receipt-launcher]').click()");
     await wait("!!document.querySelector('[data-receipt-voucher]')");
-    await setInput("#receipt-order-0","4"); await setInput("#receipt-unit-quantity-0","0.10");
+    await setInput("#receipt-order-0","4"); await setInput("#receipt-quantity-0","0.10");
     check("exact remaining 0.10 kg is accepted without floating subtraction", await evaluate("document.querySelector('#receipt-quantity-0').validity.valid"));
     await setInput("#receipt-notes","Fixture recovery note");failWrite=true;
-    await clickText("Save receipt voucher");await wait("!!document.querySelector('.prod-error')");
+    await clickText("Save");await wait("!!document.querySelector('.prod-error')");
     const receiptKey=writes.at(-1).input.request_id;
     check("uncertain receipt retains its quantity",await evaluate("document.querySelector('#receipt-quantity-0').value"),"0.10");
     await clickText("Retry exact same operation"); await wait("!!document.querySelector('.prod-success')");
@@ -1441,7 +1553,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     check("receipt retry reuses its operation UUID",writes.at(-1).input.request_id,receiptKey);
     check("receipt recovery clears submitted items and notes",await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-quantity-0').value,document.querySelector('#receipt-notes').value]"),["","",""]);
     check("lost receipt response creates one partial receipt", [...committed.values()].filter(v=>v.route==="/production/receipts").length,1);
-    const beforeEmptyReceipt=writes.length;await clickText("Save receipt voucher");
+    const beforeEmptyReceipt=writes.length;await clickText("Save");
     check("empty recovered receipt cannot submit again",writes.length,beforeEmptyReceipt);
     permissions = ["view_production_hall"];
     await navigate("/production/hall");
