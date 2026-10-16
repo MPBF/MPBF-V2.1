@@ -20,7 +20,7 @@ type PendingDelivery = DeliveryInput;
 const copy = (language: string) => {
   const en = language === "en";
   return {
-    title: en ? "Finished inventory" : "مخزون المواد التامة",
+    title: en ? "Finished products" : "المنتجات التامة",
     intro: en ? "Live balances ready for customer delivery." : "الأرصدة الحية الجاهزة للتسليم إلى العملاء.",
     balances: en ? "Available balances" : "الأرصدة المتاحة",
     stockCount: en ? "balances" : "رصيد",
