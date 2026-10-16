@@ -375,6 +375,8 @@ const english: Record<string, string> = {
   "حفظ ملف الشركة": "Save company profile",
   "حفظ والمتابعة": "Save and continue",
   "حفظ ومتابعة": "Save and continue",
+  "يُحفظ المنتج فورًا ضمن منتجات العميل، حتى عند إلغاء الطلب.": "The product is saved to the customer's products immediately, even if the order is cancelled.",
+  "لم يُرجع الخادم بيانات المنتج المحفوظ. تحقق من منتجات العميل قبل المحاولة مجددًا.": "The server did not return the saved product details. Check the customer's products before trying again.",
   "خدمات الموظفين": "Employee services",
   "خط الطول": "Longitude",
   "خط العرض": "Latitude",
