@@ -60,3 +60,15 @@ closing parenthesis was extracted before the heading rather than after it.
 **How to apply:** normalize that punctuation narrowly while retaining all
 label/unit letters and independently checking the glyphs above the first
 row in the correct physical column.
+
+No-overflow assertions do not guarantee that a bilingual table heading has
+exactly one Arabic line and one English line: a word can wrap cleanly without
+overflowing its box.
+
+**Why:** a rendered order PDF split the last letter of narrow English headers
+onto another line even though the original clipping assertions passed.
+
+**How to apply:** check each label's line height as well as its width, and
+visually render the actual PDF after typography changes. Fit the labels using
+the print engine's real font metrics rather than assuming a font name alone
+guarantees the expected character widths.

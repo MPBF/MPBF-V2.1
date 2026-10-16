@@ -67,6 +67,9 @@
 .opp-spec-table { font-size: 12px !important; }
 .opp-spec-table thead { display: table-header-group; }
 .opp-spec-table th { padding: 6px 3px; }
+.opp-column-label { display: flex; min-height: 27px; flex-direction: column; justify-content: center; gap: 1px; line-height: 1.1; }
+.opp-column-label [lang="ar"] { font-size: 12px; }
+.opp-column-label [lang="en"] { color: #597069; font-family: Arial, sans-serif; font-size: 9px; font-weight: 700; letter-spacing: -.1px; white-space: nowrap; }
 .opp-spec-table td { padding: 5px 3px; }
 .opp-spec-row { break-inside: avoid; page-break-inside: avoid; }
 .opp-row-number { font-size: 11px; }
@@ -80,6 +83,9 @@
 .opp-color-cell small { color: #566b62; font-size: 9px; }
 .opp-color-cell .opp-print-colors { max-width: 100%; }
 .opp-punch-icon { display: block; width: 36px; height: 42px; margin: auto; }
+.opp-printed-status { display: block; width: 22px; height: 22px; margin: auto; fill: none; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.opp-printed-status.is-printed { color: #187746; stroke: #187746; }
+.opp-printed-status.is-not-printed { color: #b4232e; stroke: #b4232e; }
 .opp-no-punch { font-size: 8px; }
 .opp-qty-value { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .opp-qty-value strong { font-size: 14px; }
@@ -118,7 +124,7 @@
   .opp-sheet table { break-inside: auto; page-break-inside: auto; }
   .opp-spec-table tr { break-inside: avoid; page-break-inside: avoid; }
   .opp-spec-table th,.opp-spec-table td { border-color: #343d39; }
-  .opp-spec-table th,.opp-total-head,.opp-total-cell,.opp-color-swatch { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .opp-spec-table th,.opp-total-head,.opp-total-cell,.opp-color-swatch,.opp-printed-status { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   /* Keep the generation stamp with all three signatures, never on a page alone. */
   .opp-closing { break-inside: avoid; page-break-inside: avoid; }
   .opp-signatures { break-inside: avoid; page-break-inside: avoid; }
