@@ -209,6 +209,8 @@ export const administrative_requests = pgTable(
     type: varchar("type", { length: 20 }).notNull(),
     title: varchar("title", { length: 200 }).notNull(),
     details: text("details").notNull(),
+    leave_start_date: date("leave_start_date"),
+    leave_end_date: date("leave_end_date"),
     status: varchar("status", { length: 20 }).notNull().default("pending"),
     response: text("response"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -219,6 +221,7 @@ export const administrative_requests = pgTable(
     index("idx_administrative_requests_status_created").on(table.status, table.created_at),
     check("administrative_requests_type_check", sql`${table.type} IN ('leave', 'permission', 'other')`),
     check("administrative_requests_status_check", sql`${table.status} IN ('pending', 'approved', 'rejected')`),
+    check("administrative_requests_leave_dates_check", sql`(${table.leave_start_date} IS NULL AND ${table.leave_end_date} IS NULL) OR (${table.type} = 'leave' AND ${table.leave_start_date} IS NOT NULL AND ${table.leave_end_date} IS NOT NULL AND ${table.leave_start_date} <= ${table.leave_end_date})`),
   ],
 );
 

@@ -9,6 +9,25 @@ describe("monthly attendance day rows", () => {
   it("keeps an empty month empty", () => {
     expect(groupAttendanceEventsByDay([])).toEqual([]);
   });
+  it("renders absence and leave days even if there are no events", () => {
+    expect(groupAttendanceEventsByDay([], [
+      { day: "2026-10-02", status: "leave" }, { day: "2026-10-01", status: "absent" },
+    ])).toEqual([
+      { day: "2026-10-01", events: [], status: "absent" },
+      { day: "2026-10-02", events: [], status: "leave" },
+    ]);
+  });
+  it("real attendance always takes precedence over a stale day status", () => {
+    const events = [event(1, "2026-10-01T04:00:00Z", "check_in", "2026-10-01")];
+    expect(groupAttendanceEventsByDay(events, [{ day: "2026-10-01", status: "absent" }]))
+      .toEqual([{ day: "2026-10-01", events }]);
+  });
+  it("does not duplicate overlapping day statuses or mutate server arrays", () => {
+    const statuses = [{ day: "2026-10-01", status: "absent" as const }, { day: "2026-10-01", status: "leave" as const }];
+    const copy = JSON.stringify(statuses);
+    expect(groupAttendanceEventsByDay([], statuses)).toEqual([{ day: "2026-10-01", events: [], status: "leave" }]);
+    expect(JSON.stringify(statuses)).toBe(copy);
+  });
   it("puts all four actions on one day row without changing their timestamps", () => {
     const events = [
       event(1, "2026-10-01T04:00:00Z"),
