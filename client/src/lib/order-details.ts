@@ -87,7 +87,7 @@ function isPublicPrintProduct(value: unknown): boolean {
   if (value === null) return true;
   if (!record(value)) return false;
   const textFields = [
-    "size_caption", "width", "left_facing", "right_facing", "universal_thickness",
+    "size_caption", "width", "left_facing", "right_facing", "thickness",
     "raw_material", "printing_cylinder", "punching", "notes",
     "cliche_front_design", "cliche_back_design",
   ];

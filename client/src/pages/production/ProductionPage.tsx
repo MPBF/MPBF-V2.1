@@ -81,6 +81,10 @@ const orderProduct = (order: ProductionOrderRecord, language: string) =>
   localized(order.product?.name_ar, order.product?.name, language, localized(order.product?.customer_name_ar, order.product?.customer_name, language, text("unrecorded", language)));
 const customerName = (order: ProductionOrderRecord, language: string) => localized(order.product?.customer_name_ar, order.product?.customer_name, language);
 const machineName = (machine: ProductionMachine | undefined, language: string) => machine ? localized(machine.name_ar, machine.name, language, machine.id) : "—";
+const pickerMachineName = (machine: ProductionMachine, language: string) => {
+  const name = (language === "en" ? machine.name : machine.name_ar || machine.name)?.trim() ?? "";
+  return (language === "en" && /[\u0600-\u06ff]/.test(name) ? "" : name) || text("unrecorded", language);
+};
 
 function useProductionState(allowed: boolean, view: ProductionView) {
   const [snapshot, setSnapshot] = useState<{ view: ProductionView; state: ProductionState } | null>(null);
@@ -114,7 +118,9 @@ function Header({ view, language, refreshing, onRefresh, machineSlotRef, childre
   return <header className={`prod-heading${isOperatorView ? " operator-header" : ""}`}>
     <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{heading}</h2><p>{moduleContext === "warehouse" ? (language === "en" ? "Receiving, finished inventory and movement history." : "الاستلام والمخزون التام وحركاتهما.") : view === "management" ? text("intro", language) : text("title", language)}</p></div>
     <div className="prod-heading-controls">
-      <button className="prod-btn quiet prod-header-refresh" data-production-header-refresh onClick={onRefresh} disabled={refreshing}><RefreshCw />{text("reload", language)}</button>
+      <button className="prod-btn quiet prod-header-refresh" data-production-header-refresh
+        aria-label={text("reload", language)} title={text("reload", language)}
+        onClick={onRefresh} disabled={refreshing}><RefreshCw /><span className="prod-header-refresh-label">{text("reload", language)}</span></button>
       {children}
       <div className="prod-header-machine-slot" data-production-machine-slot ref={machineSlotRef} />
     </div>
@@ -321,8 +327,17 @@ function MachinePicker({ userId, stage, machines, language, selected, onSelect }
   };
   const chosen = machines.find(machine => machine.id === selected);
   if (!machines.length) return <div className="prod-callout">{text("noMachine",language)}</div>;
-  if (chosen && !changing) return <div className="prod-inline"><span className="prod-chip">{text("machine",language)}: {machineName(chosen,language)} · {chosen.id}</span><button className="prod-btn quiet" onClick={() => setChanging(true)}><Settings2 />{text("changeMachine",language)}</button></div>;
-  return <div className="prod-field"><label htmlFor={`machine-${stage}`}>{text("chooseMachine",language)}</label><select id={`machine-${stage}`} value={selected} onChange={event=>select(event.target.value)}>{machines.map(machine=><option key={machine.id} value={machine.id}>{machineName(machine,language)} · {machine.id}</option>)}</select></div>;
+  if (!changing) {
+    const name = chosen ? pickerMachineName(chosen, language) : text("chooseMachine", language);
+    const accessibleName = chosen ? `${text("changeMachine", language)}: ${name}` : text("chooseMachine", language);
+    return <div className="prod-machine-picker">
+      <button type="button" className="prod-btn quiet prod-machine-change" data-production-machine-change
+        aria-label={accessibleName} title={accessibleName} onClick={() => setChanging(true)}>
+        <Settings2 aria-hidden="true" /><span>{name}</span>
+      </button>
+    </div>;
+  }
+  return <div className="prod-field prod-machine-select"><label htmlFor={`machine-${stage}`}>{text("chooseMachine",language)}</label><select id={`machine-${stage}`} value={selected} onChange={event=>select(event.target.value)}><option value="">{text("chooseMachine",language)}</option>{machines.map(machine=><option key={machine.id} value={machine.id}>{pickerMachineName(machine,language)}</option>)}</select></div>;
 }
 
 function OperatorBoard({ state,user,stage,language,reload,machineSlot }: {state:ProductionState;user:ProductionUser;stage:ProductionStage;language:string;reload:()=>Promise<void>;machineSlot:HTMLDivElement|null}) {

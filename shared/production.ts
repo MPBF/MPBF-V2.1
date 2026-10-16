@@ -23,6 +23,7 @@ export type ProductSnapshot = {
   id: number; item_id: string | null; name: string | null; name_ar: string | null;
   customer_name: string | null; customer_name_ar: string | null;
   width: string | null; left_facing: string | null; right_facing: string | null;
+  thickness?: string | null;
   universal_thickness: string | null; cutting_length_cm: number | null; raw_material: string | null;
   printing_cylinder: string | null; punching: string | null; notes: string | null;
   front_print_colors: string[] | null; back_print_colors: string[] | null;

@@ -5,7 +5,7 @@ import type { ProductSnapshot, ProductionStage } from "../shared/production";
 
 const product: ProductSnapshot = {
   id: 1, item_id: "ITM1", name: "Bag", name_ar: null, customer_name: null, customer_name_ar: null,
-  width: "28", left_facing: "7", right_facing: "7", universal_thickness: "40",
+  width: "28", left_facing: "7", right_facing: "7", thickness: "16", universal_thickness: "40",
   cutting_length_cm: 35, printing_cylinder: '14"', raw_material: "HDPE", punching: null,
   notes: null, front_print_colors: ["Red"], back_print_colors: [],
 };
@@ -15,8 +15,9 @@ const printer = {
   max_print_colors: 2, min_thickness: null, max_thickness: null, raw_material_type: null,
   min_length_cm: null, max_length_cm: null,
 };
-const txFor = (overrides: Record<string, unknown> = {}): Connection => ({
-  query: jest.fn<Connection["query"]>(async () => ({ rows: [{ ...printer, ...overrides }] })),
+const txFor = (overrides: Record<string, unknown> = {}, legacyThickness: string | null = null): Connection => ({
+  query: jest.fn<Connection["query"]>(async sql => ({ rows: sql.startsWith("SELECT * FROM machines")
+    ? [{ ...printer, ...overrides }] : [{ thickness: legacyThickness }] })),
   release: () => {},
 });
 
@@ -66,8 +67,44 @@ describe("production machine cylinder limits", () => {
   });
   it.each(["film", "cutting"] as const)("does not apply cylinder validation to %s", async (stage: ProductionStage) => {
     const overrides = stage === "film"
-      ? { type: "extruder", min_thickness: "30", max_thickness: "50", raw_material_type: "HDPE" }
+      ? { type: "extruder", min_thickness: "10", max_thickness: "20", raw_material_type: "HDPE" }
       : { type: "cutter", min_length_cm: "30", max_length_cm: "40" };
     await expect(machine(txFor(overrides), "P1", stage, { ...product, printing_cylinder: null })).resolves.toMatchObject({ id: "P1" });
+  });
+});
+
+describe("film limits use original product thickness", () => {
+  const film = { type: "extruder", min_thickness: "4", max_thickness: "50", raw_material_type: "HDPE" };
+  it("accepts raw thickness inside the range even when universal thickness exceeds it", async () => {
+    await expect(machine(txFor(film), "F1", "film", { ...product, thickness: "32", universal_thickness: "80" }))
+      .resolves.toMatchObject({ type: "extruder" });
+  });
+  it("rejects raw thickness outside the range even when universal thickness fits", async () => {
+    await expect(machine(txFor(film), "F1", "film", { ...product, thickness: "60", universal_thickness: "40" }))
+      .rejects.toMatchObject({ status: 409 });
+  });
+  it.each(["4", "50"])("accepts exact original-thickness boundary %s", async thickness => {
+    await expect(machine(txFor(film), "F1", "film", { ...product, thickness })).resolves.toMatchObject({ status: "active" });
+  });
+  it.each(["3.999", "50.001", "", " ", "invalid", null])("rejects out-of-range or missing original thickness %s", async thickness => {
+    await expect(machine(txFor(film), "F1", "film", { ...product, thickness })).rejects.toMatchObject({ status: 409 });
+  });
+  it("resolves missing legacy raw thickness through the guarded read-only projection", async () => {
+    const { thickness: _raw, ...legacy } = product;
+    const tx = txFor(film, "16");
+    await expect(machine(tx, "F1", "film", legacy)).resolves.toMatchObject({ status: "active" });
+    expect(tx.query).toHaveBeenCalledTimes(2);
+    expect(tx.query).toHaveBeenLastCalledWith(expect.stringContaining("IS NOT DISTINCT FROM cp.universal_thickness::text"),
+      [JSON.stringify(legacy), product.id]);
+    expect(legacy).not.toHaveProperty("thickness");
+  });
+  it("fails closed when legacy original thickness cannot be safely recovered", async () => {
+    const { thickness: _raw, ...legacy } = product;
+    await expect(machine(txFor(film, null), "F1", "film", legacy)).rejects.toMatchObject({ status: 409 });
+  });
+  it("does not replace deliberately saved missing raw thickness with live data", async () => {
+    const tx = txFor(film, "16");
+    await expect(machine(tx, "F1", "film", { ...product, thickness: null })).rejects.toMatchObject({ status: 409 });
+    expect(tx.query).toHaveBeenCalledTimes(1);
   });
 });

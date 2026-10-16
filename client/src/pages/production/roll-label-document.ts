@@ -1,5 +1,6 @@
 import type { ProductionRollLabel } from "../../lib/production-api";
 import { formatNumber } from "../../lib/format-number";
+import { filmOperationSpecs, safeFilmName } from "../../lib/film-operation-specs";
 
 export type RollLabelLanguage = "ar" | "en";
 
@@ -12,7 +13,6 @@ const copy = {
     instructions: "إعدادات Zebra: مقاس 4 × 6 بوصة، عمودي، حجم فعلي 100%، وأوقف الرؤوس والتذييلات.",
     target: "اختر طابعة Zebra من قائمة الطابعات في نافذة المتصفح. لا يمكن للتطبيق اختيار الطابعة أو تأكيد الطباعة الفعلية.",
     roll: "رقم الرول",
-    order: "أمر الإنتاج",
     weight: "وزن الفيلم",
     batch: "رقم الدفعة",
     scan: "امسح الرمز لعرض سجل الرول",
@@ -30,7 +30,6 @@ const copy = {
     instructions: "Zebra setup: 4 × 6 in, portrait, actual size / 100%, and browser headers and footers off.",
     target: "Choose the Zebra printer in the browser print dialog. The app cannot select a printer or confirm a physical print.",
     roll: "Roll number",
-    order: "Production order",
     weight: "Film weight",
     batch: "Batch number",
     scan: "Scan to open the roll record",
@@ -66,14 +65,24 @@ export function buildRollLabelDocument(labels: ProductionRollLabel[], language: 
   const pages = labels.map(({ roll, qr }) => {
     const image = escapeHtml(safeImageSource(qr.image));
     const number = readableIdentifier(roll.roll_number);
-    const order = readableIdentifier(roll.production_order_number);
+    const customerArabic = safeFilmName(roll.product.customer_name_ar, "ar", "—");
+    const customerEnglish = safeFilmName(roll.product.customer_name, "en", "—");
+    const productName = safeFilmName(language === "ar" ? roll.product.name_ar : roll.product.name, language, "—");
+    const size = filmOperationSpecs(roll.product, language, formatNumber, "—").size;
+    const itemSize = `${productName} — ${size}`;
+    const longestProductLine = Math.max(customerArabic.length, customerEnglish.length, itemSize.length);
+    const productDensity = longestProductLine > 84 ? " very-long" : longestProductLine > 54 ? " dense" : longestProductLine > 30 ? " compact" : "";
     const batch = roll.batch_number ? `
       <div class="field batch"><span>${t.batch}</span><strong dir="auto">${readableIdentifier(roll.batch_number)}</strong></div>` : "";
-    const longIdentifiers = roll.roll_number.length > 32 || roll.production_order_number.length > 28 || (roll.batch_number?.length ?? 0) > 28;
+    const longIdentifiers = roll.roll_number.length > 32 || (roll.batch_number?.length ?? 0) > 28 || longestProductLine > 30;
     return `<article class="label-sheet${longIdentifiers ? " long-identifiers" : ""}" aria-label="${escapeHtml(t.roll)} ${number}">
       <header class="label-head"><span class="brand">MPBF&nbsp; / &nbsp;ROLL TRACE</span><span class="serial">01</span></header>
       <div class="roll-number${roll.roll_number.length > 32 ? " compact" : ""}"><span>${t.roll}</span><strong dir="auto">${number}</strong></div>
-      <div class="field order${roll.production_order_number.length > 28 ? " compact" : ""}"><span>${t.order}</span><strong dir="auto">${order}</strong></div>
+      <div class="field customer-product${productDensity}">
+        <strong class="customer-name-ar" dir="rtl">${escapeHtml(customerArabic)}</strong>
+        <strong class="customer-name-en" dir="ltr">${escapeHtml(customerEnglish)}</strong>
+        <strong class="item-size" dir="auto">${escapeHtml(itemSize)}</strong>
+      </div>
       <div class="field weight"><span>${t.weight}</span><strong dir="ltr">${escapeHtml(formatNumber(roll.weight_kg))} <small>kg</small></strong></div>
       ${batch}
       <div class="qr-frame"><img src="${image}" alt="QR" /><span>${t.scan}</span></div>
@@ -110,8 +119,17 @@ export function buildRollLabelDocument(labels: ProductionRollLabel[], language: 
     .roll-number.compact strong { font-size: 12pt; letter-spacing: 0; }
     .field { display: grid; gap: 3px; padding: .11in 0; border-bottom: 1px solid #c2c9c6; min-width: 0; }
     .field strong { font-size: 15pt; line-height: 1.13; font-weight: 750; overflow-wrap: anywhere; word-break: break-word; }
-    .field.order strong { font: 700 15pt/1.16 "Courier New", monospace; }
-    .field.order.compact strong { font-size: 11pt; }
+    .customer-product { gap: 2px; }
+    .customer-product strong { min-width: 0; font-size: 13pt; line-height: 1.1; font-weight: 750; overflow-wrap: anywhere; word-break: normal; }
+    .customer-product .customer-name-ar { text-align: right; }
+    .customer-product .customer-name-en { text-align: left; }
+    .customer-product .item-size { font-size: 12pt; }
+    .customer-product.compact strong { font-size: 11pt; }
+    .customer-product.compact .item-size { font-size: 10pt; }
+    .customer-product.dense strong { font-size: 9.5pt; }
+    .customer-product.dense .item-size { font-size: 9pt; }
+    .customer-product.very-long strong { font-size: 8pt; }
+    .customer-product.very-long .item-size { font-size: 8pt; }
     .field.batch strong { font-size: 11pt; }
     .long-identifiers .roll-number { padding: .12in 0 .1in; }
     .long-identifiers .field { padding: .07in 0; }

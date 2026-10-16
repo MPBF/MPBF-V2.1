@@ -26,7 +26,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const cuttingCompactOnly = process.argv.includes("--cutting-compact-only") || cuttingActionOnly;
   const compactRollsOnly = process.argv.includes("--compact-rolls-only") || printingIconsOnly || cuttingCompactOnly;
   const planningNavigationOnly = process.argv.includes("--planning-navigation-only");
-  const compactControlsOnly = process.argv.includes("--compact-controls-only");
+  const thicknessDisplayOnly = process.argv.includes("--thickness-display-only");
+  const compactControlsOnly = process.argv.includes("--compact-controls-only") || thicknessDisplayOnly;
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
   const hallCompactOnly = process.argv.includes("--hall-compact-only");
   const rawMixingOnly = process.argv.includes("--raw-mixing-only");
@@ -45,7 +46,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const pending = new Map(), errors = [], writes = [], committed = new Map(), historyCalls = [], stateScopes = [];
   const check = (name, actual, expected = true) => { assert.deepEqual(actual, expected, name); console.log(`PASS ${name}`); passed++; };
   const product = { id: 1, item_id: "ITM01", name: "Plastic bag", name_ar: "كيس بلاستيك", customer_name: "Fixture customer", customer_name_ar: "عميل الاختبار",
-     width: "28", left_facing: "7", right_facing: "7", universal_thickness: "25", cutting_length_cm: 41, raw_material: "HDPE", printing_cylinder: '16"', punching: "بنانة", notes: null, front_print_colors: ["Red"], back_print_colors: [],
+     width: "28", left_facing: "7", right_facing: "7", thickness: "10", universal_thickness: "25", cutting_length_cm: 41, raw_material: "HDPE", printing_cylinder: '16"', punching: "بنانة", notes: null, front_print_colors: ["Red"], back_print_colors: [],
      size_caption:"28 + 7 + 7 cm",plate_drawer_code:"D-12",master_batch:{id:"BLUE",name:"Blue",name_ar:"أزرق",color_hex:"#2463EB"} };
   const duration = (machine_id = "F1", changes = {}) => ({
     machine_id, machine_name: machine_id === "F1" ? "Film One" : "Film Two",
@@ -69,7 +70,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
     order(4, { is_printed: false, is_roll_product: true, ready_kg: "10.00", remaining_kg: "7.00", received_kg: "3.00" }),
     order(5, { is_roll_product: true }), order(6, { started_at: null, status: "completed", order_status: "completed" }), order(7, { order_status: "paused" }),
     order(8,{order_id:2,order_number:"ORDER-2",final_quantity_kg:"110.49",produced_kg:"10.51",
-      product:{...product,size_caption:"28.5 + 7.25 + 7.25 cm",universal_thickness:"25.6",
+      product:{...product,size_caption:"28.5 + 7.25 + 7.25 cm",thickness:"10.6",universal_thickness:"25.6",
         master_batch:{id:"TRANS",name:"Transparent",name_ar:"شفاف",color_hex:"#FFFFFF"}}}),
     order(9,{order_id:2,order_number:"ORDER-2",produced_kg:"120.00",
       product:{...product,name:"Special plastic bag with a long product name for a busy factory operator",
@@ -802,9 +803,9 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
        await navigate("/production/film");
        for (const lang of ["ar", "en"]) {
          language = lang;
-         for (const width of [320, 390, 430, 768, 1440]) {
+         for (const width of (thicknessDisplayOnly ? [390, 1440] : [320, 390, 430, 768, 1440])) {
            await send("Emulation.setDeviceMetricsOverride", { width, height: 950, deviceScaleFactor: 1, mobile: width < 500 });
-           for (const stage of ["film", "printing", "cutting"]) {
+           for (const stage of (thicknessDisplayOnly ? ["film"] : ["film", "printing", "cutting"])) {
              permissions = stage === "film"
                ? ["view_home", "view_user_dashboard", "view_film_dashboard", "view_mixing", "view_production", "operate_film"]
                : ["view_home", "view_user_dashboard", `view_${stage}_dashboard`, `operate_${stage}`];
@@ -812,13 +813,33 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
              const label = `${lang} ${width} ${stage}`;
              await evaluate(`localStorage.removeItem('mpbf-production-machine:42:${stage}')`);
              await navigate(`/production/${stage}`);
-             await wait("!!document.querySelector('[data-production-machine-slot] .prod-chip')");
+             await wait("!!document.querySelector('[data-production-machine-change]')");
+             if (thicknessDisplayOnly) {
+               await wait("!!document.querySelector('[data-production-order-id=\"2\"] .film-spec-grid')");
+               check(`${label}: raw thickness is displayed instead of universal microns`,
+                 await evaluate("(()=>{const text=document.querySelector('[data-production-order-id=\"2\"] .film-spec-grid').innerText;return text.includes('10')&&!text.includes('25')&&!text.includes('µm')})()"));
+               check(`${label}: fractional raw thickness follows whole-number display`,
+                 await evaluate("document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('11')"));
+             }
              check(`${label}: one refresh in header`, await evaluate("document.querySelectorAll('[data-production-header-refresh]').length"), 1);
              check(`${label}: refresh is beside title`, await evaluate("(()=>{const a=document.querySelector('.prod-heading h2').getBoundingClientRect(),b=document.querySelector('[data-production-header-refresh]').getBoundingClientRect();return Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>0})()"));
-             check(`${label}: one top machine control`, await evaluate("document.querySelectorAll('[data-production-machine-slot] .prod-inline').length"), 1);
+             check(`${label}: one top machine control`, await evaluate("document.querySelectorAll('[data-production-machine-change]').length"), 1);
+             check(`${label}: machine name appears only inside its change button`,
+               await evaluate("!document.querySelector('[data-production-machine-slot] .prod-chip')&&!/\\b(?:F1|F2|P1|C1)\\b/.test(document.querySelector('[data-production-machine-change]').innerText)"));
+             if (width <= 700) {
+               check(`${label}: refresh is icon-only with an accessible label`,
+                 await evaluate("document.querySelector('[data-production-header-refresh]').innerText.trim()===''&&!!document.querySelector('[data-production-header-refresh]').getAttribute('aria-label')"));
+               check(`${label}: title, refresh and machine share the same row`,
+                 await evaluate("(()=>{const r=['.prod-heading h2','[data-production-header-refresh]','[data-production-machine-change]'].map(s=>document.querySelector(s).getBoundingClientRect());return Math.min(...r.map(x=>x.bottom))-Math.max(...r.map(x=>x.top))>0})()"));
+             }
              check(`${label}: machine card removed`, await evaluate("![...document.querySelectorAll('.prod-card h3')].some(node=>node.innerText==='Machine'||node.innerText==='الماكينة')"));
              check(`${label}: machine choice is above tabs/orders`, await evaluate("document.querySelector('[data-production-machine-slot]').getBoundingClientRect().bottom<=document.querySelector('.prod-view-nav').getBoundingClientRect().top+1"));
              check(`${label}: top controls fit viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+             await evaluate("document.querySelectorAll('.film-recorded-rolls,.roll-operator-rolls').forEach(g=>{for(let p=g.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true})");
+             check(`${label}: roll grids keep the intended responsive column count`,
+               await evaluate(`[...document.querySelectorAll('.film-recorded-rolls,.roll-operator-rolls')].every(g=>getComputedStyle(g).gridTemplateColumns.split(' ').length===${width <= 700 ? 2 : width < 900 ? 4 : width < 1100 ? 6 : 8})`));
+             check(`${label}: compact roll cards contain their contents`,
+               await evaluate("[...document.querySelectorAll('.film-recorded-roll,.roll-operator-roll')].every(c=>c.scrollWidth<=c.clientWidth+1)"));
              check(`${label}: touch controls are usable`, await evaluate("[...document.querySelectorAll('.prod-heading button')].every(node=>node.getBoundingClientRect().height>=43.99)"));
              check(`${label}: actual operator is not read-only`, await evaluate("!document.querySelector('.production-app').innerText.includes('Read-only')&&!document.querySelector('.production-app').innerText.includes('عرض فقط')"));
              check(`${label}: operator has only its stage and associated tools`, await evaluate("document.querySelectorAll('.prod-view-nav a').length"), stage === "film" ? 2 : 1);
@@ -834,6 +855,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
              if (stage === "film") check(`${label}: refreshing preserves draft weight`, await evaluate("document.querySelector('[data-production-order-id=\"2\"] .film-weight-field input').value"), "12.5");
              await evaluate("document.querySelector('[data-production-machine-slot] button').click()");
              await wait(`!!document.querySelector('#machine-${stage}')`);
+             check(`${label}: machine options contain names, not codes`,
+               await evaluate(`[...document.querySelector('#machine-${stage}').options].every(o=>!/\\b(?:F1|F2|P1|C1)\\b/.test(o.textContent))`));
              check(`${label}: only one editable machine select`, await evaluate(`document.querySelectorAll('#machine-${stage}').length`), 1);
              check(`${label}: machine editor also fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
              const selection = stage === "film" ? "F2" : stage === "printing" ? "P1" : "C1";
@@ -842,11 +865,15 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
              check(`${label}: selection saves immediately`, await evaluate(`localStorage.getItem('mpbf-production-machine:42:${stage}')`), selection);
              check(`${label}: change remains available at top`, await evaluate("!!document.querySelector('[data-production-machine-slot] button')"));
              await navigate(`/production/${stage}`);
-             await wait("!!document.querySelector('[data-production-machine-slot] .prod-chip')");
-             check(`${label}: selected machine persists after reload`, await evaluate("document.querySelector('[data-production-machine-slot] .prod-chip').innerText.includes(" + jsLiteral(selection) + ")"));
-             if (lang === "ar" && [390, 1440].includes(width) && stage === "film") {
+             const selectedMachine = state.machines.find(machine => machine.id === selection);
+             const selectedName = lang === "ar" ? selectedMachine.name_ar : selectedMachine.name;
+             await wait(`document.querySelector('[data-production-machine-change]')?.textContent.trim()===${jsLiteral(selectedName)}`);
+             check(`${label}: selected machine name persists after reload`,
+               await evaluate("document.querySelector('[data-production-machine-change]').textContent.trim()"), selectedName);
+             if (lang === "ar" && [390, 1440].includes(width)) {
                const image = await send("Page.captureScreenshot", { format: "png" });
-               await fs.writeFile(`/tmp/production-compact-${width}.png`, Buffer.from(image.data, "base64"));
+               await fs.mkdir("generated-artifacts/operator-header", { recursive: true });
+               await fs.writeFile(`generated-artifacts/operator-header/${stage}-${width}.png`, Buffer.from(image.data, "base64"));
              }
            }
          }
@@ -1271,13 +1298,13 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
             check(`${lang} ${width} remaining is planned minus produced`,await evaluate("document.querySelector('[data-production-order-id=\"2\"] .film-order-metrics > div:nth-child(2) strong').innerText"),"100 kg");
             check(`${lang} ${width} compute before rounding, preserve decimal data`,await evaluate("document.querySelector('[data-production-order-id=\"8\"] .film-order-metrics > div:nth-child(2) strong').innerText"),"100 kg");
             check(`${lang} ${width} overproduction never shows negative remaining`,await evaluate("document.querySelector('[data-production-order-id=\"9\"] .film-order-metrics > div:nth-child(2) strong').innerText"),"0 kg");
-            check(`${lang} ${width} operating specs round to whole numbers`,await evaluate("document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('29 + 7 + 7 cm')&&document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('26 µm')"));
+            check(`${lang} ${width} operating specs round to whole numbers`,await evaluate("document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('29 + 7 + 7 cm')&&document.querySelector('[data-production-order-id=\"8\"] .film-spec-grid').innerText.includes('11')"));
             check(`${lang} ${width} all numeric metrics have no decimal fractions`,await evaluate("[...document.querySelectorAll('.film-order-metrics strong')].every(node=>!/[.٫][0-9٠-٩]/.test(node.innerText))"));
             check(`${lang} ${width} final roll label is concise`,await evaluate("document.querySelector('[data-production-order-id=\"2\"] .film-last-roll').innerText"),lang==="en"?"Final roll":"آخر رول");
             check(`${lang} ${width} roll weight label localized`,await evaluate("document.querySelector('label[for=\"weight-2\"]').innerText"),lang==="en"?"Roll weight (kg)":"وزن الرول (كجم)");
             check(`${lang} ${width} product name larger and emphasized`,await evaluate("[...document.querySelectorAll('.film-order-identity p')].every(node=>parseFloat(getComputedStyle(node).fontSize)>=16&&Number(getComputedStyle(node).fontWeight)>=600)"));
             check(`${lang} ${width} saved decimal quantities unchanged`,[state.orders.find(order=>order.id===8).final_quantity_kg,state.orders.find(order=>order.id===8).produced_kg],["110.49","10.51"]);
-            check(`${lang} ${width} real size material and micron thickness`,await evaluate("['28 + 7 + 7 cm','HDPE','25 µm'].every(value=>document.querySelector('[data-production-order-id=\"2\"] .film-spec-grid').innerText.includes(value))"));
+            check(`${lang} ${width} real size material and raw thickness`,await evaluate("['28 + 7 + 7 cm','HDPE','10'].every(value=>document.querySelector('[data-production-order-id=\"2\"] .film-spec-grid').innerText.includes(value))"));
             check(`${lang} ${width} film color not printing ink`,await evaluate(`document.querySelector('[data-production-order-id="2"] .film-color-spec').innerText.includes(${jsLiteral(lang==="en"?"Blue":"أزرق")})`));
             check(`${lang} ${width} transparent color striped`,await evaluate("document.querySelector('[data-production-order-id=\"8\"] .master-batch-swatch').dataset.transparent"),"true");
             check(`${lang} ${width} ordinary white remains solid`,await evaluate("document.querySelector('[data-production-order-id=\"9\"] .master-batch-swatch').dataset.transparent"),"false");
@@ -1396,7 +1423,7 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
         customer_name_ar:"اسم عميل طويل متعدد الكلمات لاختبار وضوح العرض على شاشة الهاتف"}
     })),order(94,{order_id:2,order_number:"ORDER-2",status:"pending",started_at:null,stage:null}),
       order(95,{product:{...product,size_caption:null,width:null,left_facing:null,right_facing:null,
-        raw_material:null,universal_thickness:null,master_batch:null}}));
+        raw_material:null,thickness:null,universal_thickness:null,master_batch:null}}));
     const beforeStressWrites=writes.length;
     for(const lang of ["ar","en"]){
       language=lang;
