@@ -78,10 +78,10 @@ const clearPending = (key: string) => { try { window.sessionStorage.removeItem(k
 const errorText = (cause: unknown, en: boolean) => cause instanceof Error && cause.message && cause.message !== "secure" ? cause.message : tx(cause instanceof Error && cause.message === "secure" ? "secure" : "saveError", en);
 
 function ModuleNav({ user, en }: { user: ProductionUser; en: boolean }) {
-  const warehouseLabels: Record<string, [string, string]> = { hall: ["صالة الإنتاج", "Production hall"], warehouse: ["المخزون التام", "Finished inventory"], raw: ["صالة الخام", "Raw materials"], "raw-materials": ["صالة الخام", "Raw materials"] };
+  const warehouseLabels: Record<string, [string, string]> = { hall: ["صالة الإنتاج", "Production hall"], warehouse: ["المنتجات التامة", "Finished products"], raw: ["صالة الخام", "Raw materials"], "raw-materials": ["صالة الخام", "Raw materials"] };
   const warehouse = availableWarehouseViews(user);
   return <nav className="raw-ops-nav" aria-label={en ? "Warehouse modules" : "أقسام المستودع"}>
-    {warehouse.map(view => <Link key={view.view} href={view.href} aria-current={view.href === "/warehouse/raw-materials" ? "page" : undefined}>{view.href === "/warehouse/raw-materials" ? tx("title", en) : warehouseLabels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
+    {warehouse.map(view => <Link key={view.view} href={view.href} aria-current={view.href === "/warehouse/raw-materials" ? "page" : undefined}>{warehouseLabels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
   </nav>;
 }
 

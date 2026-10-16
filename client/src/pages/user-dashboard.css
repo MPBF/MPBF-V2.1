@@ -62,7 +62,7 @@
 }
 .self-attendance {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(205px, 260px);
+  grid-template-columns: minmax(0, 1fr);
   border-inline-start: 4px solid var(--self-teal);
   background: linear-gradient(120deg, #fff 52%, #f2f8f5 100%);
 }
@@ -164,28 +164,6 @@
   animation: self-spin .65s linear infinite;
 }
 @keyframes self-spin { to { transform: rotate(360deg); } }
-.self-attendance-stat {
-  border-inline-start: 1px solid var(--self-line);
-  padding: 24px;
-  display: flex;
-  gap: 13px;
-  align-items: flex-start;
-  justify-content: center;
-}
-.self-stat-icon {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  border-radius: 10px;
-  color: var(--self-teal);
-  background: #e7f3ef;
-}
-.self-attendance-stat div { display: grid; gap: 1px; }
-.self-attendance-stat span:not(.self-stat-icon) { color: var(--self-muted); font-size: 12px; }
-.self-attendance-stat strong { font-size: 30px; line-height: 1.15; }
-.self-attendance-stat small { color: var(--self-muted); font-size: 11px; }
 .self-panel-heading {
   min-height: 70px;
   padding: 15px 19px;
@@ -210,22 +188,69 @@
   font-size: 12px;
   font-weight: 800;
 }
-.self-event-list { padding: 1px 19px 6px; }
-.self-event {
+.self-attendance-day-list { padding: 1px 19px 6px; min-width: 0; }
+.self-attendance-day {
   display: grid;
-  grid-template-columns: 12px minmax(120px, 1fr) auto;
-  align-items: center;
-  gap: 11px;
-  min-height: 59px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 2px;
+  padding: 10px 0;
   border-bottom: 1px solid #edf2f0;
+  min-width: 0;
 }
-.self-event:last-child { border-bottom: 0; }
-.self-event-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--self-teal); box-shadow: 0 0 0 4px #e9f4f0; }
-.self-event-dot.is-soft { background: var(--self-orange); box-shadow: 0 0 0 4px #fbf0e9; }
-.self-event-copy { display: grid; gap: 2px; }
-.self-event-copy strong { font-size: 13px; }
-.self-event-copy small { color: var(--self-muted); display: inline-flex; align-items: center; gap: 4px; font-size: 10px; }
-.self-event time, .self-message time, .self-violation time { color: var(--self-muted); font-size: 11px; white-space: nowrap; }
+.self-attendance-day:last-child { border-bottom: 0; }
+.self-attendance-day-date {
+  color: var(--self-ink);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.self-attendance-day-events {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding: 3px 2px 5px;
+}
+.self-attendance-day-events:focus-visible { outline: 2px solid var(--self-teal); outline-offset: 2px; }
+.self-attendance-day-event {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--self-line);
+  border-radius: 6px;
+  background: #f8fbf9;
+  color: var(--self-ink);
+}
+.self-attendance-event-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.self-attendance-day-event.action-check_in .self-attendance-event-action { color: #167a58; }
+.self-attendance-day-event.action-break_start .self-attendance-event-action { color: #8a5f08; }
+.self-attendance-day-event.action-break_end .self-attendance-event-action { color: #247c9a; }
+.self-attendance-day-event.action-check_out .self-attendance-event-action { color: #a85039; }
+.self-attendance-day-event time { color: var(--self-deep); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.self-attendance-event-actual-date { color: var(--self-muted); font-size: 9px; white-space: nowrap; }
+.self-attendance-day-status { display: inline-flex; align-items: center; min-height: 30px; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 850; white-space: nowrap; }
+.self-attendance-day-status.status-absent { background: #fae5e3; border: 1px solid #edc3be; color: #a23f39; }
+.self-attendance-day-status.status-leave { background: #e6f3ed; border: 1px solid #cbe4d6; color: #236447; }
+.self-attendance-assessment-note { margin: 12px 19px 0; }
+.self-message time, .self-violation time { color: var(--self-muted); font-size: 11px; white-space: nowrap; }
 .self-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
 .self-columns > section { min-height: 100%; }
 .self-form { padding: 18px 19px 19px; display: grid; gap: 13px; border-bottom: 1px solid #edf2f0; }
@@ -245,6 +270,7 @@
 .self-field textarea { resize: vertical; line-height: 1.8; }
 .self-field input:focus, .self-field select:focus, .self-field textarea:focus { border-color: var(--self-teal); box-shadow: 0 0 0 3px rgba(11,119,112,.1); }
 .self-form-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.3fr); gap: 12px; }
+.self-leave-date-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .self-submit {
   justify-self: start;
   border: 0;
@@ -299,6 +325,7 @@
 .self-request-top small { color: var(--self-muted); font-size: 10px; }
 .self-request h4, .self-admin-record h4 { margin: 9px 0 0; font-size: 14px; }
 .self-request > p { margin: 5px 0; }
+.self-request-leave-range { display: block; margin-top: 7px; color: var(--self-deep); font-size: 11px; font-weight: 700; }
 .self-status {
   display: inline-flex;
   align-items: center;
@@ -380,6 +407,10 @@
 .self-admin-details { color: #43585a; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.9; margin: 5px 0 13px; }
 .self-admin-decision { display: grid; grid-template-columns: minmax(150px, .45fr) minmax(220px, 1.4fr) auto; gap: 12px; align-items: end; }
 .self-admin-decision .self-submit { margin-bottom: 1px; }
+.self-admin-missing-leave-filter { display: flex; align-items: center; gap: 9px; padding: 12px 19px; border-bottom: 1px solid #edf2f0; color: var(--self-deep); font-size: 11px; font-weight: 750; }
+.self-admin-missing-leave-filter input { width: 16px; height: 16px; margin: 0; accent-color: var(--self-teal); }
+.self-admin-leave-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin: 12px 0 15px; padding: 12px; border: 1px solid #e5eeea; background: #f8fbf9; }
+.self-admin-leave-dates .self-submit { grid-column: 1 / -1; }
 .self-admin-form { border: 0; }
 .self-form-note { margin: 0; color: #975020; font-size: 11px; }
 
@@ -397,18 +428,22 @@
   .self-attendance-main { padding: 18px 16px; }
   .self-attendance-main h3 { font-size: 21px; }
   .self-shift-context { padding: 11px 12px; }
-  .self-attendance-stat { border-inline-start: 0; border-top: 1px solid var(--self-line); padding: 13px 17px; justify-content: flex-start; align-items: center; }
-  .self-attendance-stat strong { font-size: 24px; }
   .self-attendance-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .self-attendance-btn { min-height: 46px; padding: 0 8px; font-size: 11px; }
   .self-panel-heading { min-height: 64px; padding: 12px 14px; }
   .self-form { padding: 14px; }
   .self-form-grid { grid-template-columns: minmax(0, 1fr); }
-  .self-event-list { padding-inline: 14px; }
-  .self-event { grid-template-columns: 10px minmax(80px, 1fr) auto; gap: 8px; }
-  .self-event time { font-size: 10px; }
-  .self-event-copy strong { font-size: 11px; }
-  .self-event-copy small { font-size: 9px; }
+  .self-leave-date-fields { gap: 9px; }
+  .self-admin-missing-leave-filter { padding-inline: 14px; }
+  .self-admin-leave-dates { grid-template-columns: minmax(0, 1fr); padding: 10px; }
+  .self-admin-leave-dates .self-submit { grid-column: auto; justify-self: stretch; }
+  .self-attendance-assessment-note { margin-inline: 14px; }
+  .self-attendance-day-list { padding-inline: 12px; }
+  .self-attendance-day { gap: 2px; }
+  .self-attendance-day-date { font-size: 12px; }
+  .self-attendance-day-events { gap: 6px; }
+  .self-attendance-day-event { gap: 6px; padding-inline: 8px; }
+  .self-attendance-event-action, .self-attendance-day-event time { font-size: 10px; }
   .self-message, .self-request { padding: 13px 14px; }
   .self-violation { padding: 14px; flex-wrap: wrap; }
   .self-violation-content { flex-basis: calc(100% - 50px); }
@@ -425,6 +460,7 @@
   .self-live-timer { align-items:flex-start; flex-direction:column; }.self-live-timer small{max-width:none}
   .self-attendance-actions { grid-template-columns: repeat(2,minmax(0, 1fr)); }
   .self-message-top, .self-request-top { flex-wrap: wrap; }
-  .self-event { grid-template-columns: 9px minmax(0, 1fr); }
-  .self-event time { grid-column: 2; }
+  .self-leave-date-fields { grid-template-columns: minmax(0, 1fr); }
+  .self-attendance-day { gap: 2px; }
+  .self-attendance-day-date { font-size: 12px; }
 }

@@ -24,7 +24,7 @@
 - [Bag weight formula](bag-weight-formula.md) — customer_products weight = flatWidth × length × 2 layers × universal_thickness(µm→cm) × density; use universal (computed/hidden) thickness, never raw thickness.
 - [HR schema drift on existing DBs](hr-ensure-block-tables.md) — a declared HR table may be absent from a live DB; inspect actual columns and apply narrow additive dev migrations, not startup DDL.
 - [Vite @/ alias fragility](vite-at-alias-resolution.md) — `@/` imports can break dev server during Vite dep re-optimization after lockfile churn; use relative imports in client code.
-- [Approved leave/permission → attendance](approved-requests-attendance.md) — leave = attendance rows status "إجازة" (engine-derived, not absent); approved استئذان minutes credit late→early→withdrawn in engine; status is "موافق".
+- [Approved leave and absence](approved-requests-attendance.md) — show absence only after assigned shifts end; exempt dated approved leave, never infer legacy leave dates or change attendance/pay.
 - [Incomplete attendance and pay](wage-computation.md) — treat shifts with no verified checkout as non-payable pending correction; do not assume a payroll engine currently exists.
 - [Number display formatting](number-formatting.md) — displayed numbers group thousands via central helpers (formatNumber / formatNumberAr); never group GPS coords/CSS/payloads/percentages, and never re-parse grouped output.
 - [Attendance engine aggregation](attendance-engine-aggregation.md) — self check-in writes many rows per shift-day; coalesce stamps to one record, MAX cumulative withdrawn, compute break once (never per-row sum).
@@ -68,7 +68,7 @@
 - [Order numbering scope](order-numbering-scope.md) — user approved O/JO numbering for new customer orders only; preserve historical saved and displayed identifiers.
 - [Responsive browser focus testing](responsive-browser-testing.md) — run focus-dependent iframe checks sequentially; concurrent frames steal focus and falsely close dropdowns.
 - [Product calculation provenance](product-calculation-provenance.md) — legacy size/cylinder rules were reconstructed from records, not supplied formulas; retain untouched historical cutting lengths.
-- [Order product drafts](order-product-draft-lifecycle.md) — sharing the customer-product editor must preserve deferred, atomic creation; cancelling an order must not leave new products behind.
+- [Order product lifecycle](order-product-draft-lifecycle.md) — “Add to order” saves products immediately; cancelling orders preserves them, and order retries reference saved IDs.
 - [Order edit transition ownership](order-edit-transition-ownership.md) — status changes belong to independent actions; legacy open editors must still save notes without reverting newer transitions.
 - [File read consistency](file-read-consistency.md) — when file-reader and shell output disagree, verify current source in the shell before citing lines or editing.
 - [Skill/runtime capability drift](runtime-skill-drift.md) — installed skill documentation may describe an unsupported worker kind; use verified runtime capabilities.
@@ -105,3 +105,6 @@
 - [Product facing policy](customer-product-facing-policy.md) — each side must be ≤ half the width; category labels omit codes and side arrows retain physical direction.
 - [Mobile primary navigation](mobile-primary-navigation.md) — More keeps all authorized main pages reachable when the phone bottom bar cannot fit them.
 - [Thickness display policy](thickness-display-policy.md) — display original thickness only; universal thickness remains automatically stored for internal calculations.
+- [Login brand presentation](login-brand-presentation.md) — approved centered card; both factory-name languages precede the large logo and welcome text.
+- [Warehouse keeper scope](warehouse-keeper-scope.md) — user dashboard and warehouse only, including direct links and role preview; preserve warehouse work.
+- [Raw-mixing operator presentation](raw-mixing-mobile-actions.md) — three actions share one phone row; film operators keep mix history but not saved composition.

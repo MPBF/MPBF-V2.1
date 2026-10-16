@@ -1,6 +1,7 @@
 import { kgHundredths, kgString, type ProductionUser, type ReceiptInput } from "../../shared/production";
 import { normalizeReceiptQuantity, ReceiptQuantityError } from "../../shared/receipt-draft";
 import { available, execution, lockOrders, mutate, one, permission, ProductionError, rows, type ConnectionPool } from "./core";
+import { receiptSelect } from "./read-queries";
 
 export class ProductionWarehouseService {
   constructor(readonly pool: ConnectionPool) {}
@@ -59,7 +60,6 @@ export class ProductionWarehouseService {
       const receipt = await one<{ id: number; voucher_number: string }>(tx,
         "INSERT INTO factory_receipts(id,voucher_number,created_by,notes) VALUES($1,$2,$3,$4) RETURNING *",
         [id, `FP-Rec${receipt_sequence.padStart(4, "0")}`, actor.id, input.notes ?? null]);
-      const savedItems = [];
       for (const [index, item] of items.entries()) {
         const exec = await execution(tx, item.production_order_id);
         const weight = kgString(kgHundredths(item.quantity_kg));
@@ -72,9 +72,10 @@ export class ProductionWarehouseService {
           SET quantity_kg=factory_inventory.quantity_kg+excluded.quantity_kg RETURNING id`,
         [item.production_order_id, exec.customer_product_id, exec.item_id, destination.id, weight]);
         await tx.query("INSERT INTO factory_movements(receipt_id,receipt_item_id,quantity_kg) VALUES($1,$2,$3)", [id, saved.id, weight]);
-        savedItems.push({ ...saved, production_order_number: orders.find(order=>order.id===item.production_order_id)!.production_order_number });
       }
-      return { ...receipt, items: savedItems };
+      // Return exactly the persisted read projection, including the actual actor
+      // and the execution's frozen customer/product identity.
+      return one(tx, `${receiptSelect} WHERE r.id=$1`, [receipt.id]);
     });
   }
   location(actor: ProductionUser, input: { request_id: string; name: string; name_ar: string; is_active?: boolean }, id?: number) {

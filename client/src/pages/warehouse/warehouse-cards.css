@@ -532,6 +532,33 @@
   .raw-ops .raw-movement-line .raw-ops-field:first-child { grid-column: 1 / -1; }
   .raw-ops .raw-movement-line .raw-ops-field:nth-child(2) { grid-column: 1; }
   .raw-ops .raw-remove-line { grid-column: 2; grid-row: 2; }
+
+  .production.warehouse-context .prod-view-nav,
+  .raw-ops .raw-ops-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+  }
+  .production.warehouse-context .prod-view-nav > a,
+  .raw-ops .raw-ops-nav > a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+    padding: 5px 2px;
+    font-size: clamp(10px, 3vw, 12px);
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: normal;
+    text-overflow: clip;
+  }
+  .production.warehouse-context .warehouse-summary {
+    display: none;
+  }
 }
 @media (min-width: 481px) {
   .production .warehouse-hall-grid {

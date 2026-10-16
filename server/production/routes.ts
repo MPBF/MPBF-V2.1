@@ -51,6 +51,10 @@ const delivery = new FinishedDeliveryService(connectionPool);
 const read = new ProductionReadService(connectionPool);
 const mixing = new RawMixingService(connectionPool);
 const monitoring = new ProductionMonitoringService(connectionPool);
+router.get("/receipt-branding", handler(async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await read.receiptBranding(req.user!));
+}));
 router.use("/monitoring", handler(async (req, res, next) => {
   monitoringPermission(req.user!);
   res.setHeader("Cache-Control","private, no-store");

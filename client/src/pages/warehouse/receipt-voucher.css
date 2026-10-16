@@ -367,3 +367,113 @@
   .production .receipt-voucher-preview-total,
   .production .receipt-voucher-preview-notes { margin-inline: 8px; }
 }
+
+/* Factory identity is deliberately compact so the working form stays quick to scan. */
+.production .receipt-factory-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px clamp(12px, 2.5vw, 24px);
+  border-bottom: 1px solid #dce6dc;
+  background: #f1f4eb;
+}
+.production .receipt-factory-logo {
+  display: block;
+  width: 58px;
+  height: 44px;
+  object-fit: contain;
+  object-position: center;
+}
+.production .receipt-factory-names { display: grid; gap: 2px; min-width: 0; }
+.production .receipt-factory-names strong {
+  color: #24473e;
+  font-size: 15px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.production .receipt-factory-names span {
+  color: #71877a;
+  font-size: 11px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.production .receipt-factory-contact {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  color: #71877a;
+  font-size: 9px;
+}
+.production .receipt-factory-contact span { overflow-wrap: anywhere; }
+.production .receipt-branding-state {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #71877a;
+  font-size: 10px;
+}
+.production .receipt-branding-state[role="alert"] { color: #8a5a2c; }
+.production .receipt-voucher-table th:nth-child(1) { width: 6%; }
+.production .receipt-voucher-table th:nth-child(2) { width: 25%; }
+.production .receipt-voucher-table th:nth-child(3) { width: 16%; }
+.production .receipt-voucher-table th:nth-child(4) { width: 17%; }
+.production .receipt-voucher-table th:nth-child(5) { width: 18%; }
+.production .receipt-voucher-table th:nth-child(6) { width: 18%; }
+.production .receipt-voucher-table td.receipt-voucher-name-cell {
+  color: #536b5d;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.production .receipt-voucher-order-select { margin-bottom: 5px; }
+.production .receipt-voucher-order-select select { font-size: 11px; }
+.production .receipt-voucher-name-value { display: block; min-height: 1.25em; }
+.production .receipt-voucher-receiver {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px clamp(14px, 3vw, 28px) 0;
+  padding: 7px 10px;
+  border-inline-start: 2px solid #a8784c;
+  background: #f2f0e7;
+  color: #536b5d;
+  font-size: 10px;
+}
+.production .receipt-voucher-receiver small { color: #829489; }
+.production .receipt-voucher-receiver strong { overflow-wrap: anywhere; }
+.production .receipt-voucher-receiver em { color: #8a6d48; font-style: normal; }
+.production .receipt-voucher-dialog :focus-visible,
+.production .receipt-voucher-preview :focus-visible {
+  outline: 3px solid #a8784c;
+  outline-offset: 2px;
+}
+.production .receipt-voucher-preview .receipt-factory-header { margin: 0; }
+.production .receipt-voucher-preview-values { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.production .receipt-voucher-preview-values > span { overflow-wrap: anywhere; }
+@media (max-width: 960px) {
+  .production .receipt-voucher-table-wrap { overflow-x: auto; }
+  .production .receipt-voucher-table { min-width: 620px; display: table; }
+  .production .receipt-voucher-table thead {
+    position: static; width: auto; height: auto; padding: 0; margin: 0;
+    overflow: visible; clip: auto; white-space: normal; border: 0;
+  }
+  .production .receipt-voucher-table tbody { display: table-row-group; }
+  .production .receipt-voucher-table .receipt-voucher-line { display: table-row; padding: 0; border: 0; }
+  .production .receipt-voucher-table td { display: table-cell; padding: 6px; }
+  .production .receipt-voucher-table td::before { content: none; }
+  .production .receipt-voucher-table td:first-child { display: table-cell; padding: 6px; }
+  .production .receipt-voucher-table-line { display: grid; width: auto; justify-content: initial; }
+}
+@media (max-width: 600px) {
+  .production .receipt-factory-header { padding: 8px 12px; gap: 7px; }
+  .production .receipt-factory-logo { width: 46px; height: 36px; }
+  .production .receipt-factory-names strong { font-size: 13px; }
+  .production .receipt-factory-names span { font-size: 10px; }
+  .production .receipt-factory-contact { gap: 3px 8px; }
+  .production .receipt-voucher-table { min-width: 590px; }
+  .production .receipt-voucher-receiver { margin-inline: 12px; }
+}
+@media print {
+  .production .receipt-factory-header { background: #fff; }
+}

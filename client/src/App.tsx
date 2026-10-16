@@ -7,8 +7,10 @@ import { productionPermissions } from "../../shared/production";
 import { initialProductionPath } from "./lib/production-navigation";
 import { initialPlanningPath } from "./lib/planning-navigation";
 import { initialWarehousePath } from "./lib/warehouse-navigation";
+import { canOpenWarehouseAccountPath, isWarehouseOnlyAccount } from "../../shared/warehouse-access";
 import { defaultBranding, fetchBrandingSnapshot, type BrandingSnapshot } from "./lib/branding";
 import PageHero from "./components/PageHero";
+import LoginPresentation from "./components/LoginPresentation";
 import DeferredContent from "./components/DeferredContent";
 import FlagLanguageSelector from "./components/FlagLanguageSelector";
 import type { WorkspaceOrder } from "./components/OrderWorkspaceControls";
@@ -19,7 +21,7 @@ import { sortCustomerProductsByCategory } from "./lib/customer-product-sort";
 import type { OrderWorkspaceAction } from "../../shared/order-workspace";
 import type { OrderDisplayFolder } from "./lib/order-workspace";
 import { canonicalMachineType, eligibleInlinePrinterMachines, MACHINE_CAPACITY_TYPES, MACHINE_RAW_MATERIAL_TYPES, machineTypeMatches, newAdminFormDefaults, usesGeneratedAdminId } from "./lib/admin-form-review";
-import i18n, { applyLanguage, localizedName, normalizeLanguage, translate } from "./i18n";
+import i18n, { applyLanguage, localizedName, normalizeLanguage, translate, translateError } from "./i18n";
 
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const HumanResources = lazy(() => import("./pages/HumanResources"));
@@ -172,6 +174,7 @@ function mainNavActive(href: string, location: string) {
 }
 
 function canOpenMainNavigation(user: Row, href: string, permissions: readonly string[]) {
+  if (isWarehouseOnlyAccount(user) && href !== "/my-dashboard" && href !== "/warehouse") return false;
   const account = { id: Number(user.id), permissions: user.permissions ?? [], production_role_binding: user.production_role_binding };
   if (href === "/production") return !!initialProductionPath(account);
   if (href === "/planning") return !!initialPlanningPath(account);
@@ -242,7 +245,21 @@ function PasswordChange({ user, onComplete, setUser, defaultLanguage }: { user: 
 function Login({ onLogin, branding }: { onLogin: (user: Row) => void; branding: BrandingSnapshot }) {
   const [form, setForm] = useState({ username: "", password: "" }); const [error, setError] = useState("");
   const submit = async (event: FormEvent) => { event.preventDefault(); setError(""); try { onLogin((await api("/login", { method: "POST", body: JSON.stringify(form) })).user); } catch (e) { setError((e as Error).message); } };
-  return <div className="login-page"><section className="login-art"><div><BrandIdentity branding={branding} /><h1>{translate("دقة المصنع.")}<br />{translate("في كل وردية.")}</h1><p>{translate("من الطلب إلى الرول النهائي، مساحة عمل واحدة لفريق MPBF.")}</p></div><div className="grid-lines" /></section><section className="login-box"><form className="login-card" onSubmit={submit}><PublicLanguageSwitcher /><div className="eyebrow">{translate("دخول الفريق")}</div><h2>{translate("مرحباً بعودتك")}</h2><p>{translate("سجّل الدخول للوصول إلى مركز التشغيل.")}</p>{error && <div className="error" role="alert" aria-live="assertive">{error}</div>}<div className="field"><label htmlFor="login-username">{translate("اسم المستخدم")}</label><input id="login-username" autoFocus autoComplete="username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></div><div className="field"><label htmlFor="login-password">{translate("كلمة المرور")}</label><input id="login-password" type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div><button className="btn btn-primary" style={{ width: "100%", marginTop: 8 }}>{translate("دخول آمن")}</button></form></section></div>;
+  return <DeferredContent><LoginPresentation
+    branding={branding}
+    languageSwitcher={<PublicLanguageSwitcher />}
+    heading={translate("مرحبا بك في نظام مودرن")}
+    subtitle={translate("سجل دخولك الى النظام")}
+    usernameLabel={translate("اسم المستخدم")}
+    passwordLabel={translate("كلمة المرور")}
+    submitLabel={translate("دخول آمن")}
+    error={error ? translateError(error) : ""}
+    username={form.username}
+    password={form.password}
+    onUsernameChange={(username) => setForm((current) => ({ ...current, username }))}
+    onPasswordChange={(password) => setForm((current) => ({ ...current, password }))}
+    onSubmit={submit}
+  /></DeferredContent>;
 }
 
 function LanguageSwitcher({ user, setUser, defaultLanguage }: { user: Row; setUser: (user: Row | null) => void; defaultLanguage: "ar" | "en" }) {
@@ -855,6 +872,7 @@ function CustomerDetail({ user }: { user: Row }) {
 }
 
 function App() {
+  const [currentPath] = useLocation();
   useTranslation();
   const [publicPrintMatch, publicPrintParams] = useRoute("/shared/orders/:id/print");
   const [routeSearchParams] = useSearchParams();
@@ -880,6 +898,9 @@ function App() {
   if (auth.loading || !brandingReady || !languageReady) return <div className="login-page"><div className="login-box"><div className="skeleton" style={{ width: 220, height: 28 }} /></div></div>;
   if (!auth.user) return <Login onLogin={auth.setUser} branding={branding} />;
   if (auth.user.must_change_password) return <PasswordChange user={auth.user} onComplete={auth.setUser} setUser={auth.setUser} defaultLanguage={branding.defaultLanguage} />;
+  if (isWarehouseOnlyAccount(auth.user) && !canOpenWarehouseAccountPath(currentPath)) {
+    return <Redirect to="/my-dashboard" replace />;
+  }
   if (printMatch && printParams) {
     return can(auth.user, configs.orders.read)
       ? <DeferredContent><OrderPrintPage id={printParams.id} branding={branding} /></DeferredContent>
@@ -887,6 +908,7 @@ function App() {
   }
   const isAdmin = can(auth.user, ["admin"]);
   const productionUser = { id: Number(auth.user.id), permissions: auth.user.permissions ?? [],
+    display_name: auth.user.display_name, display_name_ar: auth.user.display_name_ar, username: auth.user.username,
     production_role_binding: auth.user.production_role_binding };
   const productionHome = initialProductionPath(productionUser);
   const warehouseHome = initialWarehousePath(productionUser);

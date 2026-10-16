@@ -8,7 +8,11 @@ const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
 const compactOnly = process.argv.includes("--compact-actions-only");
-const outputDir = compactOnly ? "/tmp/order-compact-actions" : path.join("screenshots", "order-signatures");
+const headerOnly = process.argv.includes("--print-header-only");
+const columnsOnly = process.argv.includes("--print-columns-only") || headerOnly;
+const outputDir = compactOnly ? "/tmp/order-compact-actions" : headerOnly
+  ? path.join("generated-artifacts", "order-print-header") : columnsOnly
+  ? path.join("generated-artifacts", "order-print-columns") : path.join("screenshots", "order-signatures");
 const releaseOnly = process.argv.includes("--production-release-only");
 
 (async () => {
@@ -82,8 +86,8 @@ const releaseOnly = process.argv.includes("--production-release-only");
     const detail = () => {
       const lines = noLines ? [] : large ? Array.from({ length: largeRowCount }, (_, i) => ({
         ...first, id: 100 + i, production_order_number: `ORD123-${i + 1}`,
-        product: { ...product, notes: `تعليمات المنتج ${i + 1}: بيانات اختبار لتأكيد تكرار رأس الجدول وعدم قص الصفوف عند الطباعة` },
-      })) : [first, { ...first, id: 10, product: null, customer_product_id: null, production_order_number: "ORD123-02",
+        product: { ...product, is_printed: columnsOnly ? i % 2 === 0 : product.is_printed, notes: `تعليمات المنتج ${i + 1}: بيانات اختبار لتأكيد تكرار رأس الجدول وعدم قص الصفوف عند الطباعة` },
+      })) : [first, { ...first, id: 10, product: columnsOnly ? { ...product, is_printed: false } : null, customer_product_id: null, production_order_number: "ORD123-02",
         quantity_kg: "100.50", final_quantity_kg: "105.53", overrun_percentage: "5", status: "pending", batch_number: null }];
       return { order,
         customer: { id: "CID010", name_ar: "عميل تجريبي", name: "Test Customer", plate_drawer_code: "C-24",
@@ -335,6 +339,103 @@ const releaseOnly = process.argv.includes("--production-release-only");
       if (large && largeRowCount === 38) check(`${name}: no seventh footer-only page`, pages.length <= 6);
       console.log(`PDF ${name}: ${expectedCount} rows, ${pages.length} pages`);
     };
+    if (headerOnly) {
+      const verifyMetadata = async (context) => {
+        check(`${context}: four label/value pairs have a compact gap without overlap`, await evaluate(`(()=>{
+          const rows=[...document.querySelectorAll('.opp-order-id > div')];
+          return rows.length===4&&rows.every(row=>{
+            const label=row.querySelector('b').getBoundingClientRect(),value=row.querySelector('span').getBoundingClientRect(),box=row.getBoundingClientRect();
+            const gap=Math.max(label.left-value.right,value.left-label.right);
+            return gap>=4&&gap<=8&&Math.min(label.left,value.left)>=box.left-1&&Math.max(label.right,value.right)<=box.right+1;
+          });
+        })()`));
+        check(`${context}: original order number remains unchanged`, await evaluate("document.querySelector('.opp-order-id > div span').textContent.trim()"), order.order_number);
+      };
+      for (language of ["ar", "en"]) {
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });
+          await navigate("/orders/7/print");
+          await wait(`!!document.querySelector('.opp-sheet')&&document.documentElement.lang==='${language}'`);
+          await verifyMetadata(`${language}/${width}`);
+        }
+        await send("Emulation.setEmulatedMedia", { media: "print" });
+        await verifyMetadata(`${language}/paper`);
+        await send("Emulation.setEmulatedMedia", { media: "" });
+        await capture(`compact-metadata-${language}`);
+        await pdf(`compact-metadata-${language}`);
+      }
+      check("header spacing never writes business data", requests.every(r => r.method === "GET"));
+      check("header spacing has no runtime errors", errors, []);
+      console.log(`Verified ${passed} order-header spacing and A4 checks with synthetic fixtures.`);
+      return;
+    }
+    if (columnsOnly) {
+      const expectedHeaders = [
+        ["#", ""], ["الصنف", "Item"], ["المقاس", "Size"], ["الطول", "Length"],
+        ["السماكة", "Thickness"], ["المادة", "Material"], ["اللون", "Color"],
+        ["الطباعة", "Printing"], ["السلندر", "Cylinder"], ["التخريم", "Punching"],
+        ["الكمية", "Qty"], ["ملاحظات", "Note"],
+      ];
+      const verifyColumns = async (context) => {
+        check(`${context}: exact bilingual headers`, await evaluate(`[...document.querySelectorAll('.opp-spec-table thead th')].map((th,i)=>i===0?[th.textContent.trim(),'']:[th.querySelector('[lang=ar]')?.textContent.trim(),th.querySelector('[lang=en]')?.textContent.trim()])`), expectedHeaders);
+        check(`${context}: Arabic above English with no clipped labels`, await evaluate(`(()=>{
+          return [...document.querySelectorAll('.opp-spec-table thead th')].flatMap((th,i)=>{
+            if(i===0)return [];
+            const ar=th.querySelector('[lang=ar]'),en=th.querySelector('[lang=en]');
+            const fits=ar.dir==='rtl'&&en.dir==='ltr'&&ar.getBoundingClientRect().bottom<=en.getBoundingClientRect().top+1
+              &&en.getBoundingClientRect().height<=parseFloat(getComputedStyle(en).lineHeight)+1
+              &&[ar,en].every(e=>e.scrollWidth<=e.clientWidth+1&&e.scrollHeight<=e.clientHeight+1);
+            return fits?[]:[{label:en.textContent,width:en.clientWidth,scrollWidth:en.scrollWidth,height:en.clientHeight,scrollHeight:en.scrollHeight,font:getComputedStyle(en).font,lineHeight:getComputedStyle(en).lineHeight,letterSpacing:getComputedStyle(en).letterSpacing}];
+          });
+        })()`), []);
+        check(`${context}: green check and red X are accessible SVGs`, await evaluate(`(()=>{
+          const icons=[...document.querySelectorAll('.opp-spec-row')].map(row=>row.cells[7].querySelector('svg'));
+          return icons.length===2&&icons[0]?.classList.contains('is-printed')&&icons[1]?.classList.contains('is-not-printed')
+            &&icons.every(icon=>icon.getAttribute('role')==='img'&&!!icon.getAttribute('aria-label')&&!!icon.querySelector('path'))
+            &&getComputedStyle(icons[0]).stroke==='rgb(24, 119, 70)'&&getComputedStyle(icons[1]).stroke==='rgb(180, 35, 46)';
+        })()`));
+      };
+      for (language of ["ar", "en"]) {
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });
+          await navigate("/orders/7/print");
+          await wait(`!!document.querySelector('.opp-sheet')&&document.documentElement.lang==='${language}'`);
+          await verifyColumns(`${language}/${width}`);
+          if (width === 1440) await capture(`columns-${language}`);
+        }
+        await send("Emulation.setEmulatedMedia", { media: "print" });
+        await verifyColumns(`${language}/paper`);
+        // Older Chromium exposes this CSS property only under the WebKit prefix.
+        check(`${language}: preserve status colors when printing`, await evaluate("[...document.querySelectorAll('.opp-printed-status')].map(e=>{const s=getComputedStyle(e);return s.getPropertyValue('print-color-adjust')||s.getPropertyValue('-webkit-print-color-adjust')})"), ["exact", "exact"]);
+        await send("Emulation.setEmulatedMedia", { media: "" });
+        await pdf(`mixed-print-status-${language}`, false);
+        product.is_printed = null;
+        await navigate("/orders/7/print");
+        await wait("!!document.querySelector('.opp-sheet')");
+        check(`${language}: unknown status is not invented`, await evaluate("document.querySelector('.opp-spec-row').cells[7].textContent.trim()"), "—");
+        product.is_printed = true;
+        anonymous = true;
+        await evaluate("window.__printColumnsPreviousDocument=true");
+        await navigate(publicPath);
+        // Anonymous links may use the public default locale, independently of
+        // the signed-in user's locale. Both header languages are still required.
+        await wait("!window.__printColumnsPreviousDocument&&!!document.querySelector('.opp-sheet')");
+        await verifyColumns(`public link from ${language}`);
+        anonymous = false;
+        large = true;
+        for (const count of [1, 8, 9, 20, 38]) {
+          largeRowCount = count;
+          await navigate("/orders/7/print");
+          await wait(`document.querySelectorAll('.opp-spec-row').length===${count}`);
+          await pdf(`bilingual-${language}-${count}`);
+        }
+        large = false;
+      }
+      check("print refinements make no business writes", requests.every(r => r.method === "GET"));
+      check("no print runtime errors", errors, []);
+      console.log(`Verified ${passed} bilingual column, icon and PDF checks with synthetic fixtures.`);
+      return;
+    }
     const checkSignatures = async (context) => {
       check(`${context}: complete localized signature titles`, await evaluate(
         "[...document.querySelectorAll('.opp-signatures > div > strong')].map(e=>e.textContent.trim())"

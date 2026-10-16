@@ -631,8 +631,11 @@ export default function OrderCreateModal({ editId, onClose, onSaved }: { editId?
         fixedCustomerId={selectedCustomer}
         onClose={() => setProductEditorKey(null)}
         onSaved={() => {}}
-        onDraftSaved={(product) => {
-          updateLine(activeProductLine.key, { mode: "new", customerProductId: "", newProduct: product });
+        onAddedToOrder={(product) => {
+          setCustomerProducts((current) => [
+            ...current.filter((existing) => String(existing.id) !== String(product.id)), product,
+          ]);
+          updateLine(activeProductLine.key, { mode: "existing", customerProductId: String(product.id), newProduct: undefined });
           setProductEditorKey(null);
         }}
       />}

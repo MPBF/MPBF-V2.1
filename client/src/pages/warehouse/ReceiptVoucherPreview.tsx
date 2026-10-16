@@ -3,6 +3,8 @@ import type { MutableRefObject } from "react";
 
 import type { ProductionOrderRecord, ProductionReceipt, ReceiptItem } from "../../../../shared/production";
 import { normalizeReceiptQuantity, type ReceiptDraft } from "../../../../shared/receipt-draft";
+import type { ReceiptBranding } from "../../../../shared/receipt-presentation";
+import { ReceiptFactoryHeader } from "./ReceiptFactoryHeader";
 import type { ReceiptVoucherCopy } from "./receipt-voucher-copy";
 
 type Props = {
@@ -15,9 +17,12 @@ type Props = {
   draftDateTime: string;
   notes: string;
   total: string | null;
+  branding: ReceiptBranding | null;
+  brandingLoading: boolean;
+  brandingError: string;
+  currentReceiverLabel: string;
   previewRef: MutableRefObject<HTMLElement | null>;
   onClose: () => void;
-  orderLabel: (order: ProductionOrderRecord) => string;
   number: (value: string | number | null | undefined, language: string, digits?: number) => string;
 };
 
@@ -46,15 +51,27 @@ function SavedReceiptRows({
 }) {
   return (
     <div className="receipt-voucher-preview-rows">
-      {items.map((item, index) => (
-        <article className="receipt-voucher-preview-row" key={`saved-preview-${item.id}`}>
+      {items.map((item, index) => {
+        const saved = item as ReceiptItem & {
+          customer_name?: string | null; customer_name_ar?: string | null;
+          product_name?: string | null; product_name_ar?: string | null;
+        };
+        const customer = language === "en"
+          ? (saved.customer_name && !/[\u0600-\u06ff]/.test(saved.customer_name) ? saved.customer_name : "—")
+          : (saved.customer_name_ar?.trim() || saved.customer_name?.trim() || "—");
+        const product = language === "en"
+          ? (saved.product_name && !/[\u0600-\u06ff]/.test(saved.product_name) ? saved.product_name : "—")
+          : (saved.product_name_ar?.trim() || saved.product_name?.trim() || "—");
+        return <article className="receipt-voucher-preview-row" key={`saved-preview-${item.id}`}>
           <div className="receipt-voucher-preview-values">
             <span><small>{t.line}</small>{String(item.line_number ?? index + 1).padStart(2, "0")}</span>
             <span><small>{t.order}</small><bdi>{item.production_order_number || `#${item.production_order_id}`}</bdi></span>
+            <span data-receipt-saved-customer><small>{t.customer}</small>{customer}</span>
+            <span data-receipt-saved-item><small>{t.item}</small>{product}</span>
             <span><small>{t.quantity}</small>{number(item.quantity_kg, language, 2)} kg</span>
           </div>
-        </article>
-      ))}
+        </article>;
+      })}
     </div>
   );
 }
@@ -69,9 +86,12 @@ export function ReceiptVoucherPreview({
   draftDateTime,
   notes,
   total,
+  branding,
+  brandingLoading,
+  brandingError,
+  currentReceiverLabel,
   previewRef,
   onClose,
-  orderLabel,
   number,
 }: Props) {
   const savedSnapshot = Boolean(
@@ -81,6 +101,10 @@ export function ReceiptVoucherPreview({
   const metadataDate = savedSnapshot ? dateTime : draftDateTime;
   const shownNotes = savedSnapshot ? savedReceipt!.notes ?? "" : notes;
   const shownTotal = savedSnapshot ? savedReceiptTotal(savedReceipt!.items) : total;
+  const savedActor = savedReceipt as (ProductionReceipt & { receiver_name?: string | null; receiver_name_ar?: string | null }) | null;
+  const savedReceiver = language === "en"
+    ? (savedActor?.receiver_name && !/[\u0600-\u06ff]/.test(savedActor.receiver_name) ? savedActor.receiver_name : savedActor?.created_by === null ? `#${savedActor.created_by}` : "—")
+    : (savedActor?.receiver_name_ar?.trim() || savedActor?.receiver_name?.trim() || (savedActor?.created_by === null ? "—" : `#${savedActor?.created_by}`));
   const draftRows = drafts.map((row) => {
     const order = eligible.find((item) => String(item.id) === row.orderId) ?? null;
     let quantity = "";
@@ -111,6 +135,7 @@ export function ReceiptVoucherPreview({
         tabIndex={-1}
         dir={language === "ar" ? "rtl" : "ltr"}
       >
+        <ReceiptFactoryHeader branding={branding} loading={brandingLoading} error={brandingError} language={language} copy={t} />
         <header>
           <div>
             <span className="receipt-voucher-kicker">{savedSnapshot ? t.previewSavedKicker : t.previewKicker}</span>
@@ -132,6 +157,11 @@ export function ReceiptVoucherPreview({
           <div><small>{t.source}</small><bdi>{t.sourceName}</bdi></div>
           <div><small>{t.destination}</small><bdi>{t.destName}</bdi></div>
         </div>
+        <div className="receipt-voucher-receiver" data-receipt-preview-receiver>
+          <small>{t.receiver}</small>
+          <strong>{savedSnapshot ? savedReceiver : currentReceiverLabel}</strong>
+          {!savedSnapshot && <em>{t.plannedReceiver}</em>}
+        </div>
         {savedSnapshot ? (
           <SavedReceiptRows items={savedReceipt!.items} language={language} copy={t} number={number} />
         ) : (
@@ -146,7 +176,9 @@ export function ReceiptVoucherPreview({
                 <article className={`receipt-voucher-preview-row${valid ? "" : " is-invalid"}`} key={`preview-${index}`}>
                   <div className="receipt-voucher-preview-values">
                     <span><small>{t.line}</small>{String(index + 1).padStart(2, "0")}</span>
-                    <span><small>{t.order}</small>{order ? `${order.production_order_number} · ${orderLabel(order)}` : t.choose}</span>
+                    <span><small>{t.order}</small>{order ? order.production_order_number : t.choose}</span>
+                    <span data-receipt-preview-customer><small>{t.customer}</small>{order ? (language === "en" ? (order.product?.customer_name && !/[\u0600-\u06ff]/.test(order.product.customer_name) ? order.product.customer_name : "—") : order.product?.customer_name_ar?.trim() || order.product?.customer_name?.trim() || "—") : "—"}</span>
+                    <span data-receipt-preview-item><small>{t.item}</small>{order ? (language === "en" ? (order.product?.name && !/[\u0600-\u06ff]/.test(order.product.name) ? order.product.name : "—") : order.product?.name_ar?.trim() || order.product?.name?.trim() || "—") : "—"}</span>
                     <span><small>{t.available}</small>{order ? `${number(order.remaining_kg, language, 2)} kg` : "—"}</span>
                     <span><small>{t.quantity}</small>{quantity ? `${quantity} kg` : "—"}</span>
                   </div>

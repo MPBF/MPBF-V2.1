@@ -58,7 +58,7 @@ const messages: Record<string, [string, string]> = {
   mixing: ["خلط مواد الخام", "Raw material mixing"],
   raw: ["صالة الخام", "Raw materials hall"],
   title: ["تشغيل الإنتاج", "Production operations"], intro: ["كل رول يسير في مساره؛ والدفعات تصل للمخزون عند استلامها.", "Each roll moves on its own; batches enter stock when received."],
-  management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"], printing: ["تشغيل الطباعة", "Printing operations"], cutting: ["تشغيل القص", "Cutting operations"], hall: ["صالة الإنتاج", "Production hall"], warehouse: ["مخزون المواد التامة", "Finished inventory"], roll: ["سجل الرول", "Roll record"],
+  management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"], printing: ["تشغيل الطباعة", "Printing operations"], cutting: ["تشغيل القص", "Cutting operations"], hall: ["صالة الإنتاج", "Production hall"], warehouse: ["المنتجات التامة", "Finished products"], roll: ["سجل الرول", "Roll record"],
   reload: ["تحديث البيانات", "Refresh data"], retry: ["إعادة المحاولة", "Retry"], failedLoad: ["تعذر تحميل بيانات الإنتاج.", "Production data could not be loaded."], loading: ["جارٍ تحميل بيانات الإنتاج", "Loading production data"], noRows: ["لا توجد سجلات لعرضها الآن", "There are no records to show right now"], unrecorded: ["غير مسجل", "Unrecorded"], ready: ["جاهز", "Ready"], running: ["قيد التشغيل", "In progress"], started: ["بدأ الإنتاج", "Production started"], start: ["بدء الإنتاج", "Start production"], noEligible: ["لا توجد أوامر مؤهلة لهذه المرحلة.", "No orders are eligible for this stage."],
   order: ["أمر الإنتاج", "Production order"], customerOrder: ["طلب العميل", "Customer order"], customerStatus: ["حالة طلب العميل", "Customer order status"], productionStatus: ["حالة أمر الإنتاج", "Production-order status"], stage: ["مرحلة الأمر", "Order stage"], rollStage: ["مرحلة الرول", "Roll stage"], product: ["المنتج", "Product"], planned: ["المخطط النهائي", "Final planned"], produced: ["المنتج فعلياً", "Produced actual"], readyKg: ["الجاهز", "Ready"], received: ["المستلم", "Received"], waste: ["الهدر", "Waste"], remaining: ["المتبقي للاستلام", "Receivable"], rolls: ["الرولات", "Rolls"], created: ["تم الحفظ بنجاح.", "Saved successfully."], saving: ["جارٍ الحفظ…", "Saving…"], readonly: ["عرض فقط — لا تتوفر صلاحية التشغيل.", "Read only — operation permission is not granted."],
   incomplete: ["غير مكتمل", "Incomplete"], receiptComplete: ["مكتمل", "Complete"], readyOrders: ["الأوامر الجاهزة للاستلام", "Orders ready for receipt"], orderReadyState: ["حالة الاستلام", "Receipt status"],
@@ -116,7 +116,7 @@ function Header({ view, language, refreshing, onRefresh, machineSlotRef, childre
   const isOperatorView = view === "film" || view === "printing" || view === "cutting";
   const heading = moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : moduleContext === "planning" ? text("planning", language) : text(view, language);
   return <header className={`prod-heading${isOperatorView ? " operator-header" : ""}`}>
-    <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{heading}</h2><p>{moduleContext === "warehouse" ? (language === "en" ? "Receiving, finished inventory and movement history." : "الاستلام والمخزون التام وحركاتهما.") : view === "management" ? text("intro", language) : text("title", language)}</p></div>
+    <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{heading}</h2><p>{moduleContext === "warehouse" ? (language === "en" ? "Receiving, finished products and movement history." : "الاستلام والمنتجات التامة وحركاتها.") : view === "management" ? text("intro", language) : text("title", language)}</p></div>
     <div className="prod-heading-controls">
       <button className="prod-btn quiet prod-header-refresh" data-production-header-refresh
         aria-label={text("reload", language)} title={text("reload", language)}
@@ -498,7 +498,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
   const setSelectedOrder=(id:number,checked:boolean)=>setSelected(items=>checked?[...new Set([...items,id])]:items.filter(value=>value!==id));
   return <>
     {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
-    <div className="prod-grid"><Metric label={text("eligibleWeight",language)} value={`${number(eligible.reduce((total,order)=>total+Number(order.remaining_kg),0),language)} kg`}/><Metric label={text("order",language)} value={number(eligible.length,language,0)} unit={text("ordersUnit",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
+    <div className="prod-grid warehouse-summary"><Metric label={text("eligibleWeight",language)} value={`${number(eligible.reduce((total,order)=>total+Number(order.remaining_kg),0),language)} kg`}/><Metric label={text("order",language)} value={number(eligible.length,language,0)} unit={text("ordersUnit",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
     <section className="warehouse-hall-section">
       <div className="warehouse-section-heading"><div><span className="warehouse-section-kicker">CUTTING → RECEIVING</span><h3>{text("readyOrders",language)}</h3></div><span>{number(readyOrders.length,language,0)} {text("ordersUnit",language)}</span></div>
       {readyOrders.length ? <div className="warehouse-hall-grid">
@@ -538,8 +538,10 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
       onSubmit={submit}
       onRetry={write.error&&!formError?()=>void write.retry():undefined}
       onClose={closeReceipt}
-      orderLabel={order=>orderProduct(order,language)}
       customerLabel={order=>customerName(order,language)}
+      currentReceiverLabel={language === "en"
+        ? ([user.display_name, user.username].find(name => name?.trim() && !/\p{Script=Arabic}/u.test(name)) ?? `#${user.id}`)
+        : user.display_name_ar?.trim() || user.display_name?.trim() || user.username?.trim() || `#${user.id}`}
       number={number}
     />}
   </>;
@@ -548,8 +550,10 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
 function Warehouse({state,user,language,reload}:{state:ProductionState;user:ProductionUser;language:string;reload:()=>Promise<void>}) {
   const locations=state.locations;
   return <>
-    <div className="prod-grid"><Metric label={text("balances",language)} value={number(state.totals?.inventory??0,language,0)} unit={text("balanceUnits",language)}/><Metric label={text("movements",language)} value={number(state.totals?.movements??0,language,0)} unit={text("movementUnits",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
-    <Metric label={language==="en"?"Total inventory weight":"إجمالي وزن المخزون"} value={`${number(state.totals?.inventory_kg??0,language)} kg`}/>
+    <div className="warehouse-summary">
+      <div className="prod-grid"><Metric label={text("balances",language)} value={number(state.totals?.inventory??0,language,0)} unit={text("balanceUnits",language)}/><Metric label={text("movements",language)} value={number(state.totals?.movements??0,language,0)} unit={text("movementUnits",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
+      <div className="prod-grid"><Metric label={language==="en"?"Total inventory weight":"إجمالي وزن المخزون"} value={`${number(state.totals?.inventory_kg??0,language)} kg`}/></div>
+    </div>
      <FinishedInventory user={user} language={language} refresh={state} reload={reload}/>
      <ProductionHistory kind="receipts" title={text("vouchers",language)} language={language} locations={locations} refresh={state} presentation="cards"/>
     <ProductionHistory kind="movements" title={text("movements",language)} language={language} locations={locations} refresh={state}/>
@@ -619,7 +623,7 @@ export default function ProductionPage({user,view,rollId,moduleContext="producti
   const returnPath = moduleContext === "warehouse" ? initialWarehousePath(user) : null;
   const data=useProductionState(allowed,view);
   const state=data.state;
-  return <section className={`production production-app${moduleContext === "planning" ? " planning-page" : ""}`}>
+  return <section className={`production production-app${moduleContext === "planning" ? " planning-page" : ""}${moduleContext === "warehouse" ? " warehouse-context" : ""}`}>
     {moduleContext === "planning" ? <>
       <PlanningHeader title={text("planning", language)} description={text("intro", language)} refreshLabel={text("reload", language)} onRefresh={() => void data.reload()} refreshing={data.loading} />
       <PlanningNavigation label={text("planning", language)} tabs={visibleViews.map(({ view: destination, href }) => ({ href, label: text(destination, language), active: view === destination }))} />
