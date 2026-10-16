@@ -31,7 +31,7 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
     notes: "", created_at: "2026-10-02T06:00:00Z", delivery_date: "2026-10-18", delivery_days: 16 };
   const product = { id: 11, customer_id: customer.id, category_id: "CAT01", item_id: "ITM01",
     size_caption: "40 × 50", width: "40", left_facing: null, right_facing: null,
-    cutting_length_cm: 50, universal_thickness: "25", raw_material: "HDPE", printing_cylinder: "100",
+    cutting_length_cm: 50, thickness: "10", universal_thickness: "25", raw_material: "HDPE", printing_cylinder: "100",
     punching: null, is_printed: false, front_print_colors: [], back_print_colors: [], notes: "",
     cliche_front_design: null, cliche_back_design: null, color: null,
     item: { name: "Fixture Item", name_ar: "صنف تجريبي" } };
@@ -210,7 +210,8 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         if (await evaluate(expression)) return;
         await new Promise(resolve => setTimeout(resolve, 75));
       }
-      throw Error(`Timed out: ${expression}`);
+      const page = await evaluate("({path:location.pathname,text:document.body.innerText.slice(0,1200)})");
+      throw Error(`Timed out: ${expression}\n${JSON.stringify({ page, errors, apiRequests: apiRequests.slice(-10) })}`);
     };
     const loadingText = async selector => {
       // Capture text in the same evaluation that observes the transient loader.

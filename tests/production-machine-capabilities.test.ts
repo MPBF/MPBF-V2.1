@@ -109,6 +109,85 @@ describe("film limits use original product thickness", () => {
   });
 });
 
+describe("field-specific bilingual capability feedback", () => {
+  const dimensions: {
+    name: string; stage: ProductionStage; type: string; field: keyof ProductSnapshot;
+    min: string; max: string; ar: string; en: string; arUnit: string; enUnit: string;
+  }[] = [
+    { name: "film width", stage: "film", type: "extruder", field: "width", min: "min_width_cm", max: "max_width_cm", ar: "العرض", en: "Width", arUnit: " سم", enUnit: " cm" },
+    { name: "printing width", stage: "printing", type: "printer", field: "width", min: "min_width_cm", max: "max_width_cm", ar: "العرض", en: "Width", arUnit: " سم", enUnit: " cm" },
+    { name: "original thickness", stage: "film", type: "extruder", field: "thickness", min: "min_thickness", max: "max_thickness", ar: "السماكة الأصلية", en: "Original thickness", arUnit: "", enUnit: "" },
+    { name: "cutting length", stage: "cutting", type: "cutter", field: "cutting_length_cm", min: "min_length_cm", max: "max_length_cm", ar: "طول القص", en: "Cutting length", arUnit: " سم", enUnit: " cm" },
+    { name: "printing cylinder", stage: "printing", type: "printer", field: "printing_cylinder", min: "min_cylinder_inch", max: "max_cylinder_inch", ar: "سلندر الطباعة", en: "Printing cylinder", arUnit: " بوصة", enUnit: " in" },
+  ];
+  describe.each(dimensions)("$name", dimension => {
+    const limits = { type: dimension.type, [dimension.min]: "10", [dimension.max]: "20" };
+    const snapshot = (value: unknown) => ({ ...product, [dimension.field]: value }) as ProductSnapshot;
+    it.each([["9.999", "below"], ["20.001", "above"]])("explains value %s and the failed %s limit", async (value, side) => {
+      const below = side === "below", limit = below ? "10" : "20";
+      const saved = Object.freeze(snapshot(value));
+      await expect(machine(txFor(limits), "M1", dimension.stage, saved)).rejects.toMatchObject({
+        status: 409,
+        message: `${dimension.ar} ${value}${dimension.arUnit} ${below ? "أقل من الحد الأدنى" : "أعلى من الحد الأقصى"} ${limit}${dimension.arUnit}.`,
+        message_en: `${dimension.en} ${value}${dimension.enUnit} ${below ? "is below the minimum" : "exceeds the maximum"} ${limit}${dimension.enUnit}.`,
+      });
+      expect(saved[dimension.field]).toBe(value);
+    });
+    it.each([null, "", " ", "invalid", "Infinity", "NaN"])("names the missing or invalid field (%s) and both limits", async value => {
+      await expect(machine(txFor(limits), "M1", dimension.stage, snapshot(value))).rejects.toMatchObject({
+        status: 409,
+        message: `قيمة ${dimension.ar} غير مسجلة أو غير صالحة. حدود الماكينة: 10${dimension.arUnit} – 20${dimension.arUnit}.`,
+        message_en: `${dimension.en} is missing or invalid. Machine limits: 10${dimension.enUnit} – 20${dimension.enUnit}.`,
+      });
+    });
+    it.each(["10", "15", "20"])("accepts value %s including exact boundaries", async value => {
+      await expect(machine(txFor(limits), "M1", dimension.stage, snapshot(value))).resolves.toMatchObject({ status: "active" });
+    });
+    it.each(["min", "max"])("explains and preserves a one-sided %s limit", async side => {
+      const minimum = side === "min";
+      const overrides = { ...limits, [minimum ? dimension.max : dimension.min]: null };
+      await expect(machine(txFor(overrides), "M1", dimension.stage, snapshot(null))).rejects.toMatchObject({
+        message: `قيمة ${dimension.ar} غير مسجلة أو غير صالحة. ${minimum ? "الحد الأدنى: 10" : "الحد الأقصى: 20"}${dimension.arUnit}.`,
+        message_en: `${dimension.en} is missing or invalid. ${minimum ? "Minimum: 10" : "Maximum: 20"}${dimension.enUnit}.`,
+      });
+      await expect(machine(txFor(overrides), "M1", dimension.stage, snapshot(minimum ? "9" : "21"))).rejects.toMatchObject({ status: 409 });
+      await expect(machine(txFor(overrides), "M1", dimension.stage, snapshot(minimum ? "21" : "9"))).resolves.toMatchObject({ status: "active" });
+    });
+    it("does not require the field when neither machine limit is configured", async () => {
+      await expect(machine(txFor({ ...limits, [dimension.min]: null, [dimension.max]: null }),
+        "M1", dimension.stage, snapshot(null))).resolves.toMatchObject({ status: "active" });
+    });
+  });
+  it("keeps the first failed field in the existing width-before-thickness order", async () => {
+    await expect(machine(txFor({ type: "extruder", min_thickness: "10", max_thickness: "20" }),
+      "F1", "film", { ...product, width: "76", thickness: null })).rejects.toMatchObject({
+      message: "العرض 76 سم أعلى من الحد الأقصى 75 سم.",
+      message_en: "Width 76 cm exceeds the maximum 75 cm.",
+    });
+  });
+  it("never exposes or substitutes universal thickness when original thickness is missing", async () => {
+    await expect(machine(txFor({ type: "extruder", min_thickness: "10", max_thickness: "20" }),
+      "F1", "film", { ...product, thickness: null, universal_thickness: "98765" })).rejects.toMatchObject({
+      message: "قيمة السماكة الأصلية غير مسجلة أو غير صالحة. حدود الماكينة: 10 – 20.",
+      message_en: "Original thickness is missing or invalid. Machine limits: 10 – 20.",
+    });
+  });
+  it("explains unrecoverable legacy thickness without rewriting the saved snapshot", async () => {
+    const { thickness: _raw, ...legacy } = product;
+    const saved = Object.freeze(legacy);
+    const tx = txFor({ type: "extruder", min_thickness: "10", max_thickness: "20" });
+    await expect(machine(tx, "F1", "film", saved)).rejects.toMatchObject({
+      message_en: "Original thickness is missing or invalid. Machine limits: 10 – 20.",
+    });
+    expect(tx.query).toHaveBeenCalledTimes(2);
+    expect(saved).not.toHaveProperty("thickness");
+  });
+  it("does not apply width or thickness restrictions at the cutting stage", async () => {
+    await expect(machine(txFor({ type: "cutter", min_thickness: "10", max_thickness: "20", min_length_cm: "30", max_length_cm: "40" }),
+      "C1", "cutting", { ...product, width: null, thickness: null })).resolves.toMatchObject({ status: "active" });
+  });
+});
+
 describe("film machine material capabilities", () => {
   it.each([
     ["HDPE\\LDPE", "HDPE"], ["HDPE\\LDPE", "LDPE"],
