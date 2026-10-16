@@ -8,8 +8,10 @@ const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
 const compactOnly = process.argv.includes("--compact-actions-only");
-const columnsOnly = process.argv.includes("--print-columns-only");
-const outputDir = compactOnly ? "/tmp/order-compact-actions" : columnsOnly
+const headerOnly = process.argv.includes("--print-header-only");
+const columnsOnly = process.argv.includes("--print-columns-only") || headerOnly;
+const outputDir = compactOnly ? "/tmp/order-compact-actions" : headerOnly
+  ? path.join("generated-artifacts", "order-print-header") : columnsOnly
   ? path.join("generated-artifacts", "order-print-columns") : path.join("screenshots", "order-signatures");
 const releaseOnly = process.argv.includes("--production-release-only");
 
@@ -337,6 +339,36 @@ const releaseOnly = process.argv.includes("--production-release-only");
       if (large && largeRowCount === 38) check(`${name}: no seventh footer-only page`, pages.length <= 6);
       console.log(`PDF ${name}: ${expectedCount} rows, ${pages.length} pages`);
     };
+    if (headerOnly) {
+      const verifyMetadata = async (context) => {
+        check(`${context}: four label/value pairs have a compact gap without overlap`, await evaluate(`(()=>{
+          const rows=[...document.querySelectorAll('.opp-order-id > div')];
+          return rows.length===4&&rows.every(row=>{
+            const label=row.querySelector('b').getBoundingClientRect(),value=row.querySelector('span').getBoundingClientRect(),box=row.getBoundingClientRect();
+            const gap=Math.max(label.left-value.right,value.left-label.right);
+            return gap>=4&&gap<=8&&Math.min(label.left,value.left)>=box.left-1&&Math.max(label.right,value.right)<=box.right+1;
+          });
+        })()`));
+        check(`${context}: original order number remains unchanged`, await evaluate("document.querySelector('.opp-order-id > div span').textContent.trim()"), order.order_number);
+      };
+      for (language of ["ar", "en"]) {
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });
+          await navigate("/orders/7/print");
+          await wait(`!!document.querySelector('.opp-sheet')&&document.documentElement.lang==='${language}'`);
+          await verifyMetadata(`${language}/${width}`);
+        }
+        await send("Emulation.setEmulatedMedia", { media: "print" });
+        await verifyMetadata(`${language}/paper`);
+        await send("Emulation.setEmulatedMedia", { media: "" });
+        await capture(`compact-metadata-${language}`);
+        await pdf(`compact-metadata-${language}`);
+      }
+      check("header spacing never writes business data", requests.every(r => r.method === "GET"));
+      check("header spacing has no runtime errors", errors, []);
+      console.log(`Verified ${passed} order-header spacing and A4 checks with synthetic fixtures.`);
+      return;
+    }
     if (columnsOnly) {
       const expectedHeaders = [
         ["#", ""], ["الصنف", "Item"], ["المقاس", "Size"], ["الطول", "Length"],
