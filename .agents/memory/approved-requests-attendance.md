@@ -22,6 +22,14 @@ day's attendance/break actions, with Thursday 1 October 2026 as the example.
 **How to apply:** this is presentation only; preserve the existing accounting
 day grouping, original timestamps, approved leave exceptions and absence rules.
 
+Monthly history days are ordered newest first; this applies equally to punch,
+absence and leave days. Keep each day's attendance actions in their existing
+chronological order.
+
+**Why:** the user explicitly requested the newest date at the top.
+**How to apply:** reverse the day ordering only, using the accounting date;
+do not reverse individual punches or reassign overnight events.
+
 The user approved explicit leave start/end dates and admin completion of
 legacy requests. Never infer a leave period from free text or creation/approval
 timestamps. If an approved leave has no reliable period, show a clear notice

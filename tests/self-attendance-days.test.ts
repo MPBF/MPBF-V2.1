@@ -13,8 +13,8 @@ describe("monthly attendance day rows", () => {
     expect(groupAttendanceEventsByDay([], [
       { day: "2026-10-02", status: "leave" }, { day: "2026-10-01", status: "absent" },
     ])).toEqual([
-      { day: "2026-10-01", events: [], status: "absent" },
       { day: "2026-10-02", events: [], status: "leave" },
+      { day: "2026-10-01", events: [], status: "absent" },
     ]);
   });
   it("real attendance always takes precedence over a stale day status", () => {
@@ -62,7 +62,7 @@ describe("monthly attendance day rows", () => {
     expect(groupAttendanceEventsByDay(events)).toEqual([{ day: "2026-09-30", events }]);
     expect(attendanceCalendarDate(events[2].occurred_at)).toBe("2026-10-01");
   });
-  it("sorts day rows chronologically while preserving the server's event order", () => {
+  it("sorts day rows newest first while preserving the server's event order", () => {
     const events = [
       event(3, "2026-10-03T04:00:00Z"),
       event(1, "2026-10-01T04:00:00Z"),
@@ -70,7 +70,19 @@ describe("monthly attendance day rows", () => {
     ];
     const copy = [...events];
     expect(groupAttendanceEventsByDay(events).map(row => [row.day, row.events.map(e => e.id)]))
-      .toEqual([["2026-10-01", [1, 2]], ["2026-10-03", [3]]]);
+      .toEqual([["2026-10-03", [3]], ["2026-10-01", [1, 2]]]);
     expect(events).toEqual(copy);
+  });
+  it("sorts mixed attendance, leave and absence days together by accounting date", () => {
+    const events = [
+      event(1, "2026-11-01T00:00:00Z", "check_out", "2026-10-31"),
+      event(2, "2026-09-30T04:00:00Z", "check_in", "2026-09-30"),
+    ];
+    const statuses = [
+      { day: "2026-10-04", status: "absent" as const },
+      { day: "2026-10-05", status: "leave" as const },
+    ];
+    expect(groupAttendanceEventsByDay(events, statuses).map(row => row.day))
+      .toEqual(["2026-10-31", "2026-10-05", "2026-10-04", "2026-09-30"]);
   });
 });

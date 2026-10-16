@@ -88,18 +88,6 @@ externalPort = 80
 
 [[ports]]
 localPort = 5041
-externalPort = 3003
-exposeLocalhost = true
-
-[[ports]]
-localPort = 5106
-externalPort = 3001
-exposeLocalhost = true
-
-[[ports]]
-localPort = 5123
-externalPort = 3000
-exposeLocalhost = true
 
 [postMerge]
 path = "scripts/post-merge.sh"
