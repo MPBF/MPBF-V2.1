@@ -33,9 +33,12 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
     id: index + 1, production_order_id: 1, roll_number: `PO-00001-R${String(index + 1).padStart(3, "0")}`,
     production_order_number: "PO-00001", weight_kg: index ? "19.50" : "57.25", batch_number: index ? null : "BATCH-001",
     stage: "done", film_machine_id: "F1", created_by: 42, created_at: "2026-10-04T03:00:00Z",
-    production_minutes: 10, is_last_roll: false, printing_machine_id: null, printed_by: null, printed_at: null,
-    cutting_machine_id: null, cut_by: null, cut_completed_at: null, net_weight_kg: null, waste_kg: "0.00",
-    product, is_printed: false, is_roll_product: false,
+    production_minutes: 10, is_last_roll: false, printing_machine_id: "P1", printed_by: 43, printed_at: "2026-10-04T04:00:00Z",
+    cutting_machine_id: "C1", cut_by: 44, cut_completed_at: "2026-10-04T05:00:00Z", net_weight_kg: null, waste_kg: "0.00",
+    created_actor: { id: 42, username: "film.operator", display_name: null, display_name_ar: null, full_name: null },
+    printed_actor: { id: 43, username: "print.operator", display_name: null, display_name_ar: null, full_name: null },
+    cut_actor: { id: 44, username: "cut.operator", display_name: null, display_name_ar: null, full_name: null },
+    product, is_printed: true, is_roll_product: false,
   }));
   const images = await Promise.all(rolls.map(roll => QRCode.toDataURL(`https://factory.example.test/production/rolls/${roll.id}`, {
     width: 600, margin: 4, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" },
@@ -133,6 +136,10 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
       await content(buildRollLabelDocument(selected, lang));
       check(`${lang} ${count} labels have bilingual customer names in order and no production-order row`,
         await evaluate(`(()=>{const sheets=[...document.querySelectorAll('.label-sheet')];return sheets.every(s=>{const t=s.textContent;return t.indexOf('عميل تجريبي')>=0&&t.indexOf('عميل تجريبي')<t.indexOf('Fixture Customer')&&t.includes(${JSON.stringify(lang === "ar" ? "كيس بلاستيك" : "Film bag")})&&t.includes('40 × 60 cm')&&!s.querySelector('.field.order')})})()`, pdfPage.sessionId));
+      check(`${lang} ${count} identity lines are centered`,
+        await evaluate("[...document.querySelectorAll('.customer-name-ar,.customer-name-en,.item-size')].every(n=>getComputedStyle(n).textAlign==='center')", pdfPage.sessionId));
+      check(`${lang} ${count} stage usernames follow weight and precede batch`,
+        await evaluate("[...document.querySelectorAll('.label-sheet')].every(s=>{const a=s.querySelector('.stage-actors'),w=s.querySelector('.weight'),b=s.querySelector('.batch');return !!a&&(w.compareDocumentPosition(a)&Node.DOCUMENT_POSITION_FOLLOWING)&&(!b||(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING))&&['film.operator','print.operator','cut.operator'].every(t=>a.textContent.includes(t))})", pdfPage.sessionId));
       const { data } = await send("Page.printToPDF", {
         preferCSSPageSize: true, displayHeaderFooter: false, printBackground: true, scale: 1,
         marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
@@ -146,6 +153,8 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
       texts.forEach((text, index) => {
         assert.ok(text.includes(selected[index].roll.roll_number), `Missing roll on page ${index + 1}`);
         assert.ok(text.includes("Fixture Customer"), "Missing English customer name");
+        for (const username of ["film.operator", "print.operator", "cut.operator"])
+          assert.ok(text.includes(username), `Missing stage username ${username}`);
         assert.ok(text.includes(Number(selected[index].roll.weight_kg).toLocaleString("en-US")), "Missing weight");
         assert.ok(text.includes("ROLL IDENTIFICATION"), "Missing footer");
         assert.equal(text.includes("BATCH-001"), index === 0, "Batch is conditional");
@@ -186,6 +195,10 @@ const jsLiteral = value => JSON.stringify(value).replace(/[<>&/\u2028\u2029]/g, 
       catch { return true; }
     })());
 
+    if (process.argv.includes("--document-only")) {
+      console.log(`Verified ${passed} label-document and real 4×6 PDF checks; selection navigation intentionally excluded.`);
+      return;
+    }
     const ui = await page();
     await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/*" }] }, ui.sessionId);
     const origin = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "http://127.0.0.1:5000";

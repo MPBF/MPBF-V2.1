@@ -103,6 +103,8 @@
 .prod-empty { padding:37px 18px; text-align:center; border:1px dashed #b8ccc2; color:var(--prod-muted); background:#f7faf6; }
 .prod-empty strong { display:block; color:var(--prod-ink); font-size:14px; margin-bottom:5px; }
 .prod-error { border:1px solid #e7c0ad; background:#fff1e9; color:#8e442e; padding:12px 14px; display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:0 0 13px; }
+.prod-error > span { min-width:0; overflow-wrap:anywhere; }
+.prod-error > button { flex-shrink:0; }
 .prod-success { border:1px solid #bdd8c8; background:#e8f4e9; color:#285c47; padding:11px 14px; margin-bottom:13px; }
 .prod-loading { display:grid; gap:10px; }
 .prod-skeleton { height:68px; background:linear-gradient(100deg,#e5ede7 15%,#f5f8f3 45%,#e5ede7 70%); background-size:200% 100%; animation:prod-shimmer 1.3s ease infinite; }

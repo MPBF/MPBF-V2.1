@@ -3,7 +3,7 @@ import type { ProductSnapshot } from "../shared/production";
 import type { ProductionRollLabel } from "../client/src/lib/production-api";
 import { buildRollLabelDocument } from "../client/src/pages/production/roll-label-document";
 
-function fixture(overrides: Partial<ProductSnapshot> = {}): ProductionRollLabel {
+function fixture(overrides: Partial<ProductSnapshot> = {}, rollOverrides: Partial<ProductionRollLabel["roll"]> = {}): ProductionRollLabel {
   return {
     roll: {
       id: 7, production_order_id: 9, roll_number: "ROLL-77", production_order_number: "DO-NOT-PRINT-ORDER",
@@ -19,6 +19,7 @@ function fixture(overrides: Partial<ProductSnapshot> = {}): ProductionRollLabel 
         cutting_length_cm: 60, raw_material: null, printing_cylinder: null, punching: null,
         notes: null, front_print_colors: null, back_print_colors: null, ...overrides,
       },
+      ...rollOverrides,
     },
     qr: { url: "/production/rolls/7", image: "data:image/png;base64,AAAA" },
   };
@@ -26,6 +27,50 @@ function fixture(overrides: Partial<ProductSnapshot> = {}): ProductionRollLabel 
 
 const field = (html: string, className: string) =>
   html.match(new RegExp(`<strong class="${className}"[^>]*>([\\s\\S]*?)</strong>`))?.[1];
+
+const actor = (id: number, username: string | null) => ({
+  id, username, display_name: "Display name", display_name_ar: "اسم العرض", full_name: "Full name",
+});
+const stageRow = (html: string, stage: string) =>
+  html.match(new RegExp(`<[^>]+class="[^"]*stage-actor-${stage}[^"]*"[^>]*>([\\s\\S]*?)</(?:div|p|li)>`))?.[1] ?? "";
+
+describe("roll label stage usernames", () => {
+  it.each(["ar", "en"] as const)("uses the account that recorded each stage, below weight (%s)", language => {
+    const html = buildRollLabelDocument([fixture({}, {
+      created_by: 11, created_actor: actor(11, "film.operator"),
+      printed_by: 22, printed_actor: actor(22, "print.operator"),
+      cut_by: 33, cut_actor: actor(33, "cut.operator"),
+    })], language);
+    expect(stageRow(html, "film")).toContain("film.operator");
+    expect(stageRow(html, "printing")).toContain("print.operator");
+    expect(stageRow(html, "cutting")).toContain("cut.operator");
+    expect(html.indexOf('class="field weight"')).toBeLessThan(html.indexOf('class="stage-actors'));
+    expect(html.indexOf('class="stage-actors')).toBeLessThan(html.indexOf('class="field batch"'));
+    for (const text of language === "ar" ? ["فيلم", "طباعة", "تقطيع"] : ["Film", "Printing", "Cutting"])
+      expect(html).toContain(text);
+  });
+  it("does not invent a user for an unrecorded stage", () => {
+    const html = buildRollLabelDocument([fixture({}, {
+      printed_by: null, printed_actor: actor(22, "do-not-show"),
+      cut_by: null, cut_actor: null,
+    })], "ar");
+    expect(stageRow(html, "printing")).toContain("—");
+    expect(stageRow(html, "printing")).not.toContain("do-not-show");
+    expect(stageRow(html, "cutting")).toContain("—");
+  });
+  it("uses existing localized names when an old account has no username", () => {
+    const label = fixture({}, { created_actor: actor(1, null) });
+    expect(stageRow(buildRollLabelDocument([label], "ar"), "film")).toContain("اسم العرض");
+    expect(stageRow(buildRollLabelDocument([label], "en"), "film")).toContain("Display name");
+  });
+  it("escapes stage usernames before inserting them into the document", () => {
+    const html = buildRollLabelDocument([fixture({}, {
+      created_actor: actor(1, '<img src=x onerror="evil()">'),
+    })], "ar");
+    expect(stageRow(html, "film")).toContain("&lt;img");
+    expect(html).not.toContain('<img src=x onerror="evil()">');
+  });
+});
 
 describe("roll label customer and product identity", () => {
   it.each(["ar", "en"] as const)("prints bilingual customer names in the requested order (%s)", language => {

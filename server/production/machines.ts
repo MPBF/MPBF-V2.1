@@ -14,6 +14,50 @@ function printingCylinderInches(value: string | null): number | null {
   return Number.isFinite(inches) && inches > 0 ? inches : null;
 }
 
+/** Explain the first failed check without changing the existing numeric rules. */
+function requireRange(
+  value: string | number | null, min: string | null, max: string | null,
+  labels: [string, string], units: [string, string] = ["", ""],
+) {
+  if (min == null && max == null) return;
+  const missing = value == null || String(value).trim() === "";
+  const n = missing ? NaN : Number(value);
+  if (Number.isFinite(n) && (min == null || n >= Number(min)) && (max == null || n <= Number(max))) return;
+  const display = (v: string | number, language: number) => {
+    // Keep enough precision to explain a just-outside-boundary rejection.
+    const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 20 }).format(Number(v));
+    return `${number}${units[language] ? ` ${units[language]}` : ""}`;
+  };
+  const range = (language: number) => {
+    const lo = min != null && Number.isFinite(Number(min)) ? display(min, language) : null;
+    const hi = max != null && Number.isFinite(Number(max)) ? display(max, language) : null;
+    if (lo != null && hi != null) return language === 0 ? `حدود الماكينة: ${lo} – ${hi}` : `Machine limits: ${lo} – ${hi}`;
+    if (lo != null) return language === 0 ? `الحد الأدنى: ${lo}` : `Minimum: ${lo}`;
+    if (hi != null) return language === 0 ? `الحد الأقصى: ${hi}` : `Maximum: ${hi}`;
+    return language === 0 ? "راجع حدود الماكينة" : "Check machine limits";
+  };
+  if (!Number.isFinite(n)) {
+    throw new ProductionError(
+      `قيمة ${labels[0]} غير مسجلة أو غير صالحة. ${range(0)}.`,
+      `${labels[1]} is missing or invalid. ${range(1)}.`,
+    );
+  }
+  if (min != null && n < Number(min)) {
+    throw new ProductionError(
+      `${labels[0]} ${display(n, 0)} أقل من الحد الأدنى ${display(min, 0)}.`,
+      `${labels[1]} ${display(n, 1)} is below the minimum ${display(min, 1)}.`,
+    );
+  }
+  if (max != null && n > Number(max)) {
+    throw new ProductionError(
+      `${labels[0]} ${display(n, 0)} أعلى من الحد الأقصى ${display(max, 0)}.`,
+      `${labels[1]} ${display(n, 1)} exceeds the maximum ${display(max, 1)}.`,
+    );
+  }
+  // Invalid machine limits still reject, as before; do not invent a numeric limit.
+  throw new ProductionError(`${labels[0]} لا يطابق حدود الماكينة. ${range(0)}.`,
+    `${labels[1]} does not meet machine limits. ${range(1)}.`);
+}
 export async function machine(tx: Connection, id: string, stage: ProductionStage, product: ProductSnapshot) {
   const selected = await one<ProductionMachine & {
     raw_material_type: string | null; max_print_colors: number | null;
@@ -22,11 +66,6 @@ export async function machine(tx: Connection, id: string, stage: ProductionStage
   }>(tx, "SELECT * FROM machines WHERE id=$1 FOR SHARE", [id]);
   if (machineStage(selected.type) !== stage || selected.status !== "active")
     throw new ProductionError("اختر ماكينة نشطة من نوع المرحلة الصحيح", "Select an active machine of the correct stage type.");
-  const inRange = (value: string | number | null, min: string | null, max: string | null) => {
-    if (min == null && max == null) return true;
-    const n = value == null || String(value).trim() === "" ? NaN : Number(value);
-    return Number.isFinite(n) && (min == null || n >= Number(min)) && (max == null || n <= Number(max));
-  };
   let thickness = product.thickness ?? null;
   if (stage === "film" && !Object.hasOwn(product, "thickness") &&
       (selected.min_thickness != null || selected.max_thickness != null)) {
@@ -38,11 +77,15 @@ export async function machine(tx: Connection, id: string, stage: ProductionStage
       [JSON.stringify(product), product.id]);
     thickness = legacy.thickness;
   }
-  if (stage !== "cutting" && !inRange(product.width, selected.min_width_cm, selected.max_width_cm) ||
-      stage === "film" && !inRange(thickness, selected.min_thickness, selected.max_thickness) ||
-      stage === "cutting" && !inRange(product.cutting_length_cm, selected.min_length_cm, selected.max_length_cm) ||
-      stage === "printing" && !inRange(printingCylinderInches(product.printing_cylinder), selected.min_cylinder_inch, selected.max_cylinder_inch))
-    throw new ProductionError("مواصفات المنتج خارج حدود الماكينة أو غير مكتملة", "The product specifications are missing or outside the machine limits.");
+  if (stage !== "cutting")
+    requireRange(product.width, selected.min_width_cm, selected.max_width_cm, ["العرض", "Width"], ["سم", "cm"]);
+  if (stage === "film")
+    requireRange(thickness, selected.min_thickness, selected.max_thickness, ["السماكة الأصلية", "Original thickness"]);
+  if (stage === "cutting")
+    requireRange(product.cutting_length_cm, selected.min_length_cm, selected.max_length_cm, ["طول القص", "Cutting length"], ["سم", "cm"]);
+  if (stage === "printing")
+    requireRange(printingCylinderInches(product.printing_cylinder), selected.min_cylinder_inch, selected.max_cylinder_inch,
+      ["سلندر الطباعة", "Printing cylinder"], ["بوصة", "in"]);
   const machineMaterial = selected.raw_material_type?.trim().toUpperCase();
   const productMaterial = product.raw_material?.trim().toUpperCase();
   if (stage === "film" && machineMaterial && machineMaterial !== "MIX" &&
