@@ -44,6 +44,17 @@ For order printing, show one total of all linked production orders' planned quan
 
 **How to apply:** Keep this scoped to the order print sheet; it does not authorize changes to saved quantities or the order-details screen. The approved scope preserves the separate notes column and other print content.
 
+The specification table always uses Arabic above English in its headers,
+even in English mode: #, الصنف/Item, المقاس/Size, الطول/Length,
+السماكة/Thickness, المادة/Material, اللون/Color, الطباعة/Printing,
+السلندر/Cylinder, التخريم/Punching, الكمية/Qty, ملاحظات/Note.
+Printed products show a green check; explicitly unprinted products a red X.
+
+**Why:** the user specified these exact labels, stacked languages and symbols.
+**How to apply:** keep this scoped to print-table columns, not all bilingual
+labels or general order details. Keep status symbols recognizable without color
+and preserve their colors on paper; do not infer an absent/unknown print flag.
+
 The user confirmed integer rounding for all quantitative print fields,
 including dimensions, thickness and cylinder, not only quantities.
 
