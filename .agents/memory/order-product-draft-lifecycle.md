@@ -11,5 +11,5 @@ New products entered during order registration or editing remain drafts until th
 
 Customer creation from the customer-product picker's “Add new customer” action is intentionally independent: save the customer immediately, select it, and retain it even if the user later cancels the product.
 
-**Why:** The user explicitly chose immediate, independent customer saving rather than saving the customer together with the product.
+**Why:** The user explicitly chose immediate, independent customer saving rather than saving the customer together with the product. When asked about “Save and continue,” the user confirmed navigation to the new customer's profile applies only to creation from the Customers page; creation inside the product form must keep that form open.
 **How to apply:** Reuse the customer form without redirecting or clearing the product draft. Cancelling the nested customer form leaves the prior customer selection unchanged. Do not delete an already-created customer when the product is cancelled. This exception does not change deferred product creation inside an order or allow replacing a fixed order customer.
