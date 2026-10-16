@@ -12,6 +12,14 @@ const WebSocket = require("ws");
   const pending = new Map(), errors = [], counts = {};
   let historyEvents = [];
   let attendanceOverrides = {};
+  let adminView = false, allowFixtureWrites = false;
+  const fixtureWrites = [], fixtureReads = [];
+  const fixtureRequests = [{
+    id: 701, user_id: 42, user_name: "Test Employee", type: "leave", title: "Legacy approved leave",
+    details: "Approved request awaiting its explicit period", status: "approved", response: "Original reply",
+    created_at: "2026-10-01T08:00:00Z", responded_at: "2026-10-02T08:00:00Z",
+    leave_start_date: null, leave_end_date: null,
+  }];
   const endpoints = ["attendance", "recipients", "messages", "requests", "violations"];
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const resetCounts = () => { for (const key of endpoints) counts[key] = 0; };
@@ -46,13 +54,35 @@ const WebSocket = require("ws");
         errors.push(event.params.exceptionDetails.exception?.description || event.params.exceptionDetails.text);
       } else if (event.method === "Fetch.requestPaused") void (async () => {
         const { requestId, request } = event.params, url = new URL(request.url);
-        assert.equal(request.method, "GET", "Only intercepted read requests are allowed");
+        const fixtureWrite = allowFixtureWrites && (
+          request.method === "POST" && url.pathname === "/api/self/requests"
+          || request.method === "PATCH" && /^\/api\/self\/admin\/requests\/\d+$/.test(url.pathname));
+        assert.ok(request.method === "GET" || fixtureWrite, "Only explicit intercepted fixture writes are allowed; never forward a write to the app");
         let body = [];
+        if (request.method === "GET") fixtureReads.push(url.pathname + url.search);
         if (url.pathname === "/api/me") body = { user: {
           id: 42, username: "fixture", display_name: "Test Employee", display_name_ar: "موظف تجريبي",
-          preferred_language: language, permissions: [],
+          preferred_language: language, permissions: adminView ? ["admin"] : [],
         } };
+        if (fixtureWrite) {
+          const payload = JSON.parse(request.postData);
+          fixtureWrites.push({ method: request.method, path: url.pathname, payload });
+          if (request.method === "POST") {
+            body = { id: 800 + fixtureWrites.length, user_id: 42, user_name: "Test Employee", ...payload, status: "pending", response: null, created_at: "2026-10-05T08:00:00Z" };
+            fixtureRequests.unshift(body);
+          } else {
+            const row = fixtureRequests.find(row => row.id === Number(url.pathname.split("/").pop()));
+            assert.ok(row, "Fixture correction must target a known fixture only");
+            Object.assign(row, payload);
+            body = row;
+          }
+        }
+        if (request.method === "GET" && url.pathname === "/api/self/admin/requests") body =
+          url.searchParams.get("missing_leave_dates") === "1"
+            ? fixtureRequests.filter(row => row.type === "leave" && row.status === "approved" && (!row.leave_start_date || !row.leave_end_date))
+            : fixtureRequests;
         if (url.pathname === "/api/public-branding") body = { companyNameAr: "مصنع تجريبي", companyNameEn: "Test Factory", logoSrc: "" };
+        if (url.pathname === "/api/hr/data") body = { shifts: [], users: [], history: [] };
         const endpoint = url.pathname.replace("/api/self/", "");
         if (endpoints.includes(endpoint)) {
           counts[endpoint] += 1;
@@ -66,6 +96,7 @@ const WebSocket = require("ws");
             workedSeconds: 0, sessionStartedAt: null, actionTimes: {},
             ...attendanceOverrides,
           };
+          if (endpoint === "requests" && allowFixtureWrites && request.method === "GET") body = fixtureRequests;
         }
         await send("Fetch.fulfillRequest", { requestId, responseCode: 200,
           responseHeaders: [{ name: "Content-Type", value: "application/json" }],
@@ -93,6 +124,7 @@ const WebSocket = require("ws");
       await wait("!window.__selfFixtureNavigating&&!!document.querySelector('.self-page')");
     };
     const ready = "!!document.querySelector('.self-page .page-hero-refresh:not([disabled])')";
+    if (!process.argv.includes("--forms-only")) {
     await open(1440);
     await wait(`${ready}&&document.querySelector('.self-summary-item strong').textContent==='7'`);
     for (const key of endpoints) assert.equal(counts[key], 2, `${key}: one failure then recovery`);
@@ -183,11 +215,34 @@ const WebSocket = require("ws");
       assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day-events')].every(r=>r.scrollWidth<=r.clientWidth+1||(r.tabIndex===0&&['auto','scroll'].includes(getComputedStyle(r).overflowX)))"),
         "Overflowing operation rows remain keyboard-accessible and scrollable");
       if (language === "en") assert.equal(await evaluate("/[\\u0600-\\u06ff]/.test(document.querySelector('.self-attendance-day-list').textContent)"), false);
+      attendanceOverrides.dayStatuses = [
+        { day: "2026-10-04", status: "absent" }, { day: "2026-10-05", status: "leave" },
+        { day: "2026-10-01", status: "absent" },
+      ];
+      await evaluate("document.querySelector('.page-hero-refresh').click()");
+      await wait(`${ready}&&document.querySelectorAll('.self-attendance-day').length===6`);
+      const absentLabel = language === "ar" ? "غائب" : "Absent", leaveLabel = language === "ar" ? "إجازة" : "Leave";
+      assert.ok((await evaluate("document.querySelector('[data-day=\"2026-10-04\"]').textContent")).includes(absentLabel));
+      assert.ok((await evaluate("document.querySelector('[data-day=\"2026-10-05\"]').textContent")).includes(leaveLabel));
+      assert.equal(await evaluate("document.querySelector('[data-day=\"2026-10-01\"]').querySelectorAll('.self-attendance-day-event').length"), 6);
+      assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"), "No page-wide overflow after adding day statuses");
       await evaluate("document.querySelector('.self-attendance-day-list').scrollIntoView({block:'center'})");
       const image = await send("Page.captureScreenshot", { format: "png" });
       await fs.writeFile(`generated-artifacts/self-attendance-checks/${language}-${width}.png`, Buffer.from(image.data, "base64"));
-      console.log(`PASS ${language}/${width}: four day rows, all fourteen timestamps, repeated breaks, overnight/month boundaries, accessible horizontal layout`);
+      console.log(`PASS ${language}/${width}: original events and timestamps preserved; absent/leave rows localized, conflict-free and responsive`);
+      delete attendanceOverrides.dayStatuses;
     }
+    historyEvents = [];
+    attendanceOverrides.dayStatuses = [{ day: "2026-10-04", status: "absent" }, { day: "2026-10-05", status: "leave" }];
+    await open(390); await wait(`${ready}&&document.querySelectorAll('.self-attendance-day').length===2`);
+    attendanceOverrides.absenceAssessmentBlocked = true;
+    await evaluate("document.querySelector('.page-hero-refresh').click()");
+    await wait(`${ready}&&!!document.querySelector('.self-attendance-assessment-note')`);
+    assert.equal(await evaluate("!!document.querySelector('[data-day=\"2026-10-04\"]')"), false);
+    assert.equal(await evaluate("!!document.querySelector('[data-day=\"2026-10-05\"]')"), true);
+    console.log("PASS status-only month and ambiguous legacy-leave notice; no false absence");
+    attendanceOverrides.absenceAssessmentBlocked = false;
+    delete attendanceOverrides.dayStatuses;
     attendanceOverrides = {
       ...attendanceOverrides,
       status: "working",
@@ -205,6 +260,70 @@ const WebSocket = require("ws");
     await wait(`${ready}&&!!document.querySelector('.self-alert-error')`);
     assert.match(await evaluate("document.querySelector('.self-alert-error').textContent"), /location/i);
     console.log("PASS full-width biometric panel; removed only requested copy/aside; top metrics, disabled/window guards and mandatory geolocation remain");
+    }
+    mode = "ok";
+    await fs.mkdir("generated-artifacts/self-attendance-checks", { recursive: true });
+    const fill = (id, value) => evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}))})()`);
+    allowFixtureWrites = true;
+    await open(390); await wait(ready);
+    await fill("self-request-title", "Annual leave");
+    await fill("self-request-details", "Fixture request only");
+    await fill("self-request-leave-start", "2026-10-08");
+    await fill("self-request-leave-end", "2026-10-07");
+    assert.equal(await evaluate("document.getElementById('self-request-title').closest('form').checkValidity()"), false);
+    await fill("self-request-leave-end", "2026-10-09");
+    await evaluate("document.getElementById('self-request-title').closest('form').querySelector('[type=submit]').click()");
+    await wait(`${ready}&&!!document.querySelector('.self-alert-success')`);
+    assert.deepEqual(fixtureWrites.at(-1).payload, { type: "leave", title: "Annual leave", details: "Fixture request only", leave_start_date: "2026-10-08", leave_end_date: "2026-10-09" });
+    const pendingLeaveId = fixtureRequests[0].id;
+    await fill("self-request-type", "permission");
+    assert.equal(await evaluate("!!document.getElementById('self-request-leave-start')"), false);
+    await fill("self-request-title", "Permission");
+    await fill("self-request-details", "Fixture permission only");
+    await evaluate("document.getElementById('self-request-title').closest('form').querySelector('[type=submit]').click()");
+    await wait(`${ready}&&!!document.querySelector('.self-alert-success')`);
+    assert.equal(fixtureWrites.at(-1).payload.type, "permission");
+    assert.equal("leave_start_date" in fixtureWrites.at(-1).payload, false);
+    console.log("PASS employee leave dates: required/reversed-range validation, actual submitted date payload, no dates on other request types");
+    adminView = true;
+    const openAdmin = async width => {
+      await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+      await evaluate("window.__selfFixtureNavigating=true");
+      await send("Page.navigate", { url: `${origin}/hr` });
+      await wait("(()=>{if(window.__selfFixtureNavigating)return false;const t=[...document.querySelectorAll('button[role=tab]')].find(b=>/الطلبات الإدارية|administrative requests/i.test(b.textContent));if(!t)return false;if(t.getAttribute('aria-selected')!=='true')t.click();return !!document.getElementById('admin-leave-start-701')&&!!document.querySelector('.self-refresh:not([disabled])')})()");
+    };
+    await openAdmin(1440);
+    await evaluate("document.querySelector('.self-admin-missing-leave-filter input').click()");
+    await wait("!!document.getElementById('admin-leave-start-701')&&!document.getElementById('admin-leave-start-" + pendingLeaveId + "')&&!!document.querySelector('.self-refresh:not([disabled])')");
+    assert.ok(fixtureReads.includes("/api/self/admin/requests?missing_leave_dates=1"));
+    const beforeInvalidReview = fixtureWrites.length;
+    await evaluate("[...document.getElementById('admin-leave-start-701').closest('article').querySelectorAll('button')].at(-1).click()");
+    await wait("!!document.querySelector('.self-alert-error')");
+    assert.equal(fixtureWrites.length, beforeInvalidReview, "Do not approve an undated leave");
+    await fill("admin-leave-start-701", "2026-10-02");
+    await fill("admin-leave-end-701", "2026-10-03");
+    await evaluate("document.getElementById('admin-leave-start-701').closest('article').querySelector('button').click()");
+    await wait("!document.getElementById('admin-leave-start-701')&&!!document.querySelector('.self-alert-success')");
+    assert.deepEqual(fixtureWrites.at(-1).payload, { leave_start_date: "2026-10-02", leave_end_date: "2026-10-03" });
+    assert.equal(fixtureRequests.find(row => row.id === 701).status, "approved");
+    assert.equal(fixtureRequests.find(row => row.id === 701).response, "Original reply");
+    await evaluate("document.querySelector('.self-admin-missing-leave-filter input').click()");
+    await wait("!!document.getElementById('admin-leave-start-" + pendingLeaveId + "')&&!!document.querySelector('.self-refresh:not([disabled])')");
+    await evaluate("[...document.getElementById('admin-leave-start-" + pendingLeaveId + "').closest('article').querySelectorAll('button')].at(-1).click()");
+    await wait("!!document.querySelector('.self-alert-success')&&!!document.querySelector('.self-refresh:not([disabled])')");
+    assert.equal(fixtureWrites.at(-1).payload.status, "approved");
+    assert.equal(fixtureWrites.at(-1).payload.leave_start_date, "2026-10-08");
+    assert.equal(fixtureWrites.at(-1).payload.leave_end_date, "2026-10-09");
+    for (const locale of ["ar", "en"]) for (const width of [1440, 390]) {
+      language = locale;
+      await openAdmin(width);
+      assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"), "Responsive admin date controls");
+      if (locale === "en") assert.equal(await evaluate("/[\\u0600-\\u06ff]/.test(document.querySelector('.self-admin-missing-leave-filter').textContent)"), false);
+      await evaluate("document.getElementById('admin-leave-start-701').closest('article').scrollIntoView({block:'center'})");
+      const image = await send("Page.captureScreenshot", { format: "png" });
+      await fs.writeFile(`generated-artifacts/self-attendance-checks/admin-leave-${locale}-${width}.png`, Buffer.from(image.data, "base64"));
+    }
+    console.log("PASS admin missing-date filter, dates-only legacy correction preserving approval/response, dated approval, Arabic/English desktop/mobile");
     assert.deepEqual(errors, []);
   } finally {
     ws?.close();

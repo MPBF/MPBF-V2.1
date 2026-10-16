@@ -1,10 +1,26 @@
 ---
-name: Approved leave/permission → attendance & wages
-description: How approved إجازة/استئذان requests flow into the attendance engine and wage deductions.
+name: Approved leave and displayed absence
+description: User-approved absence policy, dated leave, and safeguards for undated legacy approvals.
 ---
 
-Rule: approved leave is represented as attendance rows with status "إجازة" (created at request approval); the attendance engine derives leave days from those rows — a scheduled day with such a row and no real check-in becomes status "إجازة"/leaveDays, never absent (still counted in scheduledDays → paid leave). Approved استئذان minutes are NOT stored in attendance; they are queried from user_requests (type استئذان, status موافق, keyed by the request's `date`) and passed to the engine as per-day credits that offset late → early-leave → withdrawn minutes in that order.
+The user chose to show “غائب” only for assigned workdays whose attendance
+window has ended, excluding approved leave and dates before employment.
+Ongoing/overnight shifts must not be marked absent early; recorded attendance
+always takes precedence over derived absence or leave.
 
-**Why:** wage deductions are computed solely from engine totals, so both effects must happen inside the engine, not by patching wage math; and leave rows double as a manual override channel (any row with status إجازة works).
+**Why:** the user explicitly chose ended work shifts with approved-leave
+exceptions rather than labeling every calendar day without a punch.
+**How to apply:** absence is a read-only monthly presentation, not permission
+to create attendance/absence records or introduce wage calculations.
 
-**How to apply:** anything that approves/creates leave must write the إجازة attendance rows (never clobber days with real check-ins); anything computing attendance for wages/reports must pass the permission-minutes map (see server/services/leave-attendance.ts helpers). Approval status string is "موافق" (not approved/مقبول).
+The user approved explicit leave start/end dates and admin completion of
+legacy requests. Never infer a leave period from free text or creation/approval
+timestamps. If an approved leave has no reliable period, show a clear notice
+and suppress derived absence rather than incorrectly labeling days absent.
+Date-only completion must preserve the original approval decision and reply.
+
+**Why:** historical requests lacked structured dates, so their actual periods
+cannot be safely reconstructed.
+**How to apply:** require valid complete ranges for new leave and approvals.
+Only admins may correct old periods. Keep real punch times and the existing
+attendance calculation independent of these display changes.

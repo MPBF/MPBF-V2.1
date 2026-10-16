@@ -21,6 +21,15 @@ Run app screenshot capture separately from local Chromium fixture checks in this
 
 **How to apply:** serialize these browser operations rather than treating their shared browser resources as independent.
 
+Treat missing controls after navigation as a possible render failure before
+adding waits or changing permission fixtures.
+
+**Why:** a shared API interceptor's generic empty-array response can violate a
+newly mounted module's object-response contract and remove the entire screen.
+Longer selector waits cannot repair that.
+**How to apply:** inspect runtime exceptions and fulfill each mounted module's
+actual response shape, including empty data, before diagnosing selector timing.
+
 Prefer a temporary read-only host of the production build for exhaustive
 multi-route operator-board browser fixture checks when the proxied development
 host intermittently times out on navigation. Keep every API request intercepted.
