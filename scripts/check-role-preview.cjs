@@ -20,7 +20,7 @@ const WebSocket = require("ws");
     { id: 40, name: "No permissions", name_ar: "بلا صلاحيات", permissions: [] },
     { id: 70, name: "دور عربي فقط", name_ar: "دور عربي فقط", permissions: [] },
   ];
-  if (process.argv.includes("--warehouse-only")) choices.push({
+  if (process.argv.includes("--warehouse-only") || process.argv.includes("--warehouse-mobile")) choices.push({
     id: 8, name: "Warehouse Keeper", name_ar: "أمين المستودع",
     permissions: ["view_home", "view_user_dashboard", "view_production_hall", "receive_production",
       "view_finished_inventory", "manage_finished_warehouse", "view_raw_inventory", "manage_raw_materials",
@@ -63,9 +63,15 @@ const WebSocket = require("ws");
     if (req.path.startsWith("/self/")) return res.json([]);
     if (req.path === "/dashboard") return res.json({ customers: 1, orders: 1, production_orders: 1, machines: 1, users: 1 });
     if (req.path === "/production/state") return res.json({
-      orders: [], rolls: [], queues: [], machines: [], locations: [], inventory: [], receipts: [], movements: [], totals: {},
+      orders: [], rolls: [], queues: [], machines: [], locations: [], inventory: [], receipts: [], movements: [],
+      totals: { orders: 3, receipts: 5, movements: 7, inventory: 4, inventory_kg: "1250" },
     });
-    if (req.path === "/production/mixing") return res.json({ materials: [], machines: [], latest_mixes: [], records: [], next_before: null, raw_vouchers: [] });
+    if (req.path === "/production/mixing") return res.json({
+      materials: process.argv.includes("--warehouse-mobile") ? [
+        { id: 1, item_id: "RAW-TEST", code: "RAW-TEST", name: "Test raw material", name_ar: "خام اختبار", quantity_kg: "42", is_active: true },
+      ] : [],
+      machines: [], latest_mixes: [], records: [], next_before: null, raw_vouchers: [],
+    });
     if (req.path === "/production/delivery-stock" || req.path === "/production/deliveries" || req.path.startsWith("/production/history/")) {
       return res.json({ records: [], next: null, total: 0, total_kg: "0" });
     }
@@ -132,6 +138,66 @@ const WebSocket = require("ws");
       await send("Page.navigate", { url: origin + "/" });
       await wait("!!document.querySelector('.shell')");
     };
+
+    if (process.argv.includes("--warehouse-mobile")) {
+      const routes = ["/warehouse/hall", "/warehouse/finished-inventory", "/warehouse/raw-materials"];
+      const screenshotDir = path.resolve("generated-artifacts/warehouse-mobile");
+      await fs.mkdir(screenshotDir, { recursive: true });
+      for (const lang of ["ar", "en"]) for (const width of [320, 390, 430, 768, 1440]) {
+        language = lang; originalAdmin = false; ordinaryRoleId = 8; selected = null;
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+        for (const route of routes) {
+          const label = `${lang} ${width} ${route}`;
+          await evaluate("document.documentElement.dataset.previousFixtureDocument='yes'");
+          await send("Page.navigate", { url: origin + route });
+          await wait("!!document.documentElement&&!document.documentElement.dataset.previousFixtureDocument&&!!document.querySelector('.prod-view-nav, .raw-ops-nav')");
+          await wait("!document.querySelector('.prod-loading, .raw-ops-skeleton')");
+          const result = await evaluate(`(() => {
+            const nav=document.querySelector('.prod-view-nav, .raw-ops-nav');
+            const links=Array.from(nav.querySelectorAll('a'));
+            const visible=element=>!!(element.getClientRects().length&&getComputedStyle(element).visibility!=='hidden');
+            const metrics=Array.from(document.querySelectorAll('.warehouse-summary .prod-stat'));
+            return {
+              hrefs:links.map(link=>link.getAttribute('href')),
+              labels:links.map(link=>link.textContent.trim()),
+              top:links.map(link=>Math.round(link.getBoundingClientRect().top)),
+              unclipped:links.every(link=>link.scrollWidth<=link.clientWidth+1),
+              minHeight:Math.min(...links.map(link=>link.getBoundingClientRect().height)),
+              metrics:metrics.length,visibleMetrics:metrics.filter(visible).length,
+              overflow:document.documentElement.scrollWidth>innerWidth+1
+            };
+          })()`);
+          check(`${label} preserves three authorized routes`, result.hrefs, routes);
+          if (lang === "ar") check(`${label} requested labels`, result.labels, ["صالة الإنتاج", "المنتجات التامة", "صالة الخام"]);
+          check(`${label} no page overflow`, result.overflow, false);
+          if (width <= 430) {
+            check(`${label} tabs stay on one row`, new Set(result.top).size, 1);
+            check(`${label} labels are not clipped`, result.unclipped);
+            check(`${label} touch targets remain usable`, result.minHeight >= 43);
+            check(`${label} statistics hidden`, result.visibleMetrics, 0);
+          } else if (route !== "/warehouse/raw-materials") {
+            check(`${label} desktop/tablet summaries retained`, result.metrics > 0 && result.visibleMetrics === result.metrics);
+          }
+          if (route === "/warehouse/raw-materials") {
+            await wait("!!document.querySelector('.raw-stock-card')");
+            check(`${label} raw material balance stays visible`, await evaluate(
+              "Array.from(document.querySelectorAll('.raw-stock-card')).some(card=>card.innerText.includes('42'))"));
+            check(`${label} receipt and issue remain available`, await evaluate(
+              "Array.from(document.querySelectorAll('.raw-movement-launch-actions button')).filter(button=>!button.disabled).length>=2"));
+          }
+          if (width === 390 && lang === "ar") {
+            const capture = await send("Page.captureScreenshot", { format: "png" });
+            await fs.writeFile(path.join(screenshotDir, `${route.split("/").pop()}-ar-390.png`), Buffer.from(capture.data, "base64"));
+          }
+          // Exercise the actual links rather than only comparing their hrefs.
+          await click(`${route === "/warehouse/raw-materials" ? ".raw-ops-nav" : ".prod-view-nav"} a[href="/warehouse/hall"]`);
+          await wait("location.pathname==='/warehouse/hall'&&!!document.querySelector('.prod-view-nav')");
+        }
+      }
+      check("warehouse mobile has no runtime errors or unexpected writes", errors, []);
+      console.log(`${passed} warehouse mobile layout checks passed.`);
+      return;
+    }
 
     if (process.argv.includes("--warehouse-only")) {
       for (const lang of ["ar", "en"]) for (const width of [390, 1440]) {
