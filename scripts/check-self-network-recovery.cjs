@@ -209,8 +209,12 @@ const WebSocket = require("ws");
       assert.deepEqual(await evaluate("[...document.querySelectorAll('.self-attendance-day')].map(r=>r.querySelectorAll('.self-attendance-day-event').length)"), [6, 4, 2, 2]);
       assert.deepEqual((await evaluate("[...document.querySelectorAll('.self-attendance-day-event time')].map(t=>t.dateTime)")).sort(),
         historyEvents.map(e => e.occurred_at).sort(), "Every original event timestamp must survive grouping");
-      assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day-events')].every(r=>{const boxes=[...r.querySelectorAll('.self-attendance-day-event')].map(e=>e.getBoundingClientRect());return boxes.every(b=>Math.abs(b.top-boxes[0].top)<2||Math.abs(b.top+b.height/2-boxes[0].top-boxes[0].height/2)<2)})"),
-        "Each day's operations stay on the same horizontal row");
+      assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day')].every(r=>{const date=r.querySelector('.self-attendance-day-date').getBoundingClientRect(),events=r.querySelector('.self-attendance-day-events').getBoundingClientRect();return events.top>=date.bottom&&Math.abs(date.left-events.left)<3})"),
+        "Each date appears above its own attendance details at every width");
+      assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day-event')].every(r=>{const box=r.getBoundingClientRect();return [...r.children].every(c=>{const b=c.getBoundingClientRect();return b.left>=box.left-1&&b.right<=box.right+1&&b.bottom<=box.bottom+1})})"),
+        "Wrapped attendance cards retain all action names, times and overnight dates without clipping");
+      assert.ok((await evaluate("document.querySelector('[data-day=\"2026-10-01\"] .self-attendance-day-date').textContent")).includes(language === "ar" ? "الخميس" : "Thursday"),
+        "The full date keeps its weekday");
       assert.equal(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"), true, "No page-wide horizontal overflow");
       assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day-events')].every(r=>r.scrollWidth<=r.clientWidth+1||(r.tabIndex===0&&['auto','scroll'].includes(getComputedStyle(r).overflowX)))"),
         "Overflowing operation rows remain keyboard-accessible and scrollable");
@@ -224,6 +228,8 @@ const WebSocket = require("ws");
       const absentLabel = language === "ar" ? "غائب" : "Absent", leaveLabel = language === "ar" ? "إجازة" : "Leave";
       assert.ok((await evaluate("document.querySelector('[data-day=\"2026-10-04\"]').textContent")).includes(absentLabel));
       assert.ok((await evaluate("document.querySelector('[data-day=\"2026-10-05\"]').textContent")).includes(leaveLabel));
+      assert.ok(await evaluate("[...document.querySelectorAll('.self-attendance-day-status')].every(s=>s.getBoundingClientRect().top>=s.closest('.self-attendance-day').querySelector('time').getBoundingClientRect().bottom)"),
+        "Absent and leave labels also appear below their respective dates");
       assert.equal(await evaluate("document.querySelector('[data-day=\"2026-10-01\"]').querySelectorAll('.self-attendance-day-event').length"), 6);
       assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"), "No page-wide overflow after adding day statuses");
       await evaluate("document.querySelector('.self-attendance-day-list').scrollIntoView({block:'center'})");

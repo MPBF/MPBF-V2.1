@@ -13,6 +13,15 @@ exceptions rather than labeling every calendar day without a punch.
 **How to apply:** absence is a read-only monthly presentation, not permission
 to create attendance/absence records or introduce wage calculations.
 
+Monthly history displays each day's full date above its own attendance
+actions/times or absence/leave badge, on both phone and desktop. Punches may
+wrap underneath the date rather than forcing a date-and-events table row.
+
+**Why:** the user requested a date heading followed below by “غائب” or the
+day's attendance/break actions, with Thursday 1 October 2026 as the example.
+**How to apply:** this is presentation only; preserve the existing accounting
+day grouping, original timestamps, approved leave exceptions and absence rules.
+
 The user approved explicit leave start/end dates and admin completion of
 legacy requests. Never infer a leave period from free text or creation/approval
 timestamps. If an approved leave has no reliable period, show a clear notice
