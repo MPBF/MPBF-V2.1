@@ -1,12 +1,13 @@
 import i18n, { intlLocale, translate, translateError } from "../i18n";
-import { AlertCircle, ArrowDownLeft, ArrowUpLeft, CalendarDays, Check, Clock3, Coffee, FilePlus2, Fingerprint, LogIn, LogOut, MapPin, MessageCircle, Navigation, Play, Send, ShieldAlert } from "lucide-react";
+import { AlertCircle, ArrowDownLeft, ArrowUpLeft, CalendarDays, Check, Clock3, Coffee, FilePlus2, Fingerprint, LogIn, LogOut, MessageCircle, Navigation, Play, Send, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { NetworkRequestError, resilientFetch } from "../lib/resilient-fetch";
+import { attendanceCalendarDate, groupAttendanceEventsByDay } from "../lib/self-attendance-days";
 import "./user-dashboard.css";
 import PageHero from "../components/PageHero";
 
 type AttendanceAction = "check_in" | "break_start" | "break_end" | "check_out";
-type AttendanceEvent = { id: number; action: AttendanceAction; occurred_at: string; latitude: number; longitude: number; accuracy: number | null };
+type AttendanceEvent = { id: number; action: AttendanceAction; occurred_at: string; shift_date?: string | null; latitude: number; longitude: number; accuracy: number | null };
 type Recipient = { id: number; display_name: string | null; display_name_ar: string | null };
 type Message = { id: number; sender_id: number; recipient_id: number; sender_name: string; recipient_name: string; body: string; reply_to_id: number | null; created_at: string; read_at: string | null };
 type RequestRecord = { id: number; type: "leave" | "permission" | "other"; title: string; details: string; status: "pending" | "approved" | "rejected"; response: string | null; created_at: string };
@@ -60,7 +61,7 @@ const dateTime = (value: string) => new Intl.DateTimeFormat(intlLocale(), {
 }).format(new Date(value));
 const monthName = (value: string) => {
   const [year, month] = value.split("-").map(Number);
-  return new Intl.DateTimeFormat(intlLocale(), { month: "long", year: "numeric", timeZone: "Asia/Riyadh" })
+  return new Intl.DateTimeFormat(intlLocale(), { month: "long", year: "numeric", timeZone: "Asia/Riyadh", calendar: "gregory" })
     .format(new Date(Date.UTC(year, month - 1, 15, 9)));
 };
 const actionNames: Record<AttendanceAction, string> = {
@@ -78,6 +79,14 @@ const formatDuration = (seconds: number) => {
   return [hours, minutes, remaining].map((value) => String(value).padStart(2, "0")).join(":");
 };
 const actionTime = (value?: string) => value ? new Intl.DateTimeFormat(intlLocale(), { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Riyadh" }).format(new Date(value)) : "—";
+const attendanceDayLabel = (value: string) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Intl.DateTimeFormat(intlLocale(), {
+    dateStyle: "full",
+    calendar: "gregory",
+    timeZone: "Asia/Riyadh",
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+};
 
 function locate(): Promise<{ latitude: number; longitude: number; accuracy: number }> {
   return new Promise((resolve, reject) => {
@@ -183,6 +192,10 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
     if (attendance?.status === "break") return ["break_end"] as AttendanceAction[];
     return ["check_in"] as AttendanceAction[];
   }, [attendance?.status]);
+  const attendanceDays = useMemo(
+    () => groupAttendanceEventsByDay(attendance?.events ?? []),
+    [attendance?.events],
+  );
 
   const registerAttendance = async (action: AttendanceAction) => {
     setBusy(action); setError(""); setErrorTitle(""); setNotice("");
@@ -316,11 +329,21 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
       <section className="self-panel">
         <div className="self-panel-heading"><div><span className="self-section-kicker"><Clock3 size={15} />{" "}{translate("سجل الشهر")}</span><h3>{translate("أحداث الحضور")}</h3></div><span className="self-muted">{attendance?.month ? monthName(attendance.month) : translate("الشهر الحالي")}</span></div>
         {loading && !attendance ? <div className="self-empty">{translate("جارٍ تحميل سجل الحضور…")}</div> : !attendance?.events.length ? <div className="self-empty">{translate("لا توجد أحداث حضور مسجلة لهذا الشهر.")}</div> : (
-          <div className="self-event-list">
-            {attendance.events.map((event) => <article className="self-event" key={event.id}>
-              <span className={`self-event-dot ${event.action === "check_out" ? "is-soft" : ""}`} />
-              <div className="self-event-copy"><strong>{translate(actionNames[event.action])}</strong><small><MapPin size={12} />{" "}{translate("تم حفظ الموقع")}</small></div>
-              <time dateTime={event.occurred_at}>{dateTime(event.occurred_at)}</time>
+          <div className="self-attendance-day-list">
+            {attendanceDays.map(({ day, events }) => <article className="self-attendance-day" data-day={day} key={day}>
+              <time className="self-attendance-day-date" dateTime={day}>{attendanceDayLabel(day)}</time>
+              <div className="self-attendance-day-events" role="group" aria-label={`${attendanceDayLabel(day)} · ${translate("أحداث الحضور")}`} tabIndex={0}>
+                {events.map((event) => {
+                  const Icon = attendanceIcons[event.action];
+                  const actualDay = attendanceCalendarDate(event.occurred_at);
+                  const timestampLabel = dateTime(event.occurred_at);
+                  return <div className={`self-attendance-day-event action-${event.action}`} key={event.id}>
+                    <span className="self-attendance-event-action"><Icon size={14} aria-hidden="true" />{translate(actionNames[event.action])}</span>
+                    <time dateTime={event.occurred_at} aria-label={timestampLabel} title={timestampLabel}>{actionTime(event.occurred_at)}</time>
+                    {actualDay !== day && <span className="self-attendance-event-actual-date">{attendanceDayLabel(actualDay)}</span>}
+                  </div>;
+                })}
+              </div>
             </article>)}
           </div>
         )}

@@ -139,6 +139,7 @@ router.get("/attendance", handle(async (req, res) => {
     db.select({
       id: attendance_events.id,
       session_id: attendance_events.session_id,
+      shift_date: attendance_sessions.shift_date,
       action: attendance_events.action,
       occurred_at: attendance_events.occurred_at,
       latitude: attendance_events.latitude,
