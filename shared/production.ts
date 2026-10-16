@@ -14,6 +14,7 @@ export const productionStageReadPermissions = {
 } as const;
 export type ProductionUser = {
   id: number; permissions: string[];
+  display_name?: string | null; display_name_ar?: string | null; username?: string | null;
   role_name?: string | null; role_name_ar?: string | null;
   production_role_binding?: ProductionRoleBinding;
 };
@@ -95,9 +96,12 @@ export type ReceiptItem = {
   location_id: number; quantity_kg: string;
   line_number?: number | null;
   production_order_number?: string; location_name?: string; location_name_ar?: string;
+  customer_name?: string | null; customer_name_ar?: string | null;
+  product_name?: string | null; product_name_ar?: string | null;
 };
 export type ProductionReceipt = {
   id: number; voucher_number: string; created_at: string; created_by: number | null; notes: string | null;
+  receiver_name?: string | null; receiver_name_ar?: string | null;
   items: ReceiptItem[];
 };
 export type InventoryRecord = {

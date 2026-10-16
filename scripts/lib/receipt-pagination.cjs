@@ -6,11 +6,11 @@ const { execFileSync } = require("node:child_process");
 
 const labels = {
   en: {
-    headers: ["Line", "Production order", "Received quantity (kg)"],
+    headers: ["Line", "Production order", "Customer", "Item", "Received quantity (kg)"],
     total: "Voucher total", signatures: ["Released by · production hall", "Received by · finished-goods hall"],
   },
   ar: {
-    headers: ["م", "أمر الإنتاج", "الكمية المستلمة (كجم)"],
+    headers: ["م", "أمر الإنتاج", "العميل", "الصنف", "الكمية المستلمة (كجم)"],
     total: "إجمالي السند", signatures: ["التسليم · صالة الإنتاج", "الاستلام · صالة المواد التامة"],
   },
 };
@@ -30,18 +30,20 @@ function makeReceiptFixture(count, language) {
   return {
     id: 670, voucher_number: `TEST-67-${language}-${count}`,
     created_at: "2026-10-11T06:00:00Z", created_by: 670,
+    receiver_name: "Recorded Keeper", receiver_name_ar: "أمين الاستلام",
     notes: language === "en" ? "Fixture notes only.\nEND-NOTES-67" : "ملاحظات اختبار فقط.\nEND-NOTES-67",
     items: Array.from({ length: count }, (_, index) => {
       const line = index + 1, suffix = String(line).padStart(3, "0");
       const item = { line_number: line, production_order_id: 670000 + line,
         production_order_number: `T67JO${suffix}`, item_id: `T67IT${suffix}`,
-        quantity_kg: `${line}.25` };
+        quantity_kg: `${line}.25`, customer_name: `Customer ${suffix}`, customer_name_ar: `عميل ${suffix}`,
+        product_name: `Product ${suffix}`, product_name_ar: `صنف ${suffix}` };
       return item;
     }),
   };
 }
 
-function validateReceiptPages(pages, receipt, language) {
+function validateReceiptPages(pages, receipt, language, bilingualFactoryNameAr = "") {
   const context = `${language}/${receipt.items.length} lines`;
   const normalized = pages.map(normalize), whole = normalized.join(" ");
   const expected = labels[language];
@@ -87,17 +89,22 @@ function validateReceiptPages(pages, receipt, language) {
     assert.ok(contains(final, signature), `${context}: complete signature "${signature}" on final page`);
     assert.equal(whole.split(normalize(signature)).length - 1, 1, `${context}: signature once`);
   }
-  if (language === "en") assert.ok(!/[\u0600-\u06ff]/.test(whole), `${context}: English PDF contains Arabic`);
+  if (language === "en") {
+    // The user explicitly requests both factory-name languages in the header.
+    // Exempt only that exact configured name, never Arabic business-row fallbacks.
+    const englishBody = bilingualFactoryNameAr ? whole.replace(normalize(bilingualFactoryNameAr), "") : whole;
+    assert.ok(!/[\u0600-\u06ff]/.test(englishBody), `${context}: English PDF contains Arabic outside the bilingual factory name`);
+  }
 }
 
-function inspectReceiptPdf(file, receipt, language) {
+function inspectReceiptPdf(file, receipt, language, bilingualFactoryNameAr = "") {
   const info = execFileSync("pdfinfo", ["-box", file], { encoding: "utf8" });
   const count = Number(info.match(/Pages:\s+(\d+)/)?.[1]);
   const text = execFileSync("pdftotext", ["-layout", file, "-"], { encoding: "utf8" });
   const pages = text.split("\f");
   if (!pages.at(-1).trim()) pages.pop(); // Poppler's terminal separator is not a PDF page.
   assert.equal(pages.length, count, "Extracted pages must match actual PDF page count");
-  validateReceiptPages(pages, receipt, language);
+  validateReceiptPages(pages, receipt, language, bilingualFactoryNameAr);
   // Check physical A4 dimensions and glyph bounds on *every* page, not the DOM.
   const bbox = execFileSync("pdftotext", ["-bbox", file, "-"], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
   const pageBoxes = [...bbox.matchAll(/<page width="([\d.]+)" height="([\d.]+)">([\s\S]*?)<\/page>/g)];
@@ -118,7 +125,7 @@ function inspectReceiptPdf(file, receipt, language) {
     if (firstRow) {
       // Headings must exist in their own PDF columns above the first row.
       // This cannot be satisfied by a duplicate word elsewhere in the document.
-       const widths = [9, 61, 30];
+       const widths = [5, 20, 27, 27, 21];
       let start = 0;
       for (const [column, percentage] of widths.entries()) {
         const finish = start + percentage;

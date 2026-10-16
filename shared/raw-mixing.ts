@@ -8,6 +8,12 @@ export function canRecordMixing(user: ProductionUser): boolean {
 export function canViewMixing(user: ProductionUser): boolean {
   return canRecordMixing(user) || hasProductionPermission(user, "view_mixing", "manage_production");
 }
+/** Display policy only: recorded mixes and their history remain accessible. */
+export function canViewSavedMixingComposition(user: ProductionUser): boolean {
+  const filmOperator = user.permissions.includes("operate_film") ||
+    (user.production_role_binding?.mode === "operator" && user.production_role_binding.stages.includes("film"));
+  return !filmOperator || hasProductionPermission(user, "manage_production");
+}
 export function canViewRawInventory(user: ProductionUser): boolean {
   return hasProductionPermission(user, "view_raw_inventory", "manage_raw_materials");
 }

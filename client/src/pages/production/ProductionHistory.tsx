@@ -48,6 +48,20 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
     return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
   };
   const local = (ar?: string | null, english?: string | null) => (en ? (english && !/[\u0600-\u06ff]/.test(english) ? english : "") : ar || english) || "—";
+  const receiptItemName = (item: ProductionHistoryRecords["receipts"]["items"][number], kind: "customer" | "product") => {
+    const enriched = item as typeof item & {
+      customer_name?: string | null; customer_name_ar?: string | null;
+      product_name?: string | null; product_name_ar?: string | null;
+    };
+    return kind === "customer"
+      ? local(enriched.customer_name_ar, enriched.customer_name)
+      : local(enriched.product_name_ar, enriched.product_name);
+  };
+  const receiptReceiver = (receipt: ProductionHistoryRecords["receipts"]) => {
+    const enriched = receipt as typeof receipt & { receiver_name?: string | null; receiver_name_ar?: string | null };
+    const name = en ? (enriched.receiver_name && !/[\u0600-\u06ff]/.test(enriched.receiver_name) ? enriched.receiver_name : "") : enriched.receiver_name_ar?.trim() || enriched.receiver_name?.trim() || "";
+    return name || (receipt.created_by === null ? "—" : `#${receipt.created_by}`);
+  };
   const date = (value?: string | null) => value ? new Date(value).toLocaleString(en ? "en-GB" : "ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh" }) : "—";
   const render = (record: Record) => {
     if (kind === "orders") {
@@ -77,19 +91,23 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
       if (presentation === "cards") return <article className="warehouse-receipt-history-card" key={receipt.id}>
         <header><div><strong>{receipt.voucher_number}</strong><time dateTime={receipt.created_at}>{date(receipt.created_at)}</time></div><bdi>{receiptTotal(receipt.items)} kg</bdi></header>
         <button type="button" className="prod-btn secondary" data-print-receipt={receipt.id} onClick={()=>printReceipt(receipt,language)}>{label("طباعة A4", "Print A4")}</button>
+        <p className="warehouse-receipt-history-receiver">{label("المستلم", "Receiver")}: {receiptReceiver(receipt)}</p>
         {receipt.notes && <p>{receipt.notes}</p>}
         <div className="warehouse-receipt-items">{receipt.items.map((item, index) => <div className="warehouse-receipt-history-line" key={item.id}>
           <span>{String(item.line_number ?? index + 1).padStart(2, "0")}</span>
           <div><strong>{item.production_order_number ?? `#${item.production_order_id}`}</strong>
-            <small>#{item.customer_product_id} · {item.item_id ?? "—"} · {local(item.location_name_ar, item.location_name)}</small>
+            <small data-receipt-history-customer>{label("العميل", "Customer")}: {receiptItemName(item, "customer")}</small>
+            <small data-receipt-history-item>{label("الصنف", "Item")}: {receiptItemName(item, "product")}</small>
+            <small>{item.item_id ?? "—"} · {local(item.location_name_ar, item.location_name)}</small>
           </div><bdi>{String(item.quantity_kg)} kg</bdi>
         </div>)}</div>
       </article>;
       return <details className="prod-voucher" key={receipt.id}><summary><strong className="prod-number">{receipt.voucher_number}</strong> · {date(receipt.created_at)} · {n(receipt.items.length)} {label("بنود", "lines")}</summary>
         <button type="button" className="prod-btn secondary" data-print-receipt={receipt.id} onClick={()=>printReceipt(receipt,language)}>{label("طباعة A4", "Print A4")}</button>
+        <p>{label("المستلم", "Receiver")}: {receiptReceiver(receipt)}</p>
         {receipt.notes && <p>{receipt.notes}</p>}
          {receipt.items.map((item, index) => <div className="prod-measure" key={item.id}>
-           <span>{String(item.line_number ?? index + 1).padStart(2, "0")} · {item.production_order_number} · #{item.customer_product_id} · {item.item_id} · {local(item.location_name_ar, item.location_name)}</span>
+           <span>{String(item.line_number ?? index + 1).padStart(2, "0")} · {item.production_order_number} · {label("العميل", "Customer")}: {receiptItemName(item, "customer")} · {label("الصنف", "Item")}: {receiptItemName(item, "product")} · {item.item_id ?? "—"} · {local(item.location_name_ar, item.location_name)}</span>
            <strong>{String(item.quantity_kg)} kg</strong>
         </div>)}</details>;
     }

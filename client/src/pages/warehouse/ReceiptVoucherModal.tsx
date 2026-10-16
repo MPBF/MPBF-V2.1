@@ -12,6 +12,8 @@ import { createPortal } from "react-dom";
 
 import type { ProductionOrderRecord, ProductionReceipt } from "../../../../shared/production";
 import { normalizeReceiptQuantity, type ReceiptDraft } from "../../../../shared/receipt-draft";
+import { useReceiptBranding } from "../../lib/receipt-branding";
+import { ReceiptFactoryHeader } from "./ReceiptFactoryHeader";
 import { ReceiptVoucherPreview } from "./ReceiptVoucherPreview";
 import { receiptVoucherCopy } from "./receipt-voucher-copy";
 import "./receipt-voucher.css";
@@ -36,9 +38,9 @@ type Props = {
   onRetry?: () => void;
   onClose: () => void;
   onPrint?: (receipt: ProductionReceipt) => void;
-  orderLabel: (order: ProductionOrderRecord) => string;
   customerLabel: (order: ProductionOrderRecord) => string;
   number: (value: string | number | null | undefined, language: string, digits?: number) => string;
+  currentReceiverLabel?: string;
 };
 
 const parseCents = (weight: string | number | null | undefined): bigint => {
@@ -61,20 +63,30 @@ export function ReceiptVoucherModal(props: Props) {
   const {
     language, eligible, drafts, notes, saving, locked = false, error, savedReceipt, openerRef,
     onDraftChange, onAddLine, onRemoveLine, onNotesChange, onSubmit, onRetry, onClose,
-    onPrint, orderLabel, customerLabel, number,
+    onPrint, customerLabel, number,
   } = props;
 
   const t = receiptVoucherCopy(language);
+  const { branding, loading: brandingLoading, error: brandingError } = useReceiptBranding();
   const dialogRef = useRef<HTMLElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
   const previewOpenRef = useRef(false);
   const wasPreviewOpen = useRef(false);
-  const openedAt = useRef(new Date());
-  
+
   const [previewOpen, setPreviewOpen] = useState(false);
   previewOpenRef.current = previewOpen;
   const editable = !saving && !locked;
+  const currentReceiverLabel = props.currentReceiverLabel?.trim() || `#${(savedReceipt as (ProductionReceipt & { created_by?: number | null }) | null)?.created_by ?? "—"}`;
+  const receiverLabel = savedReceipt
+    ? (() => {
+        const saved = savedReceipt as ProductionReceipt & { receiver_name?: string | null; receiver_name_ar?: string | null };
+        const ar = saved.receiver_name_ar?.trim() ?? "";
+        const en = saved.receiver_name?.trim() ?? "";
+        const id = saved.created_by === null ? "—" : `#${saved.created_by}`;
+        return language === "en" ? (en && !/[\u0600-\u06ff]/.test(en) ? en : id) : (ar || en || id);
+      })()
+    : currentReceiverLabel;
 
   // قفل الـ Scroll فقط عند الفتح والإنهاء
   useEffect(() => {
@@ -176,19 +188,16 @@ export function ReceiptVoucherModal(props: Props) {
 
   // تنسيق التواريخ
   const draftDateTime = useMemo(() => {
-    return new Intl.DateTimeFormat(
-      language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB",
-      { dateStyle: "medium", timeZone: "Asia/Riyadh" }
-    ).format(openedAt.current);
-  }, [language]);
+    return t.dateAssignedOnSave;
+  }, [t.dateAssignedOnSave]);
 
   const dateTime = useMemo(() => {
-    const shownDate = savedReceipt?.created_at ? new Date(savedReceipt.created_at) : openedAt.current;
+    if (!savedReceipt?.created_at) return t.dateAssignedOnSave;
     return new Intl.DateTimeFormat(
       language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB",
       { dateStyle: "medium", timeZone: "Asia/Riyadh" }
-    ).format(shownDate);
-  }, [savedReceipt?.created_at, language]);
+    ).format(new Date(savedReceipt.created_at));
+  }, [savedReceipt?.created_at, language, t.dateAssignedOnSave]);
 
   return createPortal(
     <div
@@ -207,6 +216,7 @@ export function ReceiptVoucherModal(props: Props) {
         dir={language === "ar" ? "rtl" : "ltr"}
         tabIndex={-1}
       >
+          <ReceiptFactoryHeader branding={branding} loading={brandingLoading} error={brandingError} language={language} copy={t} />
         <header className="receipt-voucher-header">
           <div>
             <span className="receipt-voucher-kicker">PRODUCTION / STOCK</span>
@@ -274,13 +284,21 @@ export function ReceiptVoucherModal(props: Props) {
           </div>
         </section>
 
+        <div className="receipt-voucher-receiver" data-receipt-receiver>
+          <small>{t.receiver}</small>
+          <strong>{receiverLabel}</strong>
+          {!savedReceipt && <em>{t.plannedReceiver}</em>}
+        </div>
+
         <form onSubmit={onSubmit}>
-          <div className="receipt-voucher-table-wrap">
+          <div className="receipt-voucher-table-wrap" role="region" tabIndex={0} aria-label={t.title} data-receipt-lines-scroll>
             <table className="receipt-voucher-table" aria-label={t.title}>
               <thead>
                 <tr>
                   <th scope="col">{t.line}</th>
                   <th scope="col">{t.order}</th>
+                  <th scope="col">{t.customer}</th>
+                  <th scope="col">{t.item}</th>
                   <th scope="col">{t.availableColumn}</th>
                   <th scope="col">{t.quantity}</th>
                 </tr>
@@ -316,7 +334,7 @@ export function ReceiptVoucherModal(props: Props) {
                       </td>
 
                       <td data-label={t.order}>
-                        <div className="prod-field">
+                        <div className="prod-field receipt-voucher-order-select">
                           <select
                             id={`receipt-order-${index}`}
                             data-receipt-order={index}
@@ -329,11 +347,25 @@ export function ReceiptVoucherModal(props: Props) {
                             <option value="">{t.choose}</option>
                             {eligible.map((item) => (
                               <option key={item.id} value={item.id}>
-                                {item.production_order_number} · {orderLabel(item)} · {customerLabel(item)}
+                                {item.production_order_number}
                               </option>
                             ))}
                           </select>
                         </div>
+                      </td>
+
+                      <td className="receipt-voucher-name-cell" data-label={t.customer} data-receipt-customer={index}>
+                        <span className="receipt-voucher-name-value">{order ? customerLabel(order) : "—"}</span>
+                      </td>
+
+                      <td className="receipt-voucher-name-cell" data-label={t.item} data-receipt-item={index}>
+                        <span className="receipt-voucher-name-value">
+                          {order
+                            ? (language === "en"
+                                ? (order.product?.name && !/[\u0600-\u06ff]/.test(order.product.name) ? order.product.name : "—")
+                                : order.product?.name_ar?.trim() || order.product?.name?.trim() || "—")
+                            : "—"}
+                        </span>
                       </td>
 
                       <td data-label={t.availableColumn}>
@@ -446,9 +478,12 @@ export function ReceiptVoucherModal(props: Props) {
             draftDateTime={draftDateTime}
             notes={notes}
             total={previewTotal}
+            branding={branding}
+            brandingLoading={brandingLoading}
+            brandingError={brandingError}
+            currentReceiverLabel={currentReceiverLabel}
             previewRef={previewRef}
             onClose={() => setPreviewOpen(false)}
-            orderLabel={orderLabel}
             number={number}
           />
         )}

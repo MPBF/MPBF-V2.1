@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
 import { AlertTriangle, ChevronDown, EyeOff, Plus, RefreshCw, RotateCw, Trash2 } from "lucide-react";
 import type { MixingInput, MixingRecord, MixingState } from "../../../../shared/raw-mixing";
-import { canRecordMixing, canViewMixing } from "../../../../shared/raw-mixing";
+import { canRecordMixing, canViewMixing, canViewSavedMixingComposition } from "../../../../shared/raw-mixing";
 import { hasProductionPermission, type ProductionUser } from "../../../../shared/production";
 import { availableProductionViews } from "../../lib/production-navigation";
 import { confirmedProductionRejection } from "../../lib/production-api";
@@ -372,10 +372,9 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
                   <button className="raw-btn quiet raw-ops-remove" type="button" aria-label={tx("remove", en)} onClick={() => removeRow(index)} disabled={locked || rows.length < 2}><Trash2 />{tx("remove", en)}</button>
                 </div>)}
                 {state && !state.materials.some(material => material.is_active) && <div className="raw-ops-empty"><strong>{tx("noMaterials", en)}</strong></div>}
-                <div><button className="raw-btn outline" type="button" onClick={addRow} disabled={locked || rows.length >= 100}><Plus />{tx("addLine", en)}</button></div>
               </div>
               <div className="raw-ops-wide raw-mix-note-area" id="mix-notes-region">
-                {!notesVisible ? <button className="raw-btn outline" type="button" aria-expanded="false" aria-controls="mix-notes-region" onClick={() => setNotesVisible(true)} disabled={locked}><Plus />{tx("addNote", en)}</button> : <>
+                {notesVisible && <>
                   <div className="raw-mix-note-head"><label htmlFor="mix-notes">{tx("notes", en)}</label><button className="raw-btn quiet" type="button" aria-expanded="true" aria-controls="mix-notes-region" onClick={() => setNotesVisible(false)} disabled={locked}><EyeOff />{tx("hideNote", en)}</button></div>
                   <textarea id="mix-notes" maxLength={2000} value={notes} disabled={locked} onChange={event => setNotes(event.target.value)} />
                 </>}
@@ -386,14 +385,16 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
               {renderComposition(`${tx("screw", en)} ${screw}`, selectedRows.map(row => ({ material_id: row.material!.id, name: row.material!.name, name_ar: row.material!.name_ar, quantity_kg: quantityValue(row.quantity)! })))}
               {renderComposition(tx("combined", en), previewLines, Boolean(isDualScrew(selectedMachine) && !(screw === "A" ? latestB : latestA)))}
             </div>}
-            <div className="raw-ops-form-actions">
+            <div className="raw-ops-form-actions raw-mix-primary-actions">
+              <button className="raw-btn outline" type="button" onClick={addRow} disabled={locked || rows.length >= 100}><Plus />{tx("addLine", en)}</button>
+              <button className="raw-btn outline" type="button" aria-expanded={notesVisible} aria-controls="mix-notes-region" onClick={() => setNotesVisible(value => !value)} disabled={locked}><Plus />{tx(notesVisible ? "hideNote" : "addNote", en)}</button>
               <button className="raw-btn" type="submit" disabled={busy || locked || !machines.length || !state?.materials.some(material => material.is_active)}><Plus />{busy ? tx("loading", en) : tx("save", en)}</button>
               <span className="raw-ops-helper">{tx("notVoucher", en)}</span>
             </div>
           </form> : <div className="raw-ops-helper">{tx("readonly", en)}</div>}
         </div>
       </section>
-      <section className="raw-ops-card raw-mix-summary-card">
+      {canViewSavedMixingComposition(user) && <section className="raw-ops-card raw-mix-summary-card">
         <div className="raw-ops-card-head"><h2>{tx("savedComposition", en)}</h2></div>
         <div className="raw-ops-card-body">
           {!writable && <div className="raw-ops-field raw-mix-reader-machine">
@@ -412,7 +413,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
               {renderComposition(tx("combined", en), savedCombinedLines, Boolean(isDualScrew(selectedMachine) && (!latestA || !latestB)))}
             </>}
         </div>
-      </section>
+      </section>}
       <section className="raw-ops-card">
         <div className="raw-ops-card-head"><h2>{tx("history", en)}</h2><span className="raw-ops-helper">{state ? `${formatWholeNumber(state.records.length)} ${en ? "records" : "سجل"}` : ""}</span></div>
         <div className="raw-ops-card-body">
