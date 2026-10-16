@@ -11,7 +11,7 @@ const WebSocket = require("ws");
 (async () => {
   const root = path.resolve("dist/public");
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "role-preview-browser-"));
-  let language = "ar", originalAdmin = true, selected = null;
+  let language = "ar", originalAdmin = true, selected = null, ordinaryRoleId = 20;
   let failList = false, failMutation = false, deleted = false, roleLists = 0, passed = 0;
   const writes = [], errors = [];
   const choices = [
@@ -20,8 +20,14 @@ const WebSocket = require("ws");
     { id: 40, name: "No permissions", name_ar: "بلا صلاحيات", permissions: [] },
     { id: 70, name: "دور عربي فقط", name_ar: "دور عربي فقط", permissions: [] },
   ];
+  if (process.argv.includes("--warehouse-only")) choices.push({
+    id: 8, name: "Warehouse Keeper", name_ar: "أمين المستودع",
+    permissions: ["view_home", "view_user_dashboard", "view_production_hall", "receive_production",
+      "view_finished_inventory", "manage_finished_warehouse", "view_raw_inventory", "manage_raw_materials",
+      "view_warehouse", "manage_inventory", "view_inventory", "manage_warehouse"],
+  });
   const currentUser = () => {
-    const role = choices.find(r => r.id === (originalAdmin ? selected || 10 : 20));
+    const role = choices.find(r => r.id === (originalAdmin ? selected || 10 : ordinaryRoleId));
     return { id: 7, username: "fixture", display_name: "Fixture admin", display_name_ar: "مدير الاختبار",
       role_id: role.id, role_name: deleted ? null : role.name, role_name_ar: deleted ? null : role.name_ar,
       permissions: deleted ? [] : role.permissions, preferred_language: language, must_change_password: false,
@@ -56,6 +62,13 @@ const WebSocket = require("ws");
     if (req.path === "/self/attendance") return res.json(null);
     if (req.path.startsWith("/self/")) return res.json([]);
     if (req.path === "/dashboard") return res.json({ customers: 1, orders: 1, production_orders: 1, machines: 1, users: 1 });
+    if (req.path === "/production/state") return res.json({
+      orders: [], rolls: [], queues: [], machines: [], locations: [], inventory: [], receipts: [], movements: [], totals: {},
+    });
+    if (req.path === "/production/mixing") return res.json({ materials: [], machines: [], latest_mixes: [], records: [], next_before: null, raw_vouchers: [] });
+    if (req.path === "/production/delivery-stock" || req.path === "/production/deliveries" || req.path.startsWith("/production/history/")) {
+      return res.json({ records: [], next: null, total: 0, total_kg: "0" });
+    }
     return res.json([]);
   });
   app.use(express.static(root));
@@ -119,6 +132,57 @@ const WebSocket = require("ws");
       await send("Page.navigate", { url: origin + "/" });
       await wait("!!document.querySelector('.shell')");
     };
+
+    if (process.argv.includes("--warehouse-only")) {
+      for (const lang of ["ar", "en"]) for (const width of [390, 1440]) {
+        language = lang; originalAdmin = false; ordinaryRoleId = 8; selected = null;
+        const label = `${lang} ${width}`;
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+        await open();
+        const expected = ["/my-dashboard", "/warehouse"];
+        check(`${label} exactly two desktop links`, await evaluate(
+          "Array.from(document.querySelectorAll('.sidebar .nav a')).map(a=>a.getAttribute('href'))"), expected);
+        if (width === 390) {
+          await wait("!!document.querySelector('.mobile-navigation-bar a')");
+          check(`${label} exactly two mobile links`, await evaluate(
+            "Array.from(document.querySelectorAll('.mobile-navigation-bar a')).map(a=>a.getAttribute('href'))"), expected);
+        }
+        check(`${label} ordinary keeper has no role switcher`, await evaluate("document.querySelectorAll('.rs-root').length"), 0);
+        for (const blocked of ["/orders", "/customers", "/admin", "/hr", "/planning", "/production/film", "/production/printing", "/production/cutting", "/production/mixing"]) {
+          await send("Page.navigate", { url: origin + blocked });
+          await wait("location.pathname==='/my-dashboard'&&!!document.querySelector('.self-page')");
+          check(`${label} rejects direct ${blocked}`, await evaluate("location.pathname"), "/my-dashboard");
+        }
+        for (const allowed of ["/warehouse/hall", "/warehouse/finished-inventory", "/warehouse/raw-materials"]) {
+          await send("Page.navigate", { url: origin + allowed });
+          await wait("!!document.querySelector('.prod-view-nav, .raw-ops-nav')");
+          check(`${label} warehouse tab ${allowed} opens`, await evaluate("location.pathname"), allowed);
+          check(`${label} warehouse tabs only`, await evaluate(
+            "Array.from(document.querySelectorAll('.prod-view-nav a, .raw-ops-nav a')).every(a=>a.getAttribute('href').startsWith('/warehouse/'))"));
+          check(`${label} fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+        }
+        // Real preview UI: switch, enforce effective navigation, restore through the same chooser.
+        originalAdmin = true; selected = null;
+        await open();
+        const placement = width <= 700 ? "mobile" : "sidebar";
+        const selector = `.rs-${placement} .rs-trigger`;
+        await wait(`!!document.querySelector(${JSON.stringify(selector)})`);
+        await click(selector);
+        await wait("!!document.querySelector('[data-role-preview-role=\"8\"]')");
+        await click('[data-role-preview-role="8"]');
+        await wait(`!!document.querySelector(${JSON.stringify(selector + ".is-active")})`);
+        check(`${label} preview uses keeper navigation`, await evaluate(
+          "Array.from(document.querySelectorAll('.sidebar .nav a')).map(a=>a.getAttribute('href'))"), expected);
+        await click(selector);
+        await wait("!!document.querySelector('[data-role-preview-action=\"restore\"]:not(:disabled)')");
+        await click('[data-role-preview-action="restore"]');
+        await wait("!!document.querySelector('.sidebar .nav a[href=\"/admin\"]')");
+        check(`${label} original admin restored`, selected, null);
+      }
+      check("no runtime exceptions or unexpected writes", errors, []);
+      console.log(`${passed} warehouse access browser checks passed.`);
+      return;
+    }
 
     for (const lang of ["ar", "en"]) for (const width of [320, 390, 768, 1440]) {
       language = lang; originalAdmin = true; selected = null; deleted = false; roleLists = 0;

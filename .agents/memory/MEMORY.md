@@ -106,3 +106,4 @@
 - [Mobile primary navigation](mobile-primary-navigation.md) — More keeps all authorized main pages reachable when the phone bottom bar cannot fit them.
 - [Thickness display policy](thickness-display-policy.md) — display original thickness only; universal thickness remains automatically stored for internal calculations.
 - [Login brand presentation](login-brand-presentation.md) — approved centered card; both factory-name languages precede the large logo and welcome text.
+- [Warehouse keeper scope](warehouse-keeper-scope.md) — user dashboard and warehouse only, including direct links and role preview; preserve warehouse work.

@@ -7,6 +7,7 @@ import { productionPermissions } from "../../shared/production";
 import { initialProductionPath } from "./lib/production-navigation";
 import { initialPlanningPath } from "./lib/planning-navigation";
 import { initialWarehousePath } from "./lib/warehouse-navigation";
+import { canOpenWarehouseAccountPath, isWarehouseOnlyAccount } from "../../shared/warehouse-access";
 import { defaultBranding, fetchBrandingSnapshot, type BrandingSnapshot } from "./lib/branding";
 import PageHero from "./components/PageHero";
 import LoginPresentation from "./components/LoginPresentation";
@@ -173,6 +174,7 @@ function mainNavActive(href: string, location: string) {
 }
 
 function canOpenMainNavigation(user: Row, href: string, permissions: readonly string[]) {
+  if (isWarehouseOnlyAccount(user) && href !== "/my-dashboard" && href !== "/warehouse") return false;
   const account = { id: Number(user.id), permissions: user.permissions ?? [], production_role_binding: user.production_role_binding };
   if (href === "/production") return !!initialProductionPath(account);
   if (href === "/planning") return !!initialPlanningPath(account);
@@ -870,6 +872,7 @@ function CustomerDetail({ user }: { user: Row }) {
 }
 
 function App() {
+  const [currentPath] = useLocation();
   useTranslation();
   const [publicPrintMatch, publicPrintParams] = useRoute("/shared/orders/:id/print");
   const [routeSearchParams] = useSearchParams();
@@ -895,6 +898,9 @@ function App() {
   if (auth.loading || !brandingReady || !languageReady) return <div className="login-page"><div className="login-box"><div className="skeleton" style={{ width: 220, height: 28 }} /></div></div>;
   if (!auth.user) return <Login onLogin={auth.setUser} branding={branding} />;
   if (auth.user.must_change_password) return <PasswordChange user={auth.user} onComplete={auth.setUser} setUser={auth.setUser} defaultLanguage={branding.defaultLanguage} />;
+  if (isWarehouseOnlyAccount(auth.user) && !canOpenWarehouseAccountPath(currentPath)) {
+    return <Redirect to="/my-dashboard" replace />;
+  }
   if (printMatch && printParams) {
     return can(auth.user, configs.orders.read)
       ? <DeferredContent><OrderPrintPage id={printParams.id} branding={branding} /></DeferredContent>
