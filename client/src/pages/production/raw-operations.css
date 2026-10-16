@@ -139,6 +139,21 @@
   .raw-mix-composition-line { grid-template-columns: minmax(0,1fr) auto; }
   .raw-mix-composition-line small { grid-column: 2; justify-self: end; }
   .raw-mix-note-head .raw-btn { min-height: 38px; }
+  .raw-mix-primary-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .raw-mix-primary-actions > .raw-btn {
+    min-width: 0;
+    justify-content: center;
+    padding: 6px 3px;
+    gap: 3px;
+    font-size: clamp(10px, 2.8vw, 12px);
+    line-height: 1.3;
+  }
+  .raw-mix-primary-actions > .raw-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .raw-mix-primary-actions > .raw-ops-helper { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .raw-ops *, .raw-ops *::before, .raw-ops *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

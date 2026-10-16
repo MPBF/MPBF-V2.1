@@ -4,8 +4,20 @@ import { one, permission, rows, ProductionError, type ConnectionPool, type Conne
 import { hasProductionPermission, isPlasticRoll, productionPermissions, productionStageReadPermissions, type ProductionState, type ProductionStateScope, type ProductionUser, type ProductionRollRecord, type ProductionRollDetail, type ProductionOrderRecord, type ProductionHistoryKind, type ProductionHistoryFilter, type ProductionHistoryPage } from "../../shared/production";
 import { orderSelect, rollSelect, filmMachineGroups, filmDurationJSON, productionActorJSON } from "./read-queries";
 import { historyPage } from "./history";
+import type { ReceiptBranding } from "../../shared/receipt-presentation";
 export class ProductionReadService {
   constructor(readonly pool: ConnectionPool) {}
+  async receiptBranding(actor: ProductionUser): Promise<ReceiptBranding> {
+    permission(actor, "view_production_hall", "receive_production", "view_finished_inventory", "manage_finished_warehouse");
+    const [profile] = await this.read(tx => rows<ReceiptBranding>(tx, `SELECT
+      COALESCE(name_ar,name,'') AS "companyNameAr",COALESCE(name,'') AS "companyNameEn",
+      COALESCE(NULLIF((SELECT setting_value FROM system_settings WHERE setting_key='company_logo_data_url' LIMIT 1),''),
+        logo_url,'') AS "logoSrc",
+      COALESCE(address,'') address,COALESCE(phone,'') phone,COALESCE(email,'') email,
+      COALESCE(tax_number,'') AS "taxNumber" FROM company_profile ORDER BY id LIMIT 1`));
+    if (!profile) throw new ProductionError("لم تُضبط بيانات المصنع بعد.", "Factory details have not been configured.", 409);
+    return profile;
+  }
   async state(actor: ProductionUser, scope: ProductionStateScope = "management"): Promise<ProductionState> {
     permission(actor, ...productionPermissions);
     if (scope === "film" || scope === "printing" || scope === "cutting") {

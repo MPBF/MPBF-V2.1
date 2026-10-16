@@ -78,12 +78,18 @@ export const rollSelect = `SELECT r.*,p.production_order_number,p.batch_number,p
   JOIN orders o ON o.id=p.order_id JOIN factory_execution e ON e.production_order_id=r.production_order_id
   LEFT JOIN customer_products cp ON cp.id=p.customer_product_id
   LEFT JOIN users roll_creator ON roll_creator.id=r.created_by`;
-export const receiptSelect = `SELECT r.*,COALESCE((SELECT jsonb_agg(to_jsonb(ri)||jsonb_build_object(
+export const receiptSelect = `SELECT r.*,
+  COALESCE(NULLIF(receiver.display_name,''),receiver.username) receiver_name,
+  COALESCE(NULLIF(receiver.display_name_ar,''),NULLIF(receiver.full_name,''),receiver.display_name,receiver.username) receiver_name_ar,
+  COALESCE((SELECT jsonb_agg(to_jsonb(ri)||jsonb_build_object(
   'quantity_kg',ri.quantity_kg::text,
+  'customer_name',e.product->>'customer_name','customer_name_ar',e.product->>'customer_name_ar',
+  'product_name',e.product->>'name','product_name_ar',e.product->>'name_ar',
   'production_order_number',p.production_order_number,'location_name',l.name,'location_name_ar',l.name_ar) ORDER BY ri.id)
   FROM factory_receipt_items ri JOIN production_orders p ON p.id=ri.production_order_id
+  LEFT JOIN factory_execution e ON e.production_order_id=ri.production_order_id
   JOIN factory_locations l ON l.id=ri.location_id WHERE ri.receipt_id=r.id),'[]'::jsonb) items
-  FROM factory_receipts r`;
+  FROM factory_receipts r LEFT JOIN users receiver ON receiver.id=r.created_by`;
 export const inventorySelect = `SELECT inv.*,p.production_order_number,p.batch_number,p.status production_order_status,${snapshotWithDisplayThickness} product,
   l.name location_name,l.name_ar location_name_ar
   FROM factory_inventory inv

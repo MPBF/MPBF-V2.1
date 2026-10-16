@@ -7,6 +7,8 @@ const path = require("node:path");
 const os = require("node:os");
 const { spawn, execFileSync } = require("node:child_process");
 const WebSocket = require("ws");
+const receiptDetailsOnly = process.argv.includes("--receipt-details");
+const mixActionsOnly = process.argv.includes("--mix-actions");
 
 (async () => {
   const root = path.resolve("dist/public");
@@ -14,13 +16,31 @@ const WebSocket = require("ws");
   let language = "ar", originalAdmin = true, selected = null, ordinaryRoleId = 20;
   let failList = false, failMutation = false, deleted = false, roleLists = 0, passed = 0;
   const writes = [], errors = [];
+  const receiptBranding = {
+    companyNameAr: "مصنع اختبار السند", companyNameEn: "Receipt Test Factory",
+    logoSrc: "data:image/svg+xml;base64," + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="#176b55"/></svg>').toString("base64"),
+    address: "Test factory address", phone: "+966000", email: "test@example.invalid", taxNumber: "TAX-TEST",
+  };
+  const receiptOrder = {
+    id: 1, order_id: 1, production_order_number: "JO-TEST-1", order_number: "O-TEST-1",
+    customer_product_id: 11, quantity_kg: "100", final_quantity_kg: "100",
+    status: "in_progress", order_status: "in_production", batch_number: "B1", stage: "cutting",
+    started_at: "2026-10-16T01:00:00Z", film_closed_at: null, completed_at: null,
+    is_printed: false, is_roll_product: false, produced_kg: "50", ready_kg: "50",
+    received_kg: "0", remaining_kg: "50", waste_kg: "0", film_durations: [],
+    product: { id: 11, item_id: "ITM001", customer_name: "Receipt Customer", customer_name_ar: "عميل السند",
+      name: "Receipt Item", name_ar: "صنف السند", width: "30", thickness: "40", universal_thickness: "40",
+      cutting_length_cm: 40, raw_material: "HDPE", printing_cylinder: null, punching: null, notes: null,
+      front_print_colors: [], back_print_colors: [] },
+  };
+  let storedReceipt = null;
   const choices = [
     { id: 10, name: "Administrator", name_ar: "مدير النظام", permissions: ["admin", "manage_orders"] },
     { id: 20, name: "Film operator", name_ar: "مشغل فيلم", permissions: ["operate_film"] },
     { id: 40, name: "No permissions", name_ar: "بلا صلاحيات", permissions: [] },
     { id: 70, name: "دور عربي فقط", name_ar: "دور عربي فقط", permissions: [] },
   ];
-  if (process.argv.includes("--warehouse-only") || process.argv.includes("--warehouse-mobile")) choices.push({
+  if (process.argv.includes("--warehouse-only") || process.argv.includes("--warehouse-mobile") || receiptDetailsOnly) choices.push({
     id: 8, name: "Warehouse Keeper", name_ar: "أمين المستودع",
     permissions: ["view_home", "view_user_dashboard", "view_production_hall", "receive_production",
       "view_finished_inventory", "manage_finished_warehouse", "view_raw_inventory", "manage_raw_materials",
@@ -37,6 +57,17 @@ const WebSocket = require("ws");
   };
   const app = express();
   app.use(express.json());
+  let receiptPrintHtml;
+  if (receiptDetailsOnly) {
+    const bundle = path.join(temp, "receipt-document.cjs");
+    require("esbuild").buildSync({ entryPoints: ["client/src/lib/receipt-print.ts"], bundle: true, platform: "node", format: "cjs", outfile: bundle, logLevel: "silent" });
+    ({ receiptPrintHtml } = require(bundle));
+    app.get("/fixture-receipt", (req, res) => {
+      const { makeReceiptFixture } = require("./lib/receipt-pagination.cjs");
+      const receipt = makeReceiptFixture(Number(req.query.count), String(req.query.language));
+      res.type("html").send(receiptPrintHtml(receipt, String(req.query.language), receiptBranding));
+    });
+  }
   app.use("/api", (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.path === "/me") return res.json({ user: currentUser() });
@@ -55,6 +86,16 @@ const WebSocket = require("ws");
       deleted = false;
       return res.json({ success: true, user: currentUser() });
     }
+    if (receiptDetailsOnly && req.method === "POST" && req.path === "/production/receipts") {
+      writes.push({ method: req.method, body: req.body });
+      storedReceipt = { id: 101, voucher_number: "FP-Rec0101", created_at: "2026-10-16T08:00:00Z", created_by: 7,
+        receiver_name: "Stored Keeper", receiver_name_ar: "أمين السند المحفوظ", notes: req.body.notes ?? null,
+        items: req.body.items.map((item, index) => ({ ...item, id: index + 1, customer_product_id: 11,
+          item_id: "ITM001", location_id: 1, line_number: index + 1, production_order_number: receiptOrder.production_order_number,
+          customer_name: receiptOrder.product.customer_name, customer_name_ar: receiptOrder.product.customer_name_ar,
+          product_name: receiptOrder.product.name, product_name_ar: receiptOrder.product.name_ar })) };
+      return res.json(storedReceipt);
+    }
     if (req.method !== "GET") {
       errors.push(`Unexpected fixture write ${req.method} ${req.path}`);
       return res.sendStatus(400);
@@ -62,15 +103,22 @@ const WebSocket = require("ws");
     if (req.path === "/self/attendance") return res.json(null);
     if (req.path.startsWith("/self/")) return res.json([]);
     if (req.path === "/dashboard") return res.json({ customers: 1, orders: 1, production_orders: 1, machines: 1, users: 1 });
+    if (req.path === "/production/receipt-branding") return res.json(receiptBranding);
     if (req.path === "/production/state") return res.json({
-      orders: [], rolls: [], queues: [], machines: [], locations: [], inventory: [], receipts: [], movements: [],
+      orders: receiptDetailsOnly ? [receiptOrder] : [], rolls: [], queues: [], machines: [], locations: [], inventory: [], receipts: storedReceipt ? [storedReceipt] : [], movements: [],
       totals: { orders: 3, receipts: 5, movements: 7, inventory: 4, inventory_kg: "1250" },
     });
     if (req.path === "/production/mixing") return res.json({
-      materials: process.argv.includes("--warehouse-mobile") ? [
+      materials: process.argv.includes("--warehouse-mobile") || mixActionsOnly ? [
         { id: 1, item_id: "RAW-TEST", code: "RAW-TEST", name: "Test raw material", name_ar: "خام اختبار", quantity_kg: "42", is_active: true },
       ] : [],
-      machines: [], latest_mixes: [], records: [], next_before: null, raw_vouchers: [],
+      machines: mixActionsOnly ? [{ id: "MX1", name: "Test machine", name_ar: "ماكينة اختبار", status: "active", screw_type: "single" }] : [],
+      latest_mixes: [], records: mixActionsOnly ? [{
+        id: 1, machine_id: "MX1", machine_name: "Test machine", machine_name_ar: "ماكينة اختبار",
+        screw: "A", created_by: 7, actor_name: "Recorded Operator", actor_name_ar: "مشغل السجل",
+        created_at: "2026-10-16T06:00:00Z", total_kg: "42", notes: null,
+        items: [{ material_id: 1, code: "RAW-TEST", name: "Test raw material", name_ar: "خام اختبار", quantity_kg: "42" }],
+      }] : [], next_before: null, raw_vouchers: [],
     });
     if (req.path === "/production/delivery-stock" || req.path === "/production/deliveries" || req.path.startsWith("/production/history/")) {
       return res.json({ records: [], next: null, total: 0, total_kg: "0" });
@@ -138,6 +186,102 @@ const WebSocket = require("ws");
       await send("Page.navigate", { url: origin + "/" });
       await wait("!!document.querySelector('.shell')");
     };
+
+    if (mixActionsOnly) {
+      originalAdmin = false; ordinaryRoleId = 20;
+      for (const lang of ["ar", "en"]) for (const width of [320, 390, 430, 768, 1440]) {
+        language = lang;
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+        await send("Page.navigate", { url: origin + "/production/mixing" });
+        await wait(`document.documentElement?.lang===${JSON.stringify(lang)}&&document.querySelectorAll('.raw-mix-primary-actions > button').length===3`);
+        const data = await evaluate(`(() => {
+          const buttons=Array.from(document.querySelectorAll('.raw-mix-primary-actions > button'));
+          return {labels:buttons.map(b=>b.textContent.trim()),tops:buttons.map(b=>Math.round(b.getBoundingClientRect().top)),
+            fit:buttons.every(b=>b.scrollWidth<=b.clientWidth+1),heights:buttons.map(b=>b.getBoundingClientRect().height),
+            overflow:document.documentElement.scrollWidth>innerWidth+1};
+        })()`);
+        if (lang === "ar") check(`${width} requested mix labels`, data.labels, ["إضافة مادة", "إضافة ملاحظة", "تسجيل الخلطة"]);
+        check(`${lang} ${width} mixing actions do not overflow`, data.overflow, false);
+        await wait("!!document.querySelector('.raw-ops-record')");
+        check(`${lang} ${width} film operator has no saved composition`, await evaluate("!document.querySelector('.raw-mix-summary-card')"));
+        check(`${lang} ${width} mixing history and details remain`, await evaluate(
+          `document.querySelector('.raw-ops-record').textContent.includes('42')&&document.querySelector('.raw-ops-record').textContent.includes(${JSON.stringify(lang === "ar" ? "خام اختبار" : "Test raw material")})`));
+        if (width < 500) {
+          check(`${lang} ${width} three actions one row`, new Set(data.tops).size, 1);
+          check(`${lang} ${width} readable labels and touch targets`, data.fit && data.heights.every(height=>height>=43));
+        }
+        const rows = await evaluate("document.querySelectorAll('[id^=\"mix-quantity-\"]').length");
+        await click(".raw-mix-primary-actions > button:first-child");
+        check(`${lang} ${width} add material still works`, await evaluate("document.querySelectorAll('[id^=\"mix-quantity-\"]').length"), rows + 1);
+        await click(".raw-mix-primary-actions > button:nth-child(2)");
+        check(`${lang} ${width} note control still works`, await evaluate("!!document.querySelector('#mix-notes')"));
+        if (lang === "ar" && width === 390) {
+          await fs.mkdir(path.resolve("generated-artifacts/mixing-layout"), { recursive: true });
+          await evaluate("document.querySelector('.raw-mix-primary-actions').scrollIntoView({block:'center'})");
+          const capture = await send("Page.captureScreenshot", { format: "png" });
+          await fs.writeFile(path.resolve("generated-artifacts/mixing-layout/operator-ar-390.png"), Buffer.from(capture.data, "base64"));
+        }
+      }
+      originalAdmin = true; selected = 20;
+      await send("Page.navigate", { url: origin + "/production/mixing" });
+      await wait("!!document.querySelector('.raw-ops-record')&&!!document.querySelector('.rs-trigger.is-active')");
+      check("preview of film role also hides composition", await evaluate("!document.querySelector('.raw-mix-summary-card')"));
+      selected = null;
+      await send("Page.navigate", { url: origin + "/production/mixing" });
+      await wait("!!document.querySelector('.raw-mix-summary-card')");
+      check("administrator retains saved composition and history", await evaluate("!!document.querySelector('.raw-ops-record')"));
+      check("mixing controls no runtime errors or unexpected writes", errors, []);
+      console.log(`${passed} mixing action checks passed.`);
+      return;
+    }
+
+    if (receiptDetailsOnly) {
+      originalAdmin = false; ordinaryRoleId = 8;
+      const setNativeValue = (selector, value) => evaluate(`(() => { const el=document.querySelector(${JSON.stringify(selector)});
+        const setter=Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set;
+        setter.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+      for (const lang of ["ar", "en"]) for (const width of [390, 768, 1440]) {
+        language = lang; storedReceipt = null;
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+        await send("Page.navigate", { url: origin + "/warehouse/hall" });
+        await wait(`document.documentElement?.lang===${JSON.stringify(lang)}&&!!document.querySelector('[data-receipt-launcher]')&&!document.querySelector('.prod-loading')`);
+        await click("[data-receipt-launcher]");
+        await wait("!!document.querySelector('[data-receipt-voucher] [data-receipt-factory-header] img')");
+        await setNativeValue("[data-receipt-order='0']", "1");
+        await setNativeValue("[data-receipt-quantity='0']", "5.25");
+        await wait("document.querySelector('[data-receipt-customer]')?.textContent.includes(" + JSON.stringify(lang === "ar" ? "عميل السند" : "Receipt Customer") + ")");
+        check(`${lang} ${width} form displays item`, await evaluate(`document.querySelector('[data-receipt-item]').textContent.includes(${JSON.stringify(lang === "ar" ? "صنف السند" : "Receipt Item")})`));
+        check(`${lang} ${width} factory header includes both names`, await evaluate(
+          "document.querySelector('[data-receipt-factory-header]').textContent.includes('Receipt Test Factory')&&document.querySelector('[data-receipt-factory-header]').textContent.includes('مصنع اختبار السند')"));
+        check(`${lang} ${width} no page overflow`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+        await click("[data-receipt-preview-trigger]");
+        await wait("!!document.querySelector('[data-receipt-preview]')");
+        check(`${lang} ${width} preview displays customer and item`, await evaluate(
+          "!!document.querySelector('[data-receipt-preview-customer]')&&!!document.querySelector('[data-receipt-preview-item]')"));
+        await click("[data-receipt-preview-back]");
+        await click("[data-receipt-submit]");
+        await wait("!!document.querySelector('[data-receipt-receiver]')&&document.querySelector('[data-receipt-receiver]').textContent.includes(" +
+          JSON.stringify(lang === "ar" ? "أمين السند المحفوظ" : "Stored Keeper") + ")");
+        check(`${lang} ${width} saved receiver comes from receipt, not viewer`, await evaluate(
+          "!document.querySelector('[data-receipt-receiver]').textContent.includes('Fixture admin')"));
+      }
+      const directory = path.resolve("generated-artifacts/receipt-documents");
+      await fs.mkdir(directory, { recursive: true });
+      const { makeReceiptFixture, inspectReceiptPdf } = require("./lib/receipt-pagination.cjs");
+      for (const lang of ["ar", "en"]) for (const count of [1, 2, 25, 26, 50, 51, 99, 100]) {
+        await send("Page.navigate", { url: `${origin}/fixture-receipt?language=${lang}&count=${count}` });
+        await wait(`document.documentElement?.lang===${JSON.stringify(lang)}&&document.querySelectorAll('tbody tr').length===${count}`);
+        await evaluate("Promise.all([document.fonts.ready,...Array.from(document.images).map(image=>image.decode())]).then(()=>true)");
+        const pdf = await send("Page.printToPDF", { preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false });
+        const file = path.join(directory, `${lang}-${count}.pdf`);
+        await fs.writeFile(file, Buffer.from(pdf.data, "base64"));
+        inspectReceiptPdf(file, makeReceiptFixture(count, lang), lang, receiptBranding.companyNameAr);
+        check(`${lang} ${count} A4 rows paginate without clipping`, true);
+      }
+      check("receipt identities no runtime errors or unexpected writes", errors, []);
+      console.log(`${passed} receipt identity checks passed.`);
+      return;
+    }
 
     if (process.argv.includes("--warehouse-mobile")) {
       const routes = ["/warehouse/hall", "/warehouse/finished-inventory", "/warehouse/raw-materials"];

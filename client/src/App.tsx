@@ -908,6 +908,7 @@ function App() {
   }
   const isAdmin = can(auth.user, ["admin"]);
   const productionUser = { id: Number(auth.user.id), permissions: auth.user.permissions ?? [],
+    display_name: auth.user.display_name, display_name_ar: auth.user.display_name_ar, username: auth.user.username,
     production_role_binding: auth.user.production_role_binding };
   const productionHome = initialProductionPath(productionUser);
   const warehouseHome = initialWarehousePath(productionUser);

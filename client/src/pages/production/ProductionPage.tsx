@@ -538,8 +538,10 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
       onSubmit={submit}
       onRetry={write.error&&!formError?()=>void write.retry():undefined}
       onClose={closeReceipt}
-      orderLabel={order=>orderProduct(order,language)}
       customerLabel={order=>customerName(order,language)}
+      currentReceiverLabel={language === "en"
+        ? ([user.display_name, user.username].find(name => name?.trim() && !/\p{Script=Arabic}/u.test(name)) ?? `#${user.id}`)
+        : user.display_name_ar?.trim() || user.display_name?.trim() || user.username?.trim() || `#${user.id}`}
       number={number}
     />}
   </>;

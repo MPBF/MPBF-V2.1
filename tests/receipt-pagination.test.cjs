@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { makeReceiptFixture, validateReceiptPages } = require("../scripts/lib/receipt-pagination.cjs");
 
 const fixture = makeReceiptFixture(2, "en");
-const headers = "Line Production order Received quantity (kg)";
+const headers = "Line Production order Customer Item Received quantity (kg)";
 const rows = fixture.items.map(item =>
   `${item.line_number} ${item.production_order_number} ${item.quantity_kg} kg`);
 const closing = "Voucher total: 3.50 kg\nNotes: END-NOTES-67\nReleased by · production hall\nReceived by · finished-goods hall";
@@ -31,7 +31,7 @@ test("PDF text contract accepts complete single and multiple pages", () => {
 
 test("Arabic header extraction may relocate parentheses but must preserve all unit letters", () => {
   const receipt=makeReceiptFixture(1,"ar");
-  const page=`${receipt.voucher_number}\nم أمر الإنتاج )الكمية المستلمة (كجم
+  const page=`${receipt.voucher_number}\nم أمر الإنتاج العميل الصنف )الكمية المستلمة (كجم
 1 ${receipt.items[0].production_order_number} 1.25 kg
 إجمالي السند: 1.25 kg
 END-NOTES-67
@@ -54,6 +54,11 @@ test("PDF text contract rejects incomplete and unrepeated column headings", () =
   assert.throws(() => validateReceiptPages([
     `${fixture.voucher_number}\n${headers}\n${rows[0]}`, `${rows[1]}\n${closing}`,
   ], fixture, "en"));
+});
+
+test("English documents allow only the explicitly bilingual factory name", () => {
+  validateReceiptPages([`مصنع الاختبار\n${valid}`], fixture, "en", "مصنع الاختبار");
+  assert.throws(() => validateReceiptPages([`مصنع الاختبار\nعميل عربي\n${valid}`], fixture, "en", "مصنع الاختبار"));
 });
 
 test("PDF text contract rejects wrong totals, missing or duplicated signatures and notes", () => {
