@@ -72,3 +72,12 @@ identity layout; it is an intentional exception to English-only UI fallbacks.
 
 **How to apply:** preserve both factory names in header refinements rather
 than switching the brand identity to only the current UI language.
+
+Order-number, date, delivery-date and delivery-duration values stay close to
+their labels in the print header, rather than being pushed to opposite edges.
+
+**Why:** the user explicitly requested reducing the distance between these
+labels and values.
+
+**How to apply:** preserve the fields and their values; keep compact logical
+label/value alignment in both Arabic and English without changing the header grid.
