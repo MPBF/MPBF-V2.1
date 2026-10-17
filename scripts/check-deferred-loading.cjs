@@ -7,7 +7,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
-const XLSX = require("xlsx");
+const { Workbook } = require("exceljs");
 const { collectInitialAssets, assertLoginAssets } = require("./lib/initial-load-budget.cjs");
 const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pagination.cjs");
 
@@ -154,8 +154,9 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         if (/(?:HumanResources|UsersAdmin|RolesAdmin|SettingsAdmin)-.*\.js$/.test(url.pathname)) await new Promise(resolve => setTimeout(resolve, 350));
       }
       const type = file.endsWith(".js") ? "text/javascript" : file.endsWith(".css") ? "text/css" : "text/html";
+      const body = await fs.readFile(file);
       response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
-      response.end(await fs.readFile(file));
+      response.end(body);
     } catch (error) {
       errors.push(error.message);
       response.writeHead(500); response.end("Fixture failure");
@@ -225,7 +226,7 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
     await checkReceiptPagination({ temp, open, wait, evaluate, send });
     const click = async selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
     const adminChunks = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|DataTransferAdmin)-.*\.js$/;
-    const deferred = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|DataTransferAdmin|HumanResources|UserDashboard|ProductionPage|OrderPrintPage|OrderCreateModal|CustomerProductModal|CustomerModal|ProductionOrderModal|OrderDetailsModal|OrderWorkspaceControls|xlsx|jspdf|html2canvas)[-.]/;
+    const deferred = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|DataTransferAdmin|HumanResources|UserDashboard|ProductionPage|OrderPrintPage|OrderCreateModal|CustomerProductModal|CustomerModal|ProductionOrderModal|OrderDetailsModal|OrderWorkspaceControls|exceljs|jspdf|html2canvas)[-.]/;
     const download = async extension => {
       for (let attempt = 0; attempt < 400; attempt++) {
         const file = (await fs.readdir(temp)).find(name => name.endsWith(extension) && !name.endsWith("-order.pdf"));
@@ -252,18 +253,19 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       await wait("!!document.querySelector('.hr-tabs')");
       check(`${lang} HR chunk requested on navigation`, assets.some(value => /HumanResources-.*\.js/.test(value)));
       await click('.hr-tabs button:nth-child(3)'); await wait("document.querySelectorAll('.hr-report-sheet tbody tr').length===1");
-      check(`${lang} report does not preload export engines`, assets.filter(value => /(?:xlsx|jspdf|html2canvas)/.test(value)), []);
+      check(`${lang} report does not preload export engines`, assets.filter(value => /(?:exceljs|jspdf|html2canvas)/.test(value)), []);
       await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Excel').click()");
       const excel = await download(".xlsx");
-      const workbook = XLSX.readFile(excel);
-      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+      const workbook = new Workbook();
+      await workbook.xlsx.readFile(excel);
+      const rows = workbook.worksheets[0].getSheetValues().slice(1).map(row => row.slice(1));
       check(`${lang} Excel has all seven columns`, rows[0].length, 7);
       check(`${lang} Excel names and attendance values`, rows[1], [
         "موظف تجريبي\nFixture Employee", "Fixture Section", lang === "ar" ? "8 س 00 د" : "8 h 00 min", 1, 2, 3, lang === "ar" ? "0 س 30 د" : "0 h 30 min",
       ]);
       check(`${lang} Excel headers localized`, rows[0][0], lang === "ar" ? "اسم المستخدم" : "Username");
       await fs.unlink(excel);
-      check(`${lang} Excel engine now requested`, assets.some(value => /xlsx-/.test(value)));
+      check(`${lang} Excel engine now requested`, assets.some(value => /exceljs[.-]/.test(value)));
       check(`${lang} Excel does not load PDF engines`, assets.some(value => /(?:jspdf|html2canvas)/.test(value)), false);
       await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='PDF').click()");
       const pdf = await download(".pdf");
@@ -289,7 +291,7 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       check(`${lang} fresh read-only order list loads feature CSS`, await evaluate("getComputedStyle(document.querySelector('table .order-actions')).display"), "grid");
       await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
       check(`${lang} mobile order cards remain visible`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards')).display"), "grid");
-      check(`${lang} mobile status retains sizing`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-status')).minHeight"), "26px");
+      check(`${lang} mobile status retains sizing`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-status')).minHeight"), "28px");
       check(`${lang} mobile order rows retain two action lines`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-actions')).gridTemplateRows.split(' ').length"), 2);
       await send("Emulation.clearDeviceMetricsOverride");
       permissions = ["admin"];

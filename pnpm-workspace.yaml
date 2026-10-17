@@ -6,3 +6,35 @@ allowBuilds:
   es5-ext: true
   esbuild: true
   unrs-resolver: true
+
+overrides:
+  uuid: 14.0.2
+  '@tootallnate/once': 3.0.1
+  esbuild: ^0.25.12
+  brace-expansion@1: 1.1.21
+  brace-expansion@2: 2.1.7
+  brace-expansion@5: 5.0.12
+  picomatch: 4.0.5
+  ip-address: 10.7.4
+  'ajv>fast-uri': 3.1.8
+  hono: 4.13.7
+  dompurify: 3.4.17
+  '@xmldom/xmldom@0.8': 0.8.15
+  browserslist: 4.28.9
+  baseline-browser-mapping: 2.11.21
+  qs: 6.16.0
+  'three-stdlib>fflate': 0.6.11
+  '@types/three>fflate': 0.6.11
+  'jspdf>fflate': 0.8.3
+  postcss-selector-parser: 7.1.6
+  '@eslint/eslintrc>js-yaml': 5.4.1
+  '@istanbuljs/load-nyc-config>js-yaml': 5.4.1
+  'postcss>nanoid': 3.3.18
+  braces: npm:@dieub/braces-depth-guard@3.0.3-pn.3
+  argparse@1: 2.0.1
+  axios@1: 1.20.0
+  js-yaml@3: 3.15.2
+  js-yaml@4: 4.3.2
+  proxy-addr: 2.0.8
+  source-map-js: 1.2.2
+  tedious@20: 20.3.7

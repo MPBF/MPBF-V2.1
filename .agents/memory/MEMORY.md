@@ -101,6 +101,7 @@
 - [Transient UI checks](transient-ui-verification.md) — capture loading text while detecting the element; a later browser call may run after it has disappeared.
 - [Database transfer policy](database-data-tool-policy.md) — new rows may be added; existing-row updates need explicit approval after preview, never automatic deletion.
 - [Package firewall lockfiles](package-firewall-lockfiles.md) — parent upgrades can retain blocked transitives; verify compatible patched resolutions with a clean install.
+- [Dependency alternatives](dependency-security-alternatives.md) — use functional fixes over scanner renaming; bounded braces fork, existing ExcelJS, and editor-bundle scope.
 - [Customer drawer format](customer-drawer-format.md) — A–Z plus 1–100 saved as C-24; new selections must not rewrite historical codes on unrelated edits.
 - [Product facing policy](customer-product-facing-policy.md) — each side must be ≤ half the width; category labels omit codes and side arrows retain physical direction.
 - [Mobile primary navigation](mobile-primary-navigation.md) — More keeps all authorized main pages reachable when the phone bottom bar cannot fit them.

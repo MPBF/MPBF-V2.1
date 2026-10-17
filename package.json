@@ -24,7 +24,7 @@
     "@google-cloud/storage": "^7.18.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@neondatabase/serverless": "^1.2.0",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",
@@ -76,7 +76,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "compression": "^1.8.1",
+    "compression": "^1.8.2",
     "connect-pg-simple": "^10.0.0",
     "date-fns": "^3.6.0",
     "docx": "^9.6.0",
@@ -99,14 +99,14 @@
     "jszip": "^3.10.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.453.0",
-    "mammoth": "^1.12.0",
+    "mammoth": "^1.13.0",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",
-    "mssql": "^12.6.0",
-    "multer": "^2.3.0",
+    "mssql": "^12.7.9",
+    "multer": "^2.4.0",
     "nanoid": "^5.1.16",
     "next-themes": "^0.4.6",
-    "nodemailer": "^10.0.1",
+    "nodemailer": "^10.1.2",
     "openai": "^5.23.2",
     "openid-client": "^6.8.1",
     "p-limit": "^7.2.0",
@@ -141,7 +141,6 @@
     "winston": "^3.19.0",
     "wouter": "^3.3.5",
     "ws": "^8.21.1",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.25.76",
     "zod-validation-error": "^3.5.4"
   },
@@ -151,7 +150,7 @@
     "@replit/vite-plugin-cartographer": "^0.6.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
     "@tailwindcss/typography": "^0.5.15",
-    "@tailwindcss/vite": "^4.1.3",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/bcrypt": "^6.0.0",
     "@types/compression": "^1.8.1",
     "@types/connect-pg-simple": "^7.0.3",
@@ -209,23 +208,16 @@
     "uuid": "14.0.2",
     "@tootallnate/once": "3.0.1",
     "esbuild": "^0.25.12",
-    "minimatch@3": {
-      "brace-expansion": "1.1.18"
-    },
-    "minimatch@5": {
-      "brace-expansion": "2.1.4"
-    },
-    "minimatch@9": {
-      "brace-expansion": "2.1.4"
-    },
+    "brace-expansion@1": "1.1.21",
+    "brace-expansion@2": "2.1.7",
     "picomatch": "4.0.5",
-    "ip-address": "10.3.1",
+    "ip-address": "10.7.4",
     "ajv": {
-      "fast-uri": "4.1.4"
+      "fast-uri": "3.1.8"
     },
     "hono": "4.13.7",
-    "dompurify": "3.4.15",
-    "@xmldom/xmldom": "0.9.12",
+    "dompurify": "3.4.17",
+    "@xmldom/xmldom@0.8": "0.8.15",
     "browserslist": "4.28.9",
     "baseline-browser-mapping": "2.11.21",
     "qs": "6.16.0",
@@ -239,10 +231,10 @@
       "fflate": "0.8.3"
     },
     "tailwindcss": {
-      "postcss-selector-parser": "6.1.3"
+      "postcss-selector-parser": "7.1.6"
     },
     "postcss-nested": {
-      "postcss-selector-parser": "6.1.3"
+      "postcss-selector-parser": "7.1.6"
     },
     "@eslint/eslintrc": {
       "js-yaml": "5.4.1"
@@ -252,6 +244,15 @@
     },
     "postcss": {
       "nanoid": "3.3.18"
-    }
+    },
+    "brace-expansion@5": "5.0.12",
+    "postcss-selector-parser": "7.1.6",
+    "braces": "npm:@dieub/braces-depth-guard@3.0.3-pn.3",
+    "argparse@1": "2.0.1",
+    "axios@1": "1.20.0",
+    "js-yaml@3": "3.15.2",
+    "js-yaml@4": "4.3.2",
+    "proxy-addr": "2.0.8",
+    "source-map-js": "1.2.2"
   }
 }
