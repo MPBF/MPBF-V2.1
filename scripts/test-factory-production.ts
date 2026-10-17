@@ -29,6 +29,11 @@ if (process.argv.includes("--large") && !process.argv.includes("--local")) throw
 if (process.argv.includes("--search-experiments") && (!process.argv.includes("--local") || !process.argv.includes("--large"))) {
   throw Error("Search experiments require --local --large and a disposable database.");
 }
+if ((process.argv.includes("--hall-comparison") || process.argv.some(arg => arg.startsWith("--hall-archive-size=")))
+  && (!process.argv.includes("--local") || !process.argv.includes("--large")))
+  throw Error("Hall comparison requires --local --large and a disposable database.");
+if (process.argv.includes("--hall-comparison") && process.argv.includes("--search-experiments"))
+  throw Error("Run hall and search comparisons separately.");
 // --local never connects to the application's database.
 const pool = process.argv.includes("--local")
   ? new LocalPool({ host: "127.0.0.1", port: 55439, user: "runner", database: "factory_isolated_test" })

@@ -6,6 +6,7 @@ import { ProductionReadService } from "../server/production/read";
 import { inventorySelect, movementSelect, orderSelect, receiptSelect, rollSelect } from "../server/production/read-queries";
 import { productionReadPlans } from "./production-read-plans";
 import { compareProductionSearch } from "./production-search-experiments";
+import { productionHallComparison } from "./production-hall-comparison";
 
 type Query = (text: string, values?: unknown[]) => Promise<any[]>;
 export async function verifyProductionHistory(pool: ConnectionPool, query: Query, large: boolean) {
@@ -62,9 +63,18 @@ export async function verifyProductionHistory(pool: ConnectionPool, query: Query
   // Synthetic records only, inside the disposable fixture database/schema.
   // Keep 70 OLD completed orders partially unreceived: a single 50-row archive
   // page must never determine what the hall can receive.
+  const comparison = process.argv.includes("--hall-comparison");
+  const hallSizeArg = process.argv.find(arg => arg.startsWith("--hall-archive-size="))?.slice("--hall-archive-size=".length);
   const sizeArg = process.argv.find(arg => arg.startsWith("--archive-size="))?.slice("--archive-size=".length);
-  const size = sizeArg === undefined ? 100000 : Number(sizeArg);
+  assert.ok(hallSizeArg === undefined || comparison, "Hall archive size requires --hall-comparison.");
+  assert.ok(hallSizeArg === undefined || sizeArg === undefined, "Use only one archive size flag.");
+  const requestedSize = hallSizeArg ?? sizeArg;
+  const size = requestedSize === undefined ? 100000 : Number(requestedSize);
   assert.ok(Number.isSafeInteger(size) && size >= 1000 && size <= 100000, "Archive size must be between 1000 and 100000");
+  if (comparison) {
+    assert.ok(process.argv.includes("--local") && large, "Hall comparison requires --local --large.");
+    assert.ok([10000, 100000].includes(size), "Supported hall archive sizes: 10000 and 100000.");
+  }
   // Keep the archive disjoint from lifecycle/order-release fixture IDs.
   const offset = Number((await query("SELECT COALESCE(max(id),0)::int n FROM orders"))[0].n);
   const archiveStart = offset + 1;
@@ -138,6 +148,11 @@ export async function verifyProductionHistory(pool: ConnectionPool, query: Query
     (SELECT count(*)::int FROM factory_rolls) rolls,(SELECT count(*)::int FROM factory_receipts) receipts,
     (SELECT count(*)::int FROM factory_movements) movements,count(*)::int inventory,sum(quantity_kg)::text inventory_kg FROM factory_inventory`))[0];
   assert.deepEqual(current.totals, totals);
+  if (comparison) {
+    await productionHallComparison(pool, size);
+    console.log(`PASS isolated hall comparison: ${size} orders, full-source totals, 70 old balances, 121-roll boundary`);
+    return;
+  }
   if (process.argv.includes("--search-experiments")) {
     await compareProductionSearch(pool, `ARCHIVE-PO-${archiveStart}`);
     console.log(`PASS isolated search comparison: ${size} synthetic orders and vouchers / ${size * 3} rolls`);
