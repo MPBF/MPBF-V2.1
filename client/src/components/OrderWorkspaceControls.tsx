@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Check, ChevronDown, MoreHorizontal, MoveRight } from "lucide-react";
+import { Check, ChevronDown, MoveRight } from "lucide-react";
 import { canApplyOrderAction, type OrderDisplayFolder, type OrderWorkspaceAction } from "../../../shared/order-workspace";
 import { ORDER_FOLDER_KEYS, ORDER_FOLDER_LABELS } from "../lib/order-workspace";
 import { translate } from "../i18n";
@@ -49,7 +49,7 @@ export function OrderRowActionMenu({ row, enabled, onAction }: { row: WorkspaceO
     setOpen(false);
   };
   return <details className="order-row-menu" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary className="btn btn-plain" aria-label={translate("إجراء على الطلب")} title={translate("إجراء على الطلب")}><MoreHorizontal size={17} /><ChevronDown size={13} /></summary>
+    <summary className="btn btn-plain" aria-label={translate("تغيير حالة الطلب")} title={translate("تغيير حالة الطلب")}><span>{translate("تغيير حالة الطلب")}</span><ChevronDown size={13} /></summary>
     <div className="order-row-menu__items" role="group" aria-label={translate("إجراء على الطلب")}>
       <button type="button" disabled={!enabled || !canApplyOrderAction(row.status, "release")} onClick={() => void perform("release")}>{translate("إطلاق للإنتاج")}</button>
       <button type="button" disabled={!enabled || !canApplyOrderAction(row.status, "pause")} onClick={() => void perform("pause")}>{translate("إيقاف مؤقت")}</button>

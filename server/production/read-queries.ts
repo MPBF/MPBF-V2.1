@@ -94,8 +94,8 @@ export const inventorySelect = `SELECT inv.*,p.production_order_number,p.batch_n
   l.name location_name,l.name_ar location_name_ar
   FROM factory_inventory inv
   JOIN factory_execution e ON e.production_order_id=inv.production_order_id
-  LEFT JOIN customer_products cp ON cp.id=p.customer_product_id
   JOIN production_orders p ON p.id=inv.production_order_id JOIN factory_locations l ON l.id=inv.location_id
+  LEFT JOIN customer_products cp ON cp.id=p.customer_product_id
   `;
 export const movementSelect = `SELECT m.*,r.voucher_number,ri.production_order_id,ri.location_id,p.production_order_number
   FROM factory_movements m JOIN factory_receipts r ON r.id=m.receipt_id

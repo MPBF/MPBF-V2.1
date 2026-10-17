@@ -31,7 +31,8 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
   const warehouseNavigationOnly = process.argv.includes("--warehouse-navigation-only");
   const hallCompactOnly = process.argv.includes("--hall-compact-only");
   const rawMixingOnly = process.argv.includes("--raw-mixing-only");
-  const receiptVoucherOnly = process.argv.includes("--receipt-voucher-only");
+  const receiptLauncherOnly = process.argv.includes("--receipt-launcher-only");
+  const receiptVoucherOnly = process.argv.includes("--receipt-voucher-only") || receiptLauncherOnly;
   let rejectMix = false;
   const rawState = {
     materials: [
@@ -325,10 +326,31 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           await send("Emulation.setDeviceMetricsOverride",{width,height:844,deviceScaleFactor:1,mobile:width===390});
           await navigate("/warehouse/hall");
           check(`${lang} ${width} receipt initially collapsed`,await evaluate("!document.querySelector('[data-receipt-voucher]')"));
+          check(`${lang} ${width} one receipt button handles both selection modes`,await evaluate("document.querySelectorAll('[data-receipt-launcher],[data-hall-receive-selected]').length"),1);
+          check(`${lang} ${width} receipt button enabled without selection`,await evaluate("!document.querySelector('[data-receipt-launcher]').disabled"));
+          await openReceipt();
+          check(`${lang} ${width} no selection opens an empty receipt`,await evaluate("document.querySelectorAll('.receipt-voucher-table tbody tr').length===1&&document.querySelector('#receipt-order-0').value===''"));
+          await evaluate("document.querySelector('.receipt-voucher-close').click()");
+          await wait("!document.querySelector('[data-receipt-voucher]')");
           await evaluate("document.querySelector('[data-hall-select=\"4\"]').click();document.querySelector('[data-hall-select=\"8\"]').click();document.querySelector('[data-hall-receive-selected]').click()");
           await wait("!!document.querySelector('[data-receipt-voucher]')");
           check(`${lang} ${width} selected orders are prefilled`,await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-order-1').value]"),["4","8"]);
           check(`${lang} ${width} voucher uses numbered table`,await evaluate("!!document.querySelector('.receipt-voucher-table thead')&&document.querySelectorAll('.receipt-voucher-table tbody tr').length===2"));
+          if(receiptLauncherOnly){
+            await setInput("#receipt-quantity-0","10.00");
+            await evaluate("document.querySelector('.receipt-voucher-close').click()");
+            await wait("!document.querySelector('[data-receipt-voucher]')");
+            await wait("document.activeElement.matches('[data-receipt-launcher]')");
+            await evaluate("document.querySelector('.warehouse-receipt-actions .quiet').click()");
+            await openReceipt();
+            check(`${lang} ${width} reopening without selection preserves draft`,await evaluate("[document.querySelector('#receipt-order-0').value,document.querySelector('#receipt-quantity-0').value]"),["4","10.00"]);
+            check(`${lang} ${width} receipt fits viewport`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+            if(lang==="ar"&&width===390){
+              const shot=await send("Page.captureScreenshot",{format:"png"});
+              await fs.writeFile("/tmp/unified-receipt-phone.png",Buffer.from(shot.data,"base64"));
+            }
+            continue;
+          }
           check(`${lang} ${width} only four kg receipt columns`,await evaluate("document.querySelectorAll('.receipt-voucher-table th').length"),4);
           check(`${lang} ${width} metadata order matches the voucher`,await evaluate("[...document.querySelectorAll('.receipt-voucher-metadata-grid > [data-receipt-meta]')].map(node=>node.dataset.receiptMeta)"),["number","date","source","destination"]);
           check(`${lang} ${width} all four metadata fields share one row`,await evaluate("new Set([...document.querySelectorAll('.receipt-voucher-metadata-grid > [data-receipt-meta]')].map(node=>Math.round(node.getBoundingClientRect().top))).size===1"));
@@ -396,6 +418,14 @@ const stagePaths = stage => stage === "film" ? ["/production/film","/production/
           }
           if(lang==="ar"&&width===1440){const shot=await send("Page.captureScreenshot",{format:"png",captureBeyondViewport:false});await fs.writeFile("/tmp/unit-receipt-desktop.png",Buffer.from(shot.data,"base64"));}
         }
+      }
+      if(receiptLauncherOnly){
+        permissions=["view_production"];await navigate("/warehouse/hall");
+        check("read-only users have no receipt launcher",await evaluate("!document.querySelector('[data-receipt-launcher]')"));
+        check("opening and closing receipts makes no writes",writes.length,0);
+        check("no browser runtime errors",errors,[]);
+        console.log(`PASS ${passed} unified receipt launcher checks; all API calls used fixtures.`);
+        return;
       }
       language="en";await navigate("/warehouse/hall");await openReceipt();
       await setInput("#receipt-order-0","4");

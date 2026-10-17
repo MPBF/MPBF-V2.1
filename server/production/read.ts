@@ -3,10 +3,11 @@ import { one, permission, rows, ProductionError, type ConnectionPool, type Conne
 // Execution snapshots are frozen at start. Unstarted plans use current product data.
 import { hasProductionPermission, isPlasticRoll, productionPermissions, productionStageReadPermissions, type ProductionState, type ProductionStateScope, type ProductionUser, type ProductionRollRecord, type ProductionRollDetail, type ProductionOrderRecord, type ProductionHistoryKind, type ProductionHistoryFilter, type ProductionHistoryPage } from "../../shared/production";
 import { orderSelect, rollSelect, filmMachineGroups, filmDurationJSON, productionActorJSON } from "./read-queries";
-import { historyPage } from "./history";
+import { historyPage, historyReadDimensions } from "./history";
+import { productionReadPerformance, type ProductionReadPerformance, type ReadDimensions } from "./read-performance";
 import type { ReceiptBranding } from "../../shared/receipt-presentation";
 export class ProductionReadService {
-  constructor(readonly pool: ConnectionPool) {}
+  constructor(readonly pool: ConnectionPool, private readonly performance: ProductionReadPerformance = productionReadPerformance) {}
   async receiptBranding(actor: ProductionUser): Promise<ReceiptBranding> {
     permission(actor, "view_production_hall", "receive_production", "view_finished_inventory", "manage_finished_warehouse");
     const [profile] = await this.read(tx => rows<ReceiptBranding>(tx, `SELECT
@@ -77,12 +78,12 @@ export class ProductionReadService {
           COALESCE(sum(quantity_kg),0)::text inventory_kg FROM factory_inventory`) : {}),
       };
       return state;
-    });
+    }, { operation: "state", view: scope });
   }
   async history<K extends ProductionHistoryKind>(actor: ProductionUser, kind: K, filters: ProductionHistoryFilter): Promise<ProductionHistoryPage<K>> {
     permission(actor, ...(kind === "orders" || kind === "rolls" ? productionKeys :
       ["view_finished_inventory", "manage_finished_warehouse", "receive_production"]));
-    return this.read(tx => historyPage(tx, kind, filters));
+    return this.read(tx => historyPage(tx, kind, filters), historyReadDimensions(kind, filters));
   }
   async roll(actor: ProductionUser, id: number): Promise<ProductionRollDetail> {
     permission(actor, ...productionPermissions);
@@ -112,8 +113,16 @@ export class ProductionReadService {
       return ids.map(id => byId.get(id)!);
     });
   }
-  private async read<T>(action: (tx: Connection) => Promise<T>) {
-    const tx = await this.pool.connect();
+  private async read<T>(action: (tx: Connection) => Promise<T>, dimensions?: ReadDimensions): Promise<T> {
+    if (dimensions) return this.performance.measure(dimensions, timing => this.readTransaction(action, timing));
+    return this.readTransaction(action);
+  }
+  private async readTransaction<T>(action: (tx: Connection) => Promise<T>, timing?: {
+    connected(): void; connection(tx: Connection): Connection;
+  }): Promise<T> {
+    const connection = await this.pool.connect();
+    timing?.connected();
+    const tx = timing ? timing.connection(connection) : connection;
     try {
       await tx.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const result = await action(tx);

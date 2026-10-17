@@ -1,6 +1,13 @@
 import { isPlasticRoll, type ProductionHistoryFilter, type ProductionHistoryKind, type ProductionHistoryPage, type ProductionOrderRecord } from "../../shared/production";
 import { rows, type Connection } from "./core";
 import { inventorySelect, movementSelect, orderSelect, receiptSelect, rollSelect } from "./read-queries";
+import type { ReadDimensions } from "./read-performance";
+
+export function historyReadDimensions(kind: ProductionHistoryKind, filter: ProductionHistoryFilter): ReadDimensions {
+  return { operation: "history", view: kind, search: Boolean(filter.search),
+    filtered: Boolean(filter.status || filter.from || filter.to || filter.order_id || filter.location_id),
+    paged: Boolean(filter.before) };
+}
 
 export async function historyPage<K extends ProductionHistoryKind>(tx: Connection, kind: K, filter: ProductionHistoryFilter): Promise<ProductionHistoryPage<K>> {
   const params: unknown[] = [];
