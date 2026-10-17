@@ -69,7 +69,7 @@ try {
     INSERT INTO categories(name) VALUES('Protected fixture category');
     CREATE TABLE master_batch_colors(id varchar(20) PRIMARY KEY,name text,name_ar text,color_hex text);
     CREATE TABLE customer_products(id integer PRIMARY KEY,customer_id varchar(20),item_id varchar(20),
-      width numeric,left_facing numeric,right_facing numeric,universal_thickness numeric,cutting_length_cm integer,
+      width numeric,left_facing numeric,right_facing numeric,thickness numeric DEFAULT 25,universal_thickness numeric,cutting_length_cm integer,
       raw_material text,printing_cylinder text,punching text,notes text,front_print_colors text[],back_print_colors text[],
       is_printed boolean,status text,size_caption text,master_batch_id varchar(20));
     CREATE TABLE machines(id varchar(20) PRIMARY KEY,name text,name_ar text,type text,status text,inline_printer_id varchar(20),
@@ -96,6 +96,7 @@ try {
   await setup.query(readFileSync("migrations/0017_raw_mixing_screws.sql", "utf8"));
   await setup.query(readFileSync("migrations/0018_production_monitoring.sql", "utf8"));
   await setup.query(readFileSync("migrations/0019_finished_receipts_kg_only.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0021_finished_deliveries.sql", "utf8"));
   setup.release(); setup = undefined;
   await test("fixed hall receives with no locations, rolls back provisioning and serializes concurrent creation", async () => {
     assert.equal((await query("SELECT count(*)::int n FROM factory_locations"))[0].n,0);
@@ -297,14 +298,14 @@ try {
       "UPDATE orders SET customer_id='OTHER' WHERE id=4"]) await assert.rejects(query(sql), /factory|Factory/);
     assert.equal((await query("SELECT count(*)::int n FROM production_orders WHERE id=4"))[0].n, 1);
   });
-  await test("paused orders, wrong machine types/inactive machines, universal thickness are server-checked", async () => {
+  await test("paused orders, wrong machine types/inactive machines, original thickness are server-checked", async () => {
     await query("UPDATE orders SET status='paused' WHERE id=9");
     await assert.rejects(film(9), /متوقف/);
     await query("UPDATE orders SET status='in_production' WHERE id=9");
     await assert.rejects(service.film(actor, 9, { ...key(), machine_id: "P1", weight_kg: "1" }), /نشطة/);
     await assert.rejects(service.film(actor, 9, { ...key(), machine_id: "DOWN", weight_kg: "1" }), /نشطة/);
     await query("UPDATE machines SET min_thickness=30 WHERE id='F1'");
-    await assert.rejects(film(9), /حدود/);
+    await assert.rejects(film(9), /السماكة الأصلية.*الحد الأدنى/);
     await query("UPDATE machines SET min_thickness=NULL WHERE id='F1'");
   });
   await test("permissions, frozen route/product specs, independent stage queues, historic execution absence", async () => {

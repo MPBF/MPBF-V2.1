@@ -29,6 +29,18 @@ that roll as the last roll.
 **How to apply:** preserve these distinctions when adding labels, reports,
 scheduling, or warehouse extensions.
 
+Production-history performance work must retain full-source quantities and
+totals, including old completed orders with unreceived output; a history page
+is never an accounting boundary. Published-database indexes or schema changes
+require independent approval, even when a local benchmark suggests a benefit.
+
+**Why:** the user explicitly prohibited replacing totals with a history page
+or changing the published database as part of read-performance investigation.
+
+**How to apply:** diagnose with bounded metadata-only telemetry and read-only
+measurements; propose any persistent optimization separately without changing
+manufacturing or receipt semantics.
+
 المستودع صفحة رئيسية مستقلة تضم «صالة الإنتاج» و«مخزن المواد التامة».
 These are warehouse tabs, not production/operator tabs.
 

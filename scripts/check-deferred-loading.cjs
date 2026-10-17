@@ -207,10 +207,11 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
     const wait = async (expression, timeout = 15000) => {
       const deadline = Date.now() + timeout;
       while (Date.now() < deadline) {
-        if (await evaluate(expression)) return;
+        // A navigation may briefly expose a document with no body.
+        if (await evaluate(`!!document.body && (${expression})`)) return;
         await new Promise(resolve => setTimeout(resolve, 75));
       }
-      const page = await evaluate("({path:location.pathname,text:document.body.innerText.slice(0,1200)})");
+      const page = await evaluate("({path:location.pathname,text:document.body?.innerText.slice(0,1200)??''})");
       throw Error(`Timed out: ${expression}\n${JSON.stringify({ page, errors, apiRequests: apiRequests.slice(-10) })}`);
     };
     const loadingText = async selector => {
@@ -507,7 +508,9 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         await open("/fixture-receipt");
         await wait("document.querySelectorAll('tbody tr').length===3");
         check("English receipt print direction", await evaluate("document.documentElement.dir"), "ltr");
-        check("English receipt print has no retired unit columns", await evaluate("document.querySelectorAll('table th').length"),3);
+        check("English receipt print has current kg-only columns",
+          await evaluate("[...document.querySelectorAll('table th')].map(node=>node.textContent.trim())"),
+          ["Line", "Production order", "Customer", "Item", "Received quantity (kg)"]);
         check("English receipt print exact total", (await body()).includes("Voucher total: 25.00 kg"));
         await englishOnly("English receipt A4 print has no Arabic");
         const pdf = await send("Page.printToPDF", { preferCSSPageSize: true, printBackground: true });
