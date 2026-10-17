@@ -488,7 +488,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
   const lockReceipt=write.uncertain;
   const receiveSelected=()=>{
     const ids=selected.filter(id=>eligible.some(order=>order.id===id));
-    if(!ids.length)return;
+    if(!ids.length){setFormError("");setReceiptOpen(true);return;}
     const dirty=drafts.some(row=>row.orderId||row.quantity)||Boolean(notes);
     const draftIds=new Set(drafts.map(row=>Number(row.orderId)).filter(Boolean));
     if(dirty&&ids.length===draftIds.size&&ids.every(id=>draftIds.has(id))){setReceiptOpen(true);return;}
@@ -517,7 +517,7 @@ function Hall({state,user,language,reload}:{state:ProductionState;user:Productio
         })}
       </div> : <Empty title={text("noEligible",language)}/>}
     </section>
-     <Card title={text("receiveBatch",language)} action={canReceive?<div className="warehouse-receipt-actions"><button data-receipt-launcher className="prod-btn" type="button" disabled={write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;setFormError("");setReceiptOpen(true);}}>{language==="en"?"New receipt voucher":"سند استلام مواد تامة"}</button><button className="prod-btn secondary" data-hall-receive-selected type="button" disabled={!selected.length||write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;receiveSelected();}}>{language==="en"?`Receive selected (${selected.length})`:`استلام المحدد (${selected.length})`}</button><button className="prod-btn quiet" type="button" disabled={!selected.length||write.saving||lockReceipt} onClick={()=>setSelected([])}>{language==="en"?"Clear selection":"مسح التحديد"}</button></div>:undefined}>
+     <Card title={text("receiveBatch",language)} action={canReceive?<div className="warehouse-receipt-actions"><button data-receipt-launcher data-hall-receive-selected className="prod-btn" type="button" disabled={write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;receiveSelected();}}>{language==="en"?"New receipt voucher":"سند استلام مواد تامة"}</button><button className="prod-btn quiet" type="button" disabled={!selected.length||write.saving||lockReceipt} onClick={()=>setSelected([])}>{language==="en"?"Clear selection":"مسح التحديد"}</button></div>:undefined}>
       {canReceive ? <>{eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}</>:<div className="prod-muted">{text("readonly",language)}</div>}
     </Card>
     {canReceive&&receiptOpen&&<ReceiptVoucherModal
