@@ -127,7 +127,10 @@ const secondaryValue = (row: Row, col: Column) => {
 };
 function OrderProductionCell({ entries }: { entries: OrderProductionSummary[] }) {
   if (!entries.length) return <span className="muted-text">{translate("لا توجد أوامر إنتاج")}</span>;
-  return <div className="order-production-list">{entries.map((entry) => <div className="order-production-item" key={entry.id}><strong>{entry.production_order_number}</strong><span>{translate("الصنف:")}{" "}{localizedName(entry.item_name_ar, entry.item_name, entry.item_id || "—")}</span><span className="order-production-quantity">{fmtNumber(entry.quantity_kg, 2, "كجم")}</span></div>)}</div>;
+  return <div className="order-production-list">{entries.map((entry) => {
+    const itemName = localizedName(entry.item_name_ar, entry.item_name, entry.item_id || "—");
+    return <div className="order-production-item" key={entry.id}><strong>{entry.production_order_number}</strong><div className="order-production-details"><span className="order-production-name" title={itemName}>{translate("الصنف:")}{" "}{itemName}</span><span className="order-production-quantity">{fmtNumber(entry.quantity_kg, 2, "كجم")}</span></div></div>;
+  })}</div>;
 }
 const configs: Record<string, Config> = {
   customers: { path: "/customers", title: "العملاء", singular: "عميل", read: ["manage_customers", "manage_orders", "view_orders", "admin"], write: ["manage_customers", "manage_orders", "admin"], fields: [{ key: "name_ar", label: "الاسم بالعربية" }, { key: "name", label: "الاسم بالإنجليزية", required: true }, { key: "tax_number", label: "الرقم الضريبي" }, { key: "phone", label: "الهاتف" }, { key: "sales_rep_id", label: "المندوب", type: "integer", relation: "/customers/sales-representatives" }, { key: "city", label: "المدينة" }, { key: "is_active", label: "نشط", type: "boolean" }], columns: [{ key: "__sequence", label: "م", kind: "relation" }, { key: "name_ar", label: "الاسم العربي", priority: true, customerLink: true }, { key: "name", label: "الاسم الإنجليزي", priority: true }, { key: "plate_drawer_code", label: "رقم الدرج", priority: true }, { key: "sales_rep", label: "اسم المندوب", kind: "relation", priority: true }] },

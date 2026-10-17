@@ -132,7 +132,8 @@ const releaseOnly = process.argv.includes("--production-release-only");
           customer_name_ar: "عميل تجريبي", customer_name: "Test customer",
           production_orders_summary: Array.from({ length: 5 }, (_, position) => ({
             id: 900 + position, production_order_number: `O-TEST-${index + 1}-${position + 1}`,
-            item_name_ar: `صنف ${position + 1}`, item_name: `Item ${position + 1}`,
+            item_name_ar: position === 0 ? "صنف تجريبي باسم طويل جدًا للتحقق من اختصار البطاقة دون تمددها" : `صنف ${position + 1}`,
+            item_name: position === 0 ? "Test item with a very long name to verify compact card sizing" : `Item ${position + 1}`,
             quantity_kg: String(10 + position),
           })),
         }))
@@ -217,6 +218,10 @@ const releaseOnly = process.argv.includes("--production-release-only");
               await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-identity .order-number-stack")});const c=[...e.children];return c.length===3&&c[0].textContent==='O-TEST-1'&&c[1].textContent.trim().length>0&&c[2].textContent===${JSON.stringify(lang === "ar" ? "عميل تجريبي" : "Test customer")}&&c[2].getBoundingClientRect().top>=c[1].getBoundingClientRect().bottom;})()`));
             check(`${context}: production entries pair into rows and preserve all five orders`,
               await evaluate(`(()=>{const c=[...document.querySelector(${scoped(".order-production-list")}).children],r=c.map(e=>e.getBoundingClientRect());return c.length===5&&Math.abs(r[0].top-r[1].top)<2&&Math.abs(r[2].top-r[3].top)<2&&r[2].top>r[0].top&&r[4].top>r[2].top&&c.every(e=>e.querySelector('strong')&&e.querySelector('.order-production-quantity')&&e.querySelector('span'));})()`));
+            check(`${context}: production cards are about half the original 72px height`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-production-item")})].every(e=>{const r=e.getBoundingClientRect();return r.height>=30&&r.height<=38&&[...e.children].every(c=>{const b=c.getBoundingClientRect();return b.top>=r.top&&b.bottom<=r.bottom&&b.left>=r.left-1&&b.right<=r.right+1;});})`));
+            check(`${context}: compact cards keep full item names available`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-production-item")})].every(e=>{const item=e.querySelector('span:not(.order-production-quantity)');return item&&item.title.trim().length>0&&item.textContent.trim().length>0&&parseFloat(getComputedStyle(item).fontSize)>=11;})`));
             check(`${context}: requested colors and neutral unknown status`,
               await evaluate(`[...document.querySelectorAll(${scoped(".order-status")})].map(e=>getComputedStyle(e).backgroundColor)`),
               ["rgb(225, 242, 232)", "rgb(251, 240, 201)", "rgb(248, 228, 215)", "rgb(249, 226, 223)", "rgb(237, 241, 239)"]);
