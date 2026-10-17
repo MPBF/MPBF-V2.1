@@ -187,16 +187,25 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const exportExcel = async () => {
     setBusy("excel"); setError("");
     try {
-      const XLSX = await import("xlsx");
+      const { Workbook } = await import("exceljs");
+      const { saveAs } = await import("file-saver");
       const rows = summary.map((row) => ({
         [translate("اسم المستخدم")]: `${reportArabicName(row)}\n${reportEnglishName(row)}`, [translate("القسم")]: sectionName(row), [translate("م ساعات العمل")]: formatMinutes(row.workedMinutes),
         [translate("م أيام العمل")]: row.daysWorked, [translate("م الغياب")]: row.absentDays, [translate("وردية ناقصة")]: row.incompleteDays, [translate("م الاضافي")]: formatMinutes(row.overtimeMinutes),
       }));
-      const workbook = XLSX.utils.book_new();
-      const sheet = XLSX.utils.json_to_sheet(rows);
-      sheet["!cols"] = [{ wch: 28 }, { wch: 22 }, { wch: 20 }, { wch: 18 }, { wch: 16 }, { wch: 22 }];
-      XLSX.utils.book_append_sheet(workbook, sheet, translate("كشف الحضور"));
-      XLSX.writeFile(workbook, `${i18n.language === "en" ? "attendance" : "كشف-الحضور"}-${month}.xlsx`);
+      const workbook = new Workbook();
+      const sheet = workbook.addWorksheet(translate("كشف الحضور"));
+      const headers = [
+        translate("اسم المستخدم"), translate("القسم"), translate("م ساعات العمل"),
+        translate("م أيام العمل"), translate("م الغياب"), translate("وردية ناقصة"), translate("م الاضافي"),
+      ];
+      sheet.addRow(headers);
+      for (const row of rows) sheet.addRow(headers.map((header) => row[header]));
+      sheet.columns.forEach((column, index) => { column.width = [28, 22, 20, 18, 16, 22, 20][index]; });
+      const bytes = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([new Uint8Array(bytes)], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }), `${i18n.language === "en" ? "attendance" : "كشف-الحضور"}-${month}.xlsx`);
     } catch (cause) { setError((cause as Error).message); }
     finally { setBusy(""); }
   };
