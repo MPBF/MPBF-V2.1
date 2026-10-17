@@ -167,6 +167,7 @@ const english: Record<string, string> = {
   "التوقيعات": "Signatures",
   "الجنسية": "Nationality",
   "الحالة": "Status",
+  "تغيير حالة الطلب": "Change order status",
   "الحالة الأولية: بانتظار المعالجة": "Initial status: Awaiting processing",
   "الحالة السابقة للطلب:": "Previous order status:",
   "الحالة:": "Status:",

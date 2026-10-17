@@ -1,5 +1,8 @@
 # Production work feeds and searchable history
 
+For the focused, approval-gated comparison of archive search alternatives, see
+[نتائج قياس البحث في تاريخ الإنتاج](production-history-search-research.md).
+
 ## Scope and safety
 
 Work feeds no longer deliver the whole production archive. The requested view
@@ -260,6 +263,12 @@ an automatic index, cached total or production database change. Test any
 candidate on the disposable fixture first and repeat correctness assertions.
 
 ## Functional checks
+
+For the isolated comparison of hall/management aggregation alternatives at
+10,000 and 100,000 archived orders, see
+[Hall aggregation options and approval plan](production-hall-aggregation-options.md).
+That investigation does not change runtime queries, add indexes/aggregate
+tables, migrate application databases or authorize deployment.
 
 - Typecheck and production build pass. The build reports its existing bundle-size
   warning; it does not fail.

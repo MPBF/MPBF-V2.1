@@ -108,3 +108,4 @@
 - [Login brand presentation](login-brand-presentation.md) — approved centered card; both factory-name languages precede the large logo and welcome text.
 - [Warehouse keeper scope](warehouse-keeper-scope.md) — user dashboard and warehouse only, including direct links and role preview; preserve warehouse work.
 - [Raw-mixing operator presentation](raw-mixing-mobile-actions.md) — three actions share one phone row; film operators keep mix history but not saved composition.
+- [Archive search approval](production-history-search-approval.md) — synthetic local measurements only; separate approval before any index/schema change or published DB change; no search/customer logging.
