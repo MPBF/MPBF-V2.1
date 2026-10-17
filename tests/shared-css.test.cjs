@@ -8,12 +8,12 @@ const src = path.resolve(__dirname, "../client/src");
 const read = (file) => fs.readFileSync(path.join(src, file), "utf8");
 const parse = (file) => postcss.parse(read(file), { from: file });
 const rootVariables = {};
-parse("index.css").walkRules((rule) => {
-  if (rule.selector === ":root") rule.walkDecls((decl) => { rootVariables[decl.prop] = decl.value; });
+parse("styles/theme-tokens.css").walkRules((rule) => {
+  if (rule.selector === ":where(:root)") rule.walkDecls((decl) => { rootVariables[decl.prop] = decl.value; });
 });
 const normalize = (value) => value.replace(/\s+/g, "");
 const resolveSharedTokens = (value) => value.replace(
-  /var\((--shared-[\w-]+)\)/g,
+  /var\((--(?:shared|theme)-[\w-]+)\)/g,
   (_, name) => {
     assert.ok(rootVariables[name], `Missing default for ${name}`);
     return rootVariables[name];

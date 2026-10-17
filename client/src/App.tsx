@@ -1,4 +1,4 @@
-import { lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, Boxes, Copy, Eye, Factory, FileText, Gauge, LogOut, Package, Pencil, Plus, Printer, Search, Shield, Trash2, Users, UsersRound, Wrench, X, Settings2, Cog, KeyRound } from "lucide-react";
 import { Link, Redirect, Route, Switch, useLocation, useRoute, useSearchParams } from "wouter";
@@ -9,7 +9,6 @@ import { initialPlanningPath } from "./lib/planning-navigation";
 import { initialWarehousePath } from "./lib/warehouse-navigation";
 import { canOpenWarehouseAccountPath, isWarehouseOnlyAccount } from "../../shared/warehouse-access";
 import { defaultBranding, fetchBrandingSnapshot, type BrandingSnapshot } from "./lib/branding";
-import PageHero from "./components/PageHero";
 import LoginPresentation from "./components/LoginPresentation";
 import DeferredContent from "./components/DeferredContent";
 import FlagLanguageSelector from "./components/FlagLanguageSelector";
@@ -24,6 +23,10 @@ import { canonicalMachineType, eligibleInlinePrinterMachines, MACHINE_CAPACITY_T
 import i18n, { applyLanguage, localizedName, normalizeLanguage, translate, translateError } from "./i18n";
 
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
+const LazyPageHero = lazy(() => import("./components/PageHero"));
+function PageHero(props: ComponentProps<typeof LazyPageHero>) {
+  return <DeferredContent><LazyPageHero {...props} /></DeferredContent>;
+}
 const HumanResources = lazy(() => import("./pages/HumanResources"));
 const ProductionPage = lazy(() => import("./pages/production/ProductionPage"));
 const RawMixingPage = lazy(() => import("./pages/production/RawMixingPage"));

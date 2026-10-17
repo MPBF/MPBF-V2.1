@@ -9,7 +9,7 @@
   gap: 8px;
 }
 .production .finished-inventory-actions > span,
-.production .finished-inventory-selection > span { color: #71857b; font-size: 10px; }
+.production .finished-inventory-selection > span { color: var(--theme-finished-inventory-production-finished-inventory-actions-span-text); font-size: 10px; }
 .production .finished-inventory-search {
   display: flex;
   gap: 8px;
@@ -22,9 +22,9 @@
   flex: 1;
   min-width: 0;
   padding: 0 11px;
-  border: 1px solid #d6e2d9;
-  background: #fffefa;
-  color: #789085;
+  border: 1px solid var(--theme-finished-inventory-production-finished-inventory-search-label-border);
+  background: var(--theme-finished-inventory-production-finished-inventory-search-label-surface);
+  color: var(--theme-finished-inventory-production-finished-inventory-search-label-text);
 }
 .production .finished-inventory-search label svg { width: 16px; height: 16px; flex: none; }
 .production .finished-inventory-search input {
@@ -34,7 +34,7 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: #263e39;
+  color: var(--theme-finished-inventory-production-finished-inventory-search-input-text);
   font: inherit;
   font-size: 12px;
 }
@@ -42,33 +42,33 @@
   justify-content: space-between;
   margin-top: 12px;
   padding: 10px 12px;
-  border: 1px solid #d9e4db;
-  background: #f1f5ed;
+  border: 1px solid var(--theme-finished-inventory-production-finished-inventory-selection-border);
+  background: var(--theme-finished-inventory-production-finished-inventory-selection-surface);
 }
-.production .finished-inventory-readonly { color: #71857b; font-size: 11px; }
+.production .finished-inventory-readonly { color: var(--theme-finished-inventory-production-finished-inventory-actions-span-text); font-size: 11px; }
 .production .finished-inventory-more { display: flex; justify-content: center; margin: 14px 0; }
 .production .finished-inventory-skeleton { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 11px; }
 .production .finished-inventory-skeleton i {
   display: block;
   min-height: 150px;
-  border: 1px solid #d8e3d9;
-  background: #edf2e9;
+  border: 1px solid var(--theme-finished-inventory-production-finished-inventory-skeleton-i-border);
+  background: var(--theme-finished-inventory-production-finished-inventory-skeleton-i-surface);
   animation: finished-stock-skeleton 1.5s ease-in-out infinite alternate;
 }
 .production .finished-inventory-skeleton.history { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @keyframes finished-stock-skeleton { to { opacity: .55; } }
 .production .finished-delivery-history-card > header { align-items: center; }
 .production .finished-delivery-history-card > p { margin: 10px 0 0; }
-.production .finished-delivery-history-items { margin-top: 10px; border-top: 1px solid #e3e8df; }
+.production .finished-delivery-history-items { margin-top: 10px; border-top: 1px solid var(--theme-finished-inventory-production-finished-delivery-history-items-border); }
 .production .finished-delivery-history-total {
   display: flex;
   justify-content: space-between;
   gap: 10px;
   padding-top: 9px;
-  color: #71857b;
+  color: var(--theme-finished-inventory-production-finished-inventory-actions-span-text);
   font-size: 10px;
 }
-.production .finished-delivery-history-total strong { color: #315a4c; font: 700 12px "IBM Plex Mono", monospace; }
+.production .finished-delivery-history-total strong { color: var(--theme-finished-inventory-production-finished-delivery-history-total-strong-text); font: 700 12px "IBM Plex Mono", monospace; }
 .production .finished-delivery-history-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
 .production .finished-delivery-backdrop {
   position: fixed;
@@ -77,15 +77,15 @@
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(23, 45, 41, .58);
+  background: var(--theme-finished-inventory-production-finished-delivery-backdrop-surface);
 }
 .production .finished-delivery-dialog {
   width: min(100%, 760px);
   max-height: min(92dvh, 920px);
   overflow: auto;
-  border: 1px solid #cbdad0;
-  background: #f7f8f2;
-  box-shadow: 0 18px 60px rgba(20, 43, 37, .25);
+  border: 1px solid var(--theme-finished-inventory-production-finished-delivery-dialog-border);
+  background: var(--theme-finished-inventory-production-finished-delivery-dialog-surface);
+  box-shadow: 0 18px 60px var(--theme-finished-inventory-production-finished-delivery-dialog-shadow);
 }
 .production .finished-delivery-header {
   position: sticky;
@@ -96,11 +96,11 @@
   justify-content: space-between;
   gap: 12px;
   padding: 15px 17px;
-  border-bottom: 1px solid #dce6dd;
-  background: #f7f8f2;
+  border-bottom: 1px solid var(--theme-finished-inventory-production-finished-delivery-header-border);
+  background: var(--theme-finished-inventory-production-finished-delivery-dialog-surface);
 }
-.production .finished-delivery-header h2 { margin: 6px 0 3px; color: #263e39; font-size: 18px; }
-.production .finished-delivery-header p { margin: 0; color: #7b8c82; font-size: 11px; }
+.production .finished-delivery-header h2 { margin: 6px 0 3px; color: var(--theme-finished-inventory-production-finished-inventory-search-input-text); font-size: 18px; }
+.production .finished-delivery-header p { margin: 0; color: var(--theme-finished-inventory-production-finished-delivery-header-p-text); font-size: 11px; }
 .production .finished-delivery-header-actions { display: flex; align-items: center; gap: 7px; }
 .production .finished-delivery-close,
 .production .finished-delivery-remove {
@@ -109,9 +109,9 @@
   flex: none;
   width: 42px;
   height: 42px;
-  border: 1px solid #d5e1da;
-  background: #fffefa;
-  color: #62766d;
+  border: 1px solid var(--theme-finished-inventory-production-finished-delivery-close-border);
+  background: var(--theme-finished-inventory-production-finished-inventory-search-label-surface);
+  color: var(--theme-finished-inventory-production-finished-delivery-close-text);
   cursor: pointer;
 }
 .production .finished-delivery-close svg,
@@ -122,11 +122,11 @@
   gap: 3px;
   margin-bottom: 12px;
   padding: 10px 12px;
-  border-inline-start: 3px solid #4b7d6c;
-  background: #edf3eb;
+  border-inline-start: 3px solid var(--theme-finished-inventory-production-finished-delivery-recipient-border);
+  background: var(--theme-finished-inventory-production-finished-delivery-recipient-surface);
 }
-.production .finished-delivery-recipient small { color: #7b8e82; font-size: 9px; }
-.production .finished-delivery-recipient strong { color: #31584a; font-size: 13px; }
+.production .finished-delivery-recipient small { color: var(--theme-finished-inventory-production-finished-delivery-recipient-small-text); font-size: 9px; }
+.production .finished-delivery-recipient strong { color: var(--theme-finished-inventory-production-finished-delivery-recipient-strong-text); font-size: 13px; }
 .production .finished-delivery-lines { display: grid; gap: 8px; }
 .production .finished-delivery-line {
   display: grid;
@@ -134,18 +134,18 @@
   align-items: end;
   gap: 9px;
   padding: 10px;
-  border: 1px solid #dce7df;
-  background: #fffefa;
+  border: 1px solid var(--theme-finished-inventory-production-finished-delivery-line-border);
+  background: var(--theme-finished-inventory-production-finished-inventory-search-label-surface);
 }
 .production .finished-delivery-line .prod-field { min-width: 0; }
 .production .finished-delivery-line select,
 .production .finished-delivery-line input,
 .production .finished-delivery-notes textarea { min-height: 45px; font-size: 15px; }
-.production .finished-delivery-available { display: grid; gap: 4px; min-height: 45px; align-content: center; color: #71857b; font-size: 9px; }
-.production .finished-delivery-available bdi { color: #315a4c; font: 700 11px "IBM Plex Mono", monospace; direction: ltr; text-align: start; }
+.production .finished-delivery-available { display: grid; gap: 4px; min-height: 45px; align-content: center; color: var(--theme-finished-inventory-production-finished-inventory-actions-span-text); font-size: 9px; }
+.production .finished-delivery-available bdi { color: var(--theme-finished-inventory-production-finished-delivery-history-total-strong-text); font: 700 11px "IBM Plex Mono", monospace; direction: ltr; text-align: start; }
 .production .finished-delivery-remove:disabled { opacity: .35; cursor: not-allowed; }
 .production .finished-delivery-add { margin-top: 9px; }
-.production .finished-delivery-notes { display: grid; gap: 5px; margin-top: 13px; color: #71857b; font-size: 10px; }
+.production .finished-delivery-notes { display: grid; gap: 5px; margin-top: 13px; color: var(--theme-finished-inventory-production-finished-inventory-actions-span-text); font-size: 10px; }
 .production .finished-delivery-total,
 .production .finished-delivery-preview-total {
   display: flex;
@@ -153,12 +153,12 @@
   gap: 10px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid #dce6dd;
-  color: #71857b;
+  border-top: 1px solid var(--theme-finished-inventory-production-finished-delivery-header-border);
+  color: var(--theme-finished-inventory-production-finished-inventory-actions-span-text);
   font-size: 11px;
 }
 .production .finished-delivery-total strong,
-.production .finished-delivery-preview-total strong { color: #315a4c; font: 750 16px "IBM Plex Mono", monospace; }
+.production .finished-delivery-preview-total strong { color: var(--theme-finished-inventory-production-finished-delivery-history-total-strong-text); font: 750 16px "IBM Plex Mono", monospace; }
 .production .finished-delivery-error { margin-top: 12px; }
 .production .finished-delivery-footer {
   display: flex;
@@ -167,29 +167,29 @@
   gap: 8px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid #dce6dd;
+  border-top: 1px solid var(--theme-finished-inventory-production-finished-delivery-header-border);
 }
 .production .finished-delivery-preview {
   padding: 13px;
-  border: 1px solid #d4dfd6;
-  background: #fffefa;
+  border: 1px solid var(--theme-finished-inventory-production-finished-delivery-preview-border);
+  background: var(--theme-finished-inventory-production-finished-inventory-search-label-surface);
 }
 .production .finished-delivery-preview-head,
 .production .finished-delivery-preview-lines > div { display: flex; justify-content: space-between; gap: 12px; }
-.production .finished-delivery-preview-head { padding-bottom: 10px; border-bottom: 1px solid #e1e9e1; color: #31584a; }
+.production .finished-delivery-preview-head { padding-bottom: 10px; border-bottom: 1px solid var(--theme-finished-inventory-production-finished-delivery-preview-head-border); color: var(--theme-finished-inventory-production-finished-delivery-recipient-strong-text); }
 .production .finished-delivery-preview-lines { display: grid; gap: 9px; padding-top: 10px; }
-.production .finished-delivery-preview-lines > div { color: #536c60; font-size: 11px; }
-.production .finished-delivery-preview-lines bdi { flex: none; color: #315a4c; font: 700 11px "IBM Plex Mono", monospace; direction: ltr; }
-.production .finished-delivery-preview p { margin: 10px 0 0; color: #71857b; font-size: 10px; white-space: pre-wrap; }
+.production .finished-delivery-preview-lines > div { color: var(--theme-finished-inventory-production-finished-delivery-preview-lines-div-text); font-size: 11px; }
+.production .finished-delivery-preview-lines bdi { flex: none; color: var(--theme-finished-inventory-production-finished-delivery-history-total-strong-text); font: 700 11px "IBM Plex Mono", monospace; direction: ltr; }
+.production .finished-delivery-preview p { margin: 10px 0 0; color: var(--theme-finished-inventory-production-finished-inventory-actions-span-text); font-size: 10px; white-space: pre-wrap; }
 .production .finished-delivery-saved {
   display: grid;
   grid-template-columns: minmax(0, .6fr) minmax(0, 1fr);
   gap: 10px;
   padding: 20px;
 }
-.production .finished-delivery-saved span { color: #75877d; font-size: 10px; }
-.production .finished-delivery-saved strong { color: #315a4c; font-size: 13px; overflow-wrap: anywhere; }
-.production .finished-inventory-page :focus-visible { outline: 3px solid #ba8854; outline-offset: 2px; }
+.production .finished-delivery-saved span { color: var(--theme-finished-inventory-production-finished-delivery-saved-span-text); font-size: 10px; }
+.production .finished-delivery-saved strong { color: var(--theme-finished-inventory-production-finished-delivery-history-total-strong-text); font-size: 13px; overflow-wrap: anywhere; }
+.production .finished-inventory-page :focus-visible { outline: 3px solid var(--theme-finished-inventory-production-finished-inventory-page-focus-visible-focus); outline-offset: 2px; }
 
 @media (max-width: 767px) {
   .production .finished-inventory-actions { justify-content: flex-start; }

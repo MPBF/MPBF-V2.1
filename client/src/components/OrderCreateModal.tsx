@@ -476,7 +476,7 @@ export default function OrderCreateModal({ editId, onClose, onSaved }: { editId?
   return (
     <div className="order-create-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !saving && productEditorKey === null && onClose()}>
       <section ref={orderPanelRef} className="order-create-modal" role="dialog" aria-modal={productEditorKey === null} aria-hidden={productEditorKey !== null ? true : undefined} aria-labelledby="order-create-title">
-        <header className="order-create-head bg-[#183f3a] text-[#fbfcf8]">
+        <header className="order-create-head bg-[var(--theme-order-create-header-surface)] text-[var(--theme-order-create-header-text)]">
           <div className="order-create-heading">
             <span className="order-create-mark" aria-hidden="true"><ClipboardList size={21} /></span>
             <div>

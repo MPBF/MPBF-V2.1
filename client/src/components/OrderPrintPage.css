@@ -2,17 +2,17 @@
   --opp-ink: #253b37;
   --opp-navy: #1a365d;
   --opp-rule: #8a9992;
-  min-height: 100dvh; overflow-x: clip; color: #294440; background: #e8eeea;
+  min-height: 100dvh; overflow-x: clip; color: var(--theme-order-print-page-opp-page-text); background: var(--theme-order-print-page-opp-page-surface);
   font-family: "Times New Roman", "Noto Naskh Arabic", serif;
 }
-.opp-toolbar { position: sticky; top: 0; z-index: 3; display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px max(20px, calc((100vw - 1122px) / 2)); color: #31534d; background: rgb(249 251 249 / 94%); border-bottom: 1px solid #d4dfd9; box-shadow: 0 3px 15px rgb(30 59 49 / 6%); backdrop-filter: blur(12px); font-family: system-ui, sans-serif; }
+.opp-toolbar { position: sticky; top: 0; z-index: 3; display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px max(20px, calc((100vw - 1122px) / 2)); color: var(--theme-order-print-page-opp-toolbar-text); background: var(--theme-order-print-page-opp-toolbar-surface); border-bottom: 1px solid var(--theme-order-print-page-opp-toolbar-border); box-shadow: 0 3px 15px var(--theme-order-print-page-opp-toolbar-shadow); backdrop-filter: blur(12px); font-family: system-ui, sans-serif; }
 .opp-toolbar-copy { display: flex; align-items: center; gap: 13px; }
 .opp-toolbar-copy span { font-size: 13px; font-weight: 750; }
-.opp-toolbar-copy strong { padding: 5px 9px; color: #6a8178; background: #edf4ef; border-radius: 99px; font-size: 10px; font-weight: 650; }
-.opp-print-action { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; color: white; background: #267a6f; border: 0; border-radius: 9px; cursor: pointer; font: 700 12px system-ui, sans-serif; transition: background .16s ease, transform .16s ease; }
-.opp-print-action:hover:not(:disabled) { background: #1d625a; transform: translateY(-1px); }
+.opp-toolbar-copy strong { padding: 5px 9px; color: var(--theme-order-print-page-opp-toolbar-copy-strong-text); background: var(--theme-order-print-page-opp-toolbar-copy-strong-surface); border-radius: 99px; font-size: 10px; font-weight: 650; }
+.opp-print-action { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; color: var(--theme-order-print-page-opp-print-action-text); background: var(--theme-order-print-page-opp-print-action-surface); border: 0; border-radius: 9px; cursor: pointer; font: 700 12px system-ui, sans-serif; transition: background .16s ease, transform .16s ease; }
+.opp-print-action:hover:not(:disabled) { background: var(--theme-order-print-page-opp-print-action-hover-not-disabled-surface); transform: translateY(-1px); }
 .opp-print-action:disabled { cursor: wait; opacity: .7; }
-.opp-print-error { margin: 12px 24px; padding: 10px 14px; color: #824d28; background: #fff3e8; border: 1px solid #e6c7ad; border-radius: 8px; font: 13px system-ui, sans-serif; }
+.opp-print-error { margin: 12px 24px; padding: 10px 14px; color: var(--theme-order-print-page-opp-print-error-text); background: var(--theme-order-print-page-opp-print-error-surface); border: 1px solid var(--theme-order-print-page-opp-print-error-border); border-radius: 8px; font: 13px system-ui, sans-serif; }
 .opp-spin { animation: opp-rotate 1s linear infinite; }
 .opp-preview-scroll { width: 100%; overflow-x: auto; overflow-y: visible; padding: 32px 24px 48px; overscroll-behavior-inline: contain; }
 .opp-sheet { page: opp-page; box-sizing: border-box; width: 1122px; min-height: 794px; margin: 0 auto; padding: 24px; color: #1c2d2b; background: #fff; box-shadow: 0 12px 38px rgb(36 59 50 / 15%); direction: inherit; font-family: "Times New Roman", Times, serif; font-size: 11px; font-weight: 700; line-height: 1.35; }
@@ -103,13 +103,13 @@
 .opp-signatures > div > span { width: 68%; height: 1px; margin-top: auto; background: #404b46; }
 .opp-generated { display: block; min-height: 0; margin: 9px 0 0; padding: 0; border: 0; background: transparent; color: #849089; font: 8px system-ui, sans-serif; text-align: center; }
 .opp-generated span { padding: 0 4px; }
-.opp-page-state { display: flex; min-height: min(70dvh, 620px); flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: #56746b; font-family: system-ui, sans-serif; text-align: center; }
-.opp-page-state > strong { color: #385b52; font-size: 16px; }
-.opp-page-state > span { color: #80928a; font-size: 12px; }
+.opp-page-state { display: flex; min-height: min(70dvh, 620px); flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: var(--theme-order-print-page-opp-page-state-text); font-family: system-ui, sans-serif; text-align: center; }
+.opp-page-state > strong { color: var(--theme-order-print-page-opp-page-state-strong-text); font-size: 16px; }
+.opp-page-state > span { color: var(--theme-order-print-page-opp-page-state-span-text); font-size: 12px; }
 .opp-loader-sheet { display: grid; width: 170px; height: 112px; grid-template-columns: 1fr 1fr; gap: 8px; padding: 13px; margin-bottom: 9px; background: #f7faf8; border: 1px solid #dce7e0; border-radius: 9px; box-shadow: 0 6px 18px rgb(44 81 68 / 8%); transform: rotate(-2deg); }
 .opp-loader-sheet div { background: linear-gradient(100deg, #e7efea 20%, #dce8e1 50%, #e7efea 80%); background-size: 200% 100%; border-radius: 4px; animation: opp-shimmer 1.2s infinite; }
-.opp-page-error > svg { color: #a27451; }
-.opp-page-error button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; margin-top: 8px; color: #fff; background: #28796d; border: 0; border-radius: 8px; cursor: pointer; font: 700 12px system-ui, sans-serif; }
+.opp-page-error > svg { color: var(--theme-order-print-page-opp-page-error-svg-text); }
+.opp-page-error button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; margin-top: 8px; color: var(--theme-order-print-page-opp-page-error-button-text); background: var(--theme-order-print-page-opp-page-error-button-surface); border: 0; border-radius: 8px; cursor: pointer; font: 700 12px system-ui, sans-serif; }
 @keyframes opp-rotate { to { transform: rotate(360deg); } }
 @keyframes opp-shimmer { to { background-position: -200% 0; } }
 @page opp-page { size: A4 landscape; margin: 7mm; }

@@ -1,11 +1,11 @@
 .production.planning-page {
-  --planning-ink: var(--ink, #203537);
-  --planning-muted: var(--muted, #6e8180);
-  --planning-line: var(--line, #d8e4df);
-  --planning-surface: var(--panel, #fbfdf9);
-  --planning-paper: var(--paper, #f2f6f2);
-  --planning-accent: var(--teal-deep, #174d4a);
-  --planning-highlight: var(--orange, #d8784e);
+  --planning-ink: var(--ink, var(--theme-planning-production-planning-page-planning-ink));
+  --planning-muted: var(--muted, var(--theme-planning-production-planning-page-planning-muted));
+  --planning-line: var(--line, var(--theme-planning-production-planning-page-planning-line));
+  --planning-surface: var(--panel, var(--theme-planning-production-planning-page-planning-surface));
+  --planning-paper: var(--paper, var(--theme-planning-production-planning-page-planning-paper));
+  --planning-accent: var(--teal-deep, var(--theme-planning-production-planning-page-planning-accent));
+  --planning-highlight: var(--orange, var(--theme-planning-production-planning-page-planning-highlight));
   --prod-ink: var(--planning-ink);
   --prod-muted: var(--planning-muted);
   --prod-line: var(--planning-line);
