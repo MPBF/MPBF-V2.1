@@ -18,6 +18,7 @@ const uiRequests: {route:string;input:{first_position:number;second_position:num
   uiRequestsPath ? JSON.parse(readFileSync(uiRequestsPath,"utf8")) : undefined;
 import { createProductionRouter } from "../server/production/routes";
 import { verifyProductionHistory } from "./verify-production-history";
+import { verifyProductionSearch } from "./verify-production-search";
 import { verifyFilmDurations } from "./verify-film-durations";
 import { verifyRollActors } from "./verify-roll-actors";
 import { verifyFilmOperationSpecs } from "./verify-film-operation-specs";
@@ -25,6 +26,9 @@ import { verifyKgReceiving } from "./verify-kg-receiving";
 
 if (process.env.NODE_ENV === "production") throw Error("Integration tests are development-only.");
 if (process.argv.includes("--large") && !process.argv.includes("--local")) throw Error("Large fixtures require --local and a disposable database.");
+if (process.argv.includes("--search-experiments") && (!process.argv.includes("--local") || !process.argv.includes("--large"))) {
+  throw Error("Search experiments require --local --large and a disposable database.");
+}
 // --local never connects to the application's database.
 const pool = process.argv.includes("--local")
   ? new LocalPool({ host: "127.0.0.1", port: 55439, user: "runner", database: "factory_isolated_test" })
@@ -508,6 +512,7 @@ try {
       assert.ok(qr.image.startsWith("data:image/png;base64,"));
     } finally { await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve())); }
   });
+  if (process.argv.includes("--local")) await verifyProductionSearch(isolated);
   await verifyProductionHistory(isolated, query, process.argv.includes("--large"));
   await verifyFilmDurations(isolated, query);
   await verifyRollActors(isolated, query);

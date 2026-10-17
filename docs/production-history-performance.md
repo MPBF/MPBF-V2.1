@@ -1,5 +1,8 @@
 # Production work feeds and searchable history
 
+For the focused, approval-gated comparison of archive search alternatives, see
+[نتائج قياس البحث في تاريخ الإنتاج](production-history-search-research.md).
+
 ## Scope and safety
 
 Work feeds no longer deliver the whole production archive. The requested view

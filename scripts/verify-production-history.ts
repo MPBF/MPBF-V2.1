@@ -5,9 +5,15 @@ import type { ConnectionPool } from "../server/production/core";
 import { ProductionReadService } from "../server/production/read";
 import { inventorySelect, movementSelect, orderSelect, receiptSelect, rollSelect } from "../server/production/read-queries";
 import { productionReadPlans } from "./production-read-plans";
+import { compareProductionSearch } from "./production-search-experiments";
 
 type Query = (text: string, values?: unknown[]) => Promise<any[]>;
 export async function verifyProductionHistory(pool: ConnectionPool, query: Query, large: boolean) {
+  if (large) {
+    const [guard] = await query("SELECT current_database() db, host(inet_server_addr()) host");
+    assert.equal(guard.db, "factory_isolated_test", "Archive fixtures require the disposable fixture database");
+    assert.equal(guard.host, "127.0.0.1", "Archive fixtures require local loopback");
+  }
   const read = new ProductionReadService(pool);
   const actor: ProductionUser = { id: 1, permissions: ["admin"] };
   const warehouse: ProductionUser = { id: 1, permissions: ["view_finished_inventory"] };
@@ -56,7 +62,9 @@ export async function verifyProductionHistory(pool: ConnectionPool, query: Query
   // Synthetic records only, inside the disposable fixture database/schema.
   // Keep 70 OLD completed orders partially unreceived: a single 50-row archive
   // page must never determine what the hall can receive.
-  const size = 100000;
+  const sizeArg = process.argv.find(arg => arg.startsWith("--archive-size="))?.slice("--archive-size=".length);
+  const size = sizeArg === undefined ? 100000 : Number(sizeArg);
+  assert.ok(Number.isSafeInteger(size) && size >= 1000 && size <= 100000, "Archive size must be between 1000 and 100000");
   // Keep the archive disjoint from lifecycle/order-release fixture IDs.
   const offset = Number((await query("SELECT COALESCE(max(id),0)::int n FROM orders"))[0].n);
   const archiveStart = offset + 1;
@@ -130,6 +138,11 @@ export async function verifyProductionHistory(pool: ConnectionPool, query: Query
     (SELECT count(*)::int FROM factory_rolls) rolls,(SELECT count(*)::int FROM factory_receipts) receipts,
     (SELECT count(*)::int FROM factory_movements) movements,count(*)::int inventory,sum(quantity_kg)::text inventory_kg FROM factory_inventory`))[0];
   assert.deepEqual(current.totals, totals);
+  if (process.argv.includes("--search-experiments")) {
+    await compareProductionSearch(pool, `ARCHIVE-PO-${archiveStart}`);
+    console.log(`PASS isolated search comparison: ${size} synthetic orders and vouchers / ${size * 3} rolls`);
+    return;
+  }
   // Representative previous unbounded snapshot, same projections/joins and
   // transaction isolation. Archive data and parameters are identical.
   const original = async () => {
