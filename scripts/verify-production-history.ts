@@ -4,6 +4,7 @@ import type { ProductionUser, ProductionHistoryKind } from "../shared/production
 import type { ConnectionPool } from "../server/production/core";
 import { ProductionReadService } from "../server/production/read";
 import { inventorySelect, movementSelect, orderSelect, receiptSelect, rollSelect } from "../server/production/read-queries";
+import { productionReadPlans } from "./production-read-plans";
 
 type Query = (text: string, values?: unknown[]) => Promise<any[]>;
 export async function verifyProductionHistory(pool: ConnectionPool, query: Query, large: boolean) {
@@ -56,27 +57,31 @@ export async function verifyProductionHistory(pool: ConnectionPool, query: Query
   // Keep 70 OLD completed orders partially unreceived: a single 50-row archive
   // page must never determine what the hall can receive.
   const size = 100000;
+  // Keep the archive disjoint from lifecycle/order-release fixture IDs.
+  const offset = Number((await query("SELECT COALESCE(max(id),0)::int n FROM orders"))[0].n);
+  const archiveStart = offset + 1;
+  const locationId = Number((await query("SELECT location_id FROM factory_inventory WHERE production_order_id=4 ORDER BY id LIMIT 1"))[0].location_id);
   await query(`
-    INSERT INTO orders SELECT n,'ARCHIVE-'||n,'C1','completed' FROM generate_series(10001,${10000 + size}) n;
+    INSERT INTO orders SELECT n,'ARCHIVE-'||n,'C1','completed' FROM generate_series(${archiveStart},${offset + size}) n;
     INSERT INTO production_orders(id,order_id,production_order_number,customer_product_id,quantity_kg,final_quantity_kg,status)
-      SELECT n,n,'ARCHIVE-PO-'||n,2,30,30,'completed' FROM generate_series(10001,${10000 + size}) n;
+      SELECT n,n,'ARCHIVE-PO-'||n,2,30,30,'completed' FROM generate_series(${archiveStart},${offset + size}) n;
     INSERT INTO factory_execution(production_order_id,customer_product_id,item_id,product,is_printed,is_roll_product,
       started_at,film_closed_at,completed_at,stage,batch_number)
       SELECT n,2,'BAG','{"id":2,"item_id":"BAG","name":"Bag","name_ar":"كيس","customer_name":"Archive customer","customer_name_ar":"عميل الأرشيف"}',
         false,false,'2025-01-01','2025-01-02','2025-01-03','completed','ARCHIVE-B-'||n
-      FROM generate_series(10001,${10000 + size}) n;
+      FROM generate_series(${archiveStart},${offset + size}) n;
     INSERT INTO factory_rolls(production_order_id,sequence,roll_number,weight_kg,stage,film_machine_id,
       created_at,cutting_machine_id,cut_completed_at,net_weight_kg,waste_kg)
       SELECT n,s,'ARCHIVE-R-'||n||'-'||s,10,'done','F1','2025-01-01','C1','2025-01-02',9,1
-      FROM generate_series(10001,${10000 + size}) n CROSS JOIN generate_series(1,3) s;
-    INSERT INTO factory_receipts(voucher_number,created_at) SELECT 'ARCHIVE-V-'||n,'2025-01-03' FROM generate_series(10001,${10000 + size}) n;
+      FROM generate_series(${archiveStart},${offset + size}) n CROSS JOIN generate_series(1,3) s;
+    INSERT INTO factory_receipts(voucher_number,created_at) SELECT 'ARCHIVE-V-'||n,'2025-01-03' FROM generate_series(${archiveStart},${offset + size}) n;
     INSERT INTO factory_receipt_items(receipt_id,production_order_id,customer_product_id,item_id,location_id,quantity_kg)
-      SELECT r.id,n,2,'BAG',1,CASE WHEN n<10071 THEN 26 ELSE 27 END FROM generate_series(10001,${10000 + size}) n
+      SELECT r.id,n,2,'BAG',${locationId},CASE WHEN n<${archiveStart + 70} THEN 26 ELSE 27 END FROM generate_series(${archiveStart},${offset + size}) n
       JOIN factory_receipts r ON r.voucher_number='ARCHIVE-V-'||n;
     INSERT INTO factory_inventory(production_order_id,customer_product_id,item_id,location_id,quantity_kg)
-      SELECT production_order_id,2,'BAG',1,quantity_kg FROM factory_receipt_items WHERE production_order_id>=10001;
+      SELECT production_order_id,2,'BAG',${locationId},quantity_kg FROM factory_receipt_items WHERE production_order_id>=${archiveStart};
     INSERT INTO factory_movements(receipt_id,receipt_item_id,quantity_kg,created_at)
-      SELECT receipt_id,id,quantity_kg,'2025-01-03' FROM factory_receipt_items WHERE production_order_id>=10001;
+      SELECT receipt_id,id,quantity_kg,'2025-01-03' FROM factory_receipt_items WHERE production_order_id>=${archiveStart};
     ANALYZE;
   `);
   await query(`
@@ -84,12 +89,12 @@ export async function verifyProductionHistory(pool: ConnectionPool, query: Query
       SELECT 4,n,'PAGED-ACTUALS-R-'||n,0.10,'done','F1' FROM generate_series(1000,1119) n;
     INSERT INTO factory_receipts(voucher_number) SELECT 'PAGED-ACTUALS-V-'||n FROM generate_series(1,60) n;
     INSERT INTO factory_receipt_items(receipt_id,production_order_id,customer_product_id,item_id,location_id,quantity_kg)
-      SELECT r.id,4,e.customer_product_id,e.item_id,1,0.10 FROM factory_receipts r
+      SELECT r.id,4,e.customer_product_id,e.item_id,${locationId},0.10 FROM factory_receipts r
       CROSS JOIN factory_execution e WHERE r.voucher_number LIKE 'PAGED-ACTUALS-V-%' AND e.production_order_id=4;
     INSERT INTO factory_movements(receipt_id,receipt_item_id,quantity_kg)
       SELECT ri.receipt_id,ri.id,ri.quantity_kg FROM factory_receipt_items ri JOIN factory_receipts r ON r.id=ri.receipt_id
       WHERE r.voucher_number LIKE 'PAGED-ACTUALS-V-%';
-    UPDATE factory_inventory SET quantity_kg=quantity_kg+6 WHERE production_order_id=4 AND location_id=1;
+    UPDATE factory_inventory SET quantity_kg=quantity_kg+6 WHERE production_order_id=4 AND location_id=${locationId};
     ANALYZE;
   `);
   const current = await read.state(actor);
@@ -106,18 +111,18 @@ export async function verifyProductionHistory(pool: ConnectionPool, query: Query
   const actualsHistory = (await read.history(actor, "orders", { order_id: 4 })).records[0];
   assert.equal(actualsHistory.ready_kg, pagedActuals.ready_kg);
   assert.equal(actualsHistory.received_kg, pagedActuals.received_kg);
-  assert.equal(current.orders.filter(order => order.id >= 10001).length, 70);
-  assert.ok(current.orders.filter(order => order.id >= 10001).every(order => order.ready_kg === "27.00" && order.received_kg === "26.00" && order.remaining_kg === "1.00"));
+  assert.equal(current.orders.filter(order => order.id >= archiveStart).length, 70);
+  assert.ok(current.orders.filter(order => order.id >= archiveStart).every(order => order.ready_kg === "27.00" && order.received_kg === "26.00" && order.remaining_kg === "1.00"));
   assert.equal(current.receipts.length, 0); assert.equal(current.movements.length, 0); assert.equal(current.inventory.length, 0);
   const hallState = await read.state({ id: 1, permissions: ["receive_production"] }, "hall");
-  assert.equal(hallState.orders.filter(order => order.id >= 10001).length, 70);
+  assert.equal(hallState.orders.filter(order => order.id >= archiveStart).length, 70);
   assert.equal(hallState.orders.find(order => order.id === 4)?.remaining_kg, "7.00");
-  assert.equal(hallState.orders.filter(order => order.id >= 10001).reduce((sum, order) => sum + Number(order.remaining_kg), 0), 70);
+  assert.equal(hallState.orders.filter(order => order.id >= archiveStart).reduce((sum, order) => sum + Number(order.remaining_kg), 0), 70);
   const first = await read.history(actor, "orders", { limit: 50 });
   assert.ok(first.next); assert.equal(first.records.length, 50);
   const second = await read.history(actor, "orders", { limit: 50, before: first.next! });
   assert.ok(second.records.every(order => order.id < first.next!));
-  assert.equal(first.records.find(order => order.id === 10001), undefined);
+  assert.equal(first.records.find(order => order.id === archiveStart), undefined);
   for (const kind of ["orders", "rolls", "receipts", "movements", "inventory"] as ProductionHistoryKind[]) {
     assert.equal((await read.history(actor, kind, { limit: 50 })).records.length, 50);
   }
@@ -160,6 +165,10 @@ export async function verifyProductionHistory(pool: ConnectionPool, query: Query
   await measure("history_orders_page", () => read.history(actor, "orders", {}), 5);
   await measure("history_receipts_page", () => read.history(warehouse, "receipts", {}), 5);
   await measure("history_rolls_page", () => read.history(actor, "rolls", {}), 5);
-  await measure("history_order_search", () => read.history(actor, "orders", { search: "ARCHIVE-PO-10001" }), 5);
+  const selectiveSearch = `ARCHIVE-PO-${archiveStart}`;
+  await measure("history_order_search", () => read.history(actor, "orders", { search: selectiveSearch }), 5);
+  await measure("history_order_broad_search", () => read.history(actor, "orders", { search: "Archive" }), 5);
+  await measure("history_receipt_broad_search", () => read.history(warehouse, "receipts", { search: "Archive" }), 5);
+  await productionReadPlans(pool, selectiveSearch);
   console.log(`PASS isolated large archive: ${size} orders / ${size * 3} rolls / ${size} vouchers plus original lifecycle fixtures`);
 }
