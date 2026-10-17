@@ -128,7 +128,6 @@
 .production .receipt-voucher-table-line .receipt-voucher-remove span { display: none; }
 .production .receipt-voucher-available { display: inline-block; padding-top: 8px; color: #416b55; font: 650 11px "IBM Plex Mono", monospace; white-space: nowrap; }
 .production .receipt-voucher-table .receipt-voucher-requested { border-color: #9ab69f; background: #f7fbf4; }
-.production .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .production .receipt-voucher-remove {
   min-height: 30px;
   padding: 4px 8px;

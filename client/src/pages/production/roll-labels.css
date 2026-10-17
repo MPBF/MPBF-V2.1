@@ -29,7 +29,6 @@
 .roll-label-single { display: grid; justify-items: start; gap: 8px; }
 .roll-label-single .roll-label-error { margin: 0; }
 .roll-label-controls button:focus-visible,.roll-label-option:focus-within { outline: 2px solid var(--prod-accent); outline-offset: 2px; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media (max-width: 700px) {
   .roll-label-controls .prod-card-head { flex-direction: column; }
   .roll-label-list { grid-template-columns: 1fr; max-height: 340px; }

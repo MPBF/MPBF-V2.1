@@ -3,6 +3,7 @@ import { LoaderCircle, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { DRAWER_LETTERS, DRAWER_NUMBERS, joinDrawerCode, splitDrawerCode } from "../../../shared/customer-drawer";
 
+import "../styles/form-primitives.css";
 import "./CustomerModal.css";
 
 type Row = Record<string, any>;

@@ -1,23 +1,9 @@
-.customer-modal-backdrop { padding: 18px; }
 .customer-modal {
   width: min(760px, 100%);
   border: 1px solid rgba(11, 119, 112, .14);
   animation: customer-modal-enter .18s ease-out both;
 }
-.customer-modal-head {
-  align-items: flex-start !important;
-  padding: 21px 24px !important;
-  background: linear-gradient(110deg, #f1f7f4, #fbfcf9);
-}
-.customer-modal-head h3 { margin: 2px 0 3px !important; font-size: 21px; color: var(--teal-deep); }
 .customer-modal-head p { margin: 0; color: var(--muted); font-size: 12px; }
-.customer-modal-kicker {
-  color: var(--teal);
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 1px;
-}
-.customer-modal-close { min-width: 38px; min-height: 38px; padding: 8px !important; }
 .customer-modal-fields { padding: 21px 24px 7px; }
 .customer-modal-grid { display: grid; gap: 0 14px; align-items: start; }
 .customer-modal-names { grid-template-columns: 1fr 1fr; }
@@ -89,14 +75,6 @@
   font-weight: 800;
 }
 .customer-modal-save-error { margin: 0 24px 4px; }
-.customer-modal-footer {
-  border-top: 1px solid var(--line);
-  padding: 14px 24px;
-  display: flex;
-  justify-content: flex-start;
-  gap: 9px;
-  background: #fbfcfa;
-}
 .customer-modal-submit { min-width: 145px; }
 .customer-modal-spinner { animation: customer-modal-spin .8s linear infinite; }
 @keyframes customer-modal-enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
@@ -104,8 +82,6 @@
 @media (max-width: 700px) {
   .customer-modal-backdrop { padding: 10px; align-items: center; }
   .customer-modal { max-height: 94dvh; }
-  .customer-modal-head { padding: 16px !important; }
-  .customer-modal-head h3 { font-size: 19px; }
   .customer-modal-fields { padding: 17px 16px 3px; }
   .customer-modal-grid { grid-template-columns: 1fr; }
    .customer-modal-drawer {
@@ -118,7 +94,6 @@
   .customer-modal-active { margin-top: 0; }
   .customer-modal-alert { margin: 14px 16px 0; }
   .customer-modal-save-error { margin: 0 16px 4px; }
-  .customer-modal-footer { padding: 13px 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .customer-modal, .customer-modal-spinner { animation-duration: .01ms; }
