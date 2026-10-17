@@ -286,11 +286,11 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       check(`${lang} order table retains separate rows`, await evaluate("getComputedStyle(document.querySelector('table:has(.order-number-column)')).borderSpacing"), "0px 8px");
       permissions = ["view_orders"];
       await open("/orders"); await wait("!!document.querySelector('table .order-status--new')");
-      check(`${lang} fresh read-only order list loads feature CSS`, await evaluate("getComputedStyle(document.querySelector('table .order-row-tools')).display"), "grid");
+      check(`${lang} fresh read-only order list loads feature CSS`, await evaluate("getComputedStyle(document.querySelector('table .order-actions')).display"), "grid");
       await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
       check(`${lang} mobile order cards remain visible`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards')).display"), "grid");
-      check(`${lang} mobile status retains sizing`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-status')).minHeight"), "28px");
-      check(`${lang} mobile order rows retain two action lines`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-row-tools')).gridTemplateRows.split(' ').length"), 2);
+      check(`${lang} mobile status retains sizing`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-status')).minHeight"), "26px");
+      check(`${lang} mobile order rows retain two action lines`, await evaluate("getComputedStyle(document.querySelector('.mobile-cards .order-actions')).gridTemplateRows.split(' ').length"), 2);
       await send("Emulation.clearDeviceMetricsOverride");
       permissions = ["admin"];
       await open("/planning"); await wait("!!document.querySelector('.planning-page .prod-grid')");

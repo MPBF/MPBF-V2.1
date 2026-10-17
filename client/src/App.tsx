@@ -490,27 +490,37 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
       setParams(next, { replace: true });
     }
   };
-  const rowActions = (row: Row, mobile = false) => kind === "orders" ? (() => {
+  const orderStatusCell = (row: Row, mobile = false) => {
     const orderStatus = String(row.status ?? "");
     const statusClass = orderStatus === "waiting" ? "order-status--new"
       : orderStatus === "in_production" ? "order-status--production"
         : orderStatus === "completed" ? "order-status--completed"
           : orderStatus === "cancelled" ? "order-status--cancelled" : "order-status--neutral";
     const statusLabel = orderStatus === "waiting" ? translate("جديد") : orderStatus ? translate(dictionaries[orderStatus] || orderStatus) : "—";
-    return <div className={`order-row-tools${mobile ? " order-row-tools--mobile" : ""}`}>
-      <div className="order-row-tools__line">
-        <span className={`order-status ${statusClass}`} aria-label={`${translate("الحالة")}: ${statusLabel}`} title={`${translate("الحالة")}: ${statusLabel}`}>{statusLabel}</span>
-        {writable && <OrderRowActionMenu row={row as WorkspaceOrder} enabled={writable && !workspaceBusy} onAction={performWorkspaceAction} />}
-        {viewable && <button aria-label={translate("عرض الطلب")} title={translate("عرض")} className={mobile ? "btn btn-muted" : "btn btn-plain"} onClick={() => setViewingOrder(Number(row.id))}><Eye size={16} />{mobile && translate(" عرض")}</button>}
-      </div>
-      <div className="order-row-tools__line">
-        <a aria-label={translate("طباعة الطلب")} title={translate("طباعة")} className={mobile ? "btn btn-muted" : "btn btn-plain"} href={`/orders/${encodeURIComponent(String(row.id))}/print`} target="_blank" rel="noopener noreferrer"><Printer size={16} />{mobile && translate(" طباعة")}</a>
-        {writable && <button aria-label={`${translate("تعديل")} ${translate(cfg.singular)}`} title={translate("تعديل")} className={mobile ? "btn btn-muted" : "btn btn-plain"} onClick={() => setEdit(row)}><Pencil size={16} />{mobile && ` ${translate("تعديل")}`}</button>}
-        {clonable && <button aria-label={`${translate("استنساخ")} ${translate(cfg.singular)}`} title={translate("استنساخ")} className={mobile ? "btn btn-muted" : "btn btn-plain"} onClick={() => clone(row)}><Copy size={16} />{mobile && ` ${translate("استنساخ")}`}</button>}
-        {deletable && <button aria-label={`${translate("حذف")} ${translate(cfg.singular)}`} title={translate("حذف")} className={mobile ? "btn btn-danger" : "btn btn-plain"} onClick={() => remove(row.id)}><Trash2 size={16} />{mobile && ` ${translate("حذف")}`}</button>}
-      </div>
+    return <div className={`order-status-stack${mobile ? " order-status-stack--mobile" : ""}`}>
+      <span className={`order-status ${statusClass}`} aria-label={`${translate("الحالة")}: ${statusLabel}`} title={`${translate("الحالة")}: ${statusLabel}`}>{statusLabel}</span>
+      {writable && <OrderRowActionMenu row={row as WorkspaceOrder} enabled={!workspaceBusy} onAction={performWorkspaceAction} />}
     </div>;
-  })() : <div className="actions">
+  };
+  const orderActionCell = (row: Row, mobile = false) => <div className={`order-actions${mobile ? " order-actions--mobile" : ""}`}>
+    <div className="order-actions__line">
+      {viewable && <a aria-label={translate("طباعة الطلب")} title={translate("طباعة")} className={mobile ? "btn btn-muted" : "btn btn-plain"} href={`/orders/${encodeURIComponent(String(row.id))}/print`} target="_blank" rel="noopener noreferrer"><Printer size={16} />{mobile && ` ${translate("طباعة")}`}</a>}
+      {viewable && <button aria-label={translate("عرض الطلب")} title={translate("عرض")} className={mobile ? "btn btn-muted" : "btn btn-plain"} onClick={() => setViewingOrder(Number(row.id))}><Eye size={16} />{mobile && ` ${translate("عرض")}`}</button>}
+    </div>
+    <div className="order-actions__line">
+      {writable && <button aria-label={`${translate("تعديل")} ${translate(cfg.singular)}`} title={translate("تعديل")} className={mobile ? "btn btn-muted" : "btn btn-plain"} onClick={() => setEdit(row)}><Pencil size={16} />{mobile && ` ${translate("تعديل")}`}</button>}
+      {deletable && <button aria-label={`${translate("حذف")} ${translate(cfg.singular)}`} title={translate("حذف")} className={mobile ? "btn btn-danger" : "btn btn-plain"} onClick={() => remove(row.id)}><Trash2 size={16} />{mobile && ` ${translate("حذف")}`}</button>}
+    </div>
+  </div>;
+  const orderIdentityCell = (row: Row, field: Column, selection = false) => <div className="order-identity">
+    {selection && writable && <OrderSelectionBox label={`${translate("حدد")} ${displayValue(row, field)}`} checked={selectedOrderIds.includes(Number(row.id))} onChange={() => setSelectedOrderIds((selected) => selected.includes(Number(row.id)) ? selected.filter((id) => id !== Number(row.id)) : [...selected, Number(row.id)])} />}
+    <span className="order-number-stack">
+      <span className="order-number-code">{displayValue(row, field)}</span>
+      <small className="order-number-date">{fmtOrderDate(row.created_at)}</small>
+      <span className="order-customer-name">{displayValue(row, cols.find((column) => column.key === "customer") || { key: "customer", label: "" })}</span>
+    </span>
+  </div>;
+  const rowActions = (row: Row, mobile = false) => <div className="actions">
     {viewable && <button aria-label={kind === "orders" ? translate("عرض الطلب") : translate("عرض أمر الإنتاج")} title={translate("عرض")} className={mobile ? "btn btn-muted" : "btn btn-plain"} onClick={() => kind === "orders" ? setViewingOrder(Number(row.id)) : setViewingProduction(row)}><Eye size={16} />{mobile && translate(" عرض")}</button>}
     {writable && <button aria-label={`${translate("تعديل")} ${translate(cfg.singular)}`} title={translate("تعديل")} className={mobile ? "btn btn-muted" : "btn btn-plain"} onClick={() => setEdit(row)}><Pencil size={16} />{mobile && ` ${translate("تعديل")}`}</button>}
     {clonable && <button aria-label={`${translate("استنساخ")} ${translate(cfg.singular)}`} title={translate("استنساخ")} className={mobile ? "btn btn-muted" : "btn btn-plain"} onClick={() => clone(row)}><Copy size={16} />{mobile && ` ${translate("استنساخ")}`}</button>}
@@ -580,11 +590,30 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
         <button className="btn btn-muted" type="button" onClick={() => setCategoriesRetry((retry) => retry + 1)}>{translate("إعادة المحاولة")}</button>
       </div>}
       {busy ? <div style={{ padding: 20, display: "grid", gap: 12 }} aria-busy="true">{[1, 2, 3, 4].map((i) => <div className="skeleton" key={i} />)}</div> : rows.length === 0 ? <div className="empty"><strong>{translate("لا توجد سجلات مطابقة")}</strong>{translate("ابدأ بإضافة أول سجل لهذا القسم.")}</div> : <div className="table-wrap">
-        <table>
-          <thead><tr>{kind === "orders" && writable && <th className="order-row-select"><OrderSelectionBox label={translate("حدد الصفحة الحالية")} checked={rows.length > 0 && rows.every((row) => selectedOrderIds.includes(Number(row.id)))} onChange={selectPageOrders} /></th>}{visibleCols.map((field) => <th className={columnClass(field)} key={field.key}>{field.label}</th>)}{showActions && <th className={kind === "orders" ? "order-tools-column" : ""}>{kind === "orders" ? `${translate("الحالة")} / ${translate("إجراء")}` : translate("إجراء")}</th>}</tr></thead>
-          <tbody>{rows.map((row, index) => <tr key={row.id ?? index}>{kind === "orders" && writable && <td className="order-row-select"><OrderSelectionBox label={`${translate("حدد")} ${displayValue(row, cols[0])}`} checked={selectedOrderIds.includes(Number(row.id))} onChange={() => setSelectedOrderIds((selected) => selected.includes(Number(row.id)) ? selected.filter((id) => id !== Number(row.id)) : [...selected, Number(row.id)])} /></td>}{visibleCols.map((field) => <td className={columnClass(field)} title={displayValue(row, field)} key={field.key}>{renderCell(row, field)}</td>)}{showActions && <td className={kind === "orders" ? "order-tools-column" : ""}>{rowActions(row)}</td>}</tr>)}</tbody>
+        <table className={kind === "orders" ? "order-table" : undefined}>
+          <thead><tr>{kind === "orders" ? <>
+            <th className="order-number-column"><div className="order-heading">{writable && <OrderSelectionBox label={translate("حدد الصفحة الحالية")} checked={rows.length > 0 && rows.every((row) => selectedOrderIds.includes(Number(row.id)))} onChange={selectPageOrders} />}<span>{translate("رقم الطلب")} / {translate("العميل")}</span></div></th>
+            <th className="order-production-column">{translate("أوامر الإنتاج")}</th>
+            <th className="order-actions-column">{translate("إجراء")}</th>
+            <th className="order-status-column">{translate("الحالة")}</th>
+          </> : <>{visibleCols.map((field) => <th className={columnClass(field)} key={field.key}>{field.label}</th>)}{showActions && <th>{translate("إجراء")}</th>}</>}</tr></thead>
+          <tbody>{rows.map((row, index) => <tr key={row.id ?? index}>{kind === "orders" ? <>
+            <td className="order-number-column">{orderIdentityCell(row, cols.find((field) => field.key === "order_number") || cols[0], true)}</td>
+            <td className="order-production-column"><OrderProductionCell entries={Array.isArray(row.production_orders_summary) ? row.production_orders_summary : []} /></td>
+            <td className="order-actions-column">{orderActionCell(row)}</td>
+            <td className="order-status-column">{orderStatusCell(row)}</td>
+          </> : <>{visibleCols.map((field) => <td className={columnClass(field)} title={displayValue(row, field)} key={field.key}>{renderCell(row, field)}</td>)}{showActions && <td>{rowActions(row)}</td>}</>}</tr>)}</tbody>
         </table>
-        <div className="mobile-cards">{rows.map((row, index) => { const primary = visibleCols.find((c) => c.priority) || visibleCols[0]; const subtitle = primary.secondaryKey || primary.secondaryRelation ? null : visibleCols.find((c) => c !== primary && c.kind === "relation"); return <article className="entity-card" key={row.id ?? index}>{kind === "orders" && writable && <OrderSelectionBox label={`${translate("حدد")} ${displayValue(row, cols[0])}`} checked={selectedOrderIds.includes(Number(row.id))} onChange={() => setSelectedOrderIds((selected) => selected.includes(Number(row.id)) ? selected.filter((id) => id !== Number(row.id)) : [...selected, Number(row.id)])} />}<strong>{renderCell(row, primary)}</strong><small>{primary.secondaryKey || primary.secondaryRelation ? secondaryValue(row, primary) : displayValue(row, subtitle || visibleCols.find((c) => c !== primary) || primary)}</small>{visibleCols.filter((c) => c !== primary && c !== subtitle).slice(0, cfg.mobileColumnLimit ?? 4).map((field) => <div className="card-line" key={field.key}><span>{field.label}</span><b>{renderCell(row, field)}</b></div>)}{showActions && rowActions(row, true)}</article>; })}</div>
+        <div className={`mobile-cards${kind === "orders" ? " mobile-cards--orders" : ""}`}>{rows.map((row, index) => {
+          if (kind === "orders") return <article className="entity-card order-entity-card" key={row.id ?? index}>
+            <div className="order-mobile-heading">{orderIdentityCell(row, cols.find((field) => field.key === "order_number") || cols[0], true)}{orderStatusCell(row, true)}</div>
+            <div className="order-mobile-production"><span className="order-mobile-label">{translate("أوامر الإنتاج")}</span><OrderProductionCell entries={Array.isArray(row.production_orders_summary) ? row.production_orders_summary : []} /></div>
+            {orderActionCell(row, true)}
+          </article>;
+          const primary = visibleCols.find((c) => c.priority) || visibleCols[0];
+          const subtitle = primary.secondaryKey || primary.secondaryRelation ? null : visibleCols.find((c) => c !== primary && c.kind === "relation");
+          return <article className="entity-card" key={row.id ?? index}><strong>{renderCell(row, primary)}</strong><small>{primary.secondaryKey || primary.secondaryRelation ? secondaryValue(row, primary) : displayValue(row, subtitle || visibleCols.find((c) => c !== primary) || primary)}</small>{visibleCols.filter((c) => c !== primary && c !== subtitle).slice(0, cfg.mobileColumnLimit ?? 4).map((field) => <div className="card-line" key={field.key}><span>{field.label}</span><b>{renderCell(row, field)}</b></div>)}{showActions && rowActions(row, true)}</article>;
+        })}</div>
       </div>}
       {!busy && (page > 0 || rows.length === LIST_PAGE_SIZE) && <nav className="list-pagination" aria-label={`${translate("صفحات")} ${cfg.title}`}>
          <button className="btn btn-muted" type="button" disabled={page === 0} onClick={() => { setPage((current) => Math.max(0, current - 1)); setSelectedOrderIds([]); }}>{translate("السابق")}</button>

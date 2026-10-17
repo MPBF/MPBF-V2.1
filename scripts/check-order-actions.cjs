@@ -129,7 +129,12 @@ const releaseOnly = process.argv.includes("--production-release-only");
       else if (route === "/orders") body = compactOnly
         ? ["waiting", "in_production", "completed", "cancelled", "unknown_test"].map((status, index) => ({
           ...order, id: 7 + index, order_number: `O-TEST-${index + 1}`, status,
-          customer_name_ar: "عميل تجريبي", customer_name: "Test customer", production_orders_summary: [],
+          customer_name_ar: "عميل تجريبي", customer_name: "Test customer",
+          production_orders_summary: Array.from({ length: 5 }, (_, position) => ({
+            id: 900 + position, production_order_number: `O-TEST-${index + 1}-${position + 1}`,
+            item_name_ar: `صنف ${position + 1}`, item_name: `Item ${position + 1}`,
+            quantity_kg: String(10 + position),
+          })),
         }))
         : [{ ...order, customer_name_ar: "عميل تجريبي", production_orders_summary: [] }];
       else if (route === "/orders/display-folders") body = { counts: { new: 1, production: 0, urgent: 0, archive: 0 }, total: 1 };
@@ -193,16 +198,25 @@ const releaseOnly = process.argv.includes("--production-release-only");
         language = lang;
         for (const width of [390, 768, 1440]) {
           await send("Emulation.setDeviceMetricsOverride", { width, height: 1100, deviceScaleFactor: 1, mobile: false });
-          for (const grants of [["admin"], ["view_orders"]]) {
+          for (const grants of [["admin"], ["manage_orders"], ["view_orders"]]) {
             permissions = grants;
             const admin = grants.includes("admin");
-            const context = `${lang} ${width}px ${admin ? "admin" : "read-only"}`;
+            const writable = admin || grants.includes("manage_orders");
+            const context = `${lang} ${width}px ${grants[0]}`;
             await navigate("/orders");
-            await wait(`document.querySelectorAll('${visibleRoot(width)} .order-row-tools').length===5`);
+            await wait(`document.querySelectorAll('${visibleRoot(width)} .order-actions').length===5`);
             const root = visibleRoot(width);
             const scoped = (selector) => JSON.stringify(`${root} ${selector}`);
-            check(`${context}: exactly two lines per order, one status badge`,
-              await evaluate(`[...document.querySelectorAll(${scoped(".order-row-tools")})].every(e=>e.children.length===2&&e.querySelectorAll('.order-status').length===1&&e.children[1].getBoundingClientRect().top>=e.children[0].getBoundingClientRect().bottom)`));
+            check(`${context}: print/view then edit/delete in two lines`,
+              await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-actions")});return [...e.children].map(line=>[...line.children].map(c=>c.getAttribute('aria-label')));})()`),
+              [lang === "ar" ? ["طباعة الطلب", "عرض الطلب"] : ["Print order", "View order"],
+                [...(writable ? [lang === "ar" ? "تعديل طلب" : "Edit Order"] : []), ...(admin ? [lang === "ar" ? "حذف طلب" : "Delete Order"] : [])]]);
+            check(`${context}: actions stay stacked in two rows`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-actions")})].every(e=>e.children.length===2&&e.children[1].getBoundingClientRect().top>=e.children[0].getBoundingClientRect().bottom)`));
+            check(`${context}: identity stacks number, date and customer`,
+              await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-identity .order-number-stack")});const c=[...e.children];return c.length===3&&c[0].textContent==='O-TEST-1'&&c[1].textContent.trim().length>0&&c[2].textContent===${JSON.stringify(lang === "ar" ? "عميل تجريبي" : "Test customer")}&&c[2].getBoundingClientRect().top>=c[1].getBoundingClientRect().bottom;})()`));
+            check(`${context}: production entries pair into rows and preserve all five orders`,
+              await evaluate(`(()=>{const c=[...document.querySelector(${scoped(".order-production-list")}).children],r=c.map(e=>e.getBoundingClientRect());return c.length===5&&Math.abs(r[0].top-r[1].top)<2&&Math.abs(r[2].top-r[3].top)<2&&r[2].top>r[0].top&&r[4].top>r[2].top&&c.every(e=>e.querySelector('strong')&&e.querySelector('.order-production-quantity')&&e.querySelector('span'));})()`));
             check(`${context}: requested colors and neutral unknown status`,
               await evaluate(`[...document.querySelectorAll(${scoped(".order-status")})].map(e=>getComputedStyle(e).backgroundColor)`),
               ["rgb(225, 242, 232)", "rgb(251, 240, 201)", "rgb(248, 228, 215)", "rgb(249, 226, 223)", "rgb(237, 241, 239)"]);
@@ -211,24 +225,32 @@ const releaseOnly = process.argv.includes("--production-release-only");
             check(`${context}: status labels remain accessible`,
               await evaluate(`[...document.querySelectorAll(${scoped(".order-status")})].every(e=>e.getAttribute('aria-label').includes(e.textContent)&&e.textContent.trim().length>0)`));
             check(`${context}: existing permitted controls retained`,
-              await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-row-tools")});return {view:e.querySelectorAll('button:has(svg)').length,print:e.querySelectorAll('a[href$="/print"]').length,menu:e.querySelectorAll('details').length};})()`),
-              { view: admin ? 3 : 1, print: 1, menu: admin ? 1 : 0 });
+              await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-actions")});return {buttons:e.querySelectorAll('button:has(svg)').length,print:e.querySelectorAll('a[href$="/print"]').length,menus:document.querySelectorAll(${scoped(".order-status-stack details")}).length};})()`),
+              { buttons: admin ? 3 : writable ? 2 : 1, print: 1, menus: writable ? 5 : 0 });
+            check(`${context}: status is outside actions and above change-status control`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-status-stack")})].every(e=>e.querySelectorAll('.order-status').length===1&&!e.querySelector('.order-actions')&&(!e.querySelector('details')||e.querySelector('details').getBoundingClientRect().top>=e.querySelector('.order-status').getBoundingClientRect().bottom))`));
             check(`${context}: no page-wide overflow`,
               await evaluate(`document.documentElement.scrollWidth<=${width}+1`));
             check(`${context}: controls fit their two lines without wrapping`,
-              await evaluate(`[...document.querySelectorAll(${scoped(".order-row-tools__line")})].every(e=>{const p=e.getBoundingClientRect();return [...e.children].every(c=>{const r=c.getBoundingClientRect();return r.left>=p.left-1&&r.right<=p.right+1&&r.bottom<=p.bottom+1;});})`));
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-actions__line")})].every(e=>{const p=e.getBoundingClientRect();return [...e.children].every(c=>{const r=c.getBoundingClientRect();return r.left>=p.left-1&&r.right<=p.right+1&&r.bottom<=p.bottom+1;});})`));
             if (width >= 701) {
-              check(`${context}: no separate status column`,
-                await evaluate(`document.querySelectorAll('th.order-tools-column').length===1&&![...document.querySelectorAll('thead th')].some(e=>e.textContent.trim()===${JSON.stringify(lang === "ar" ? "الحالة" : "Status")})`));
+              check(`${context}: exactly four columns in requested order`,
+                await evaluate("[...document.querySelectorAll('.order-table thead th')].map(e=>e.className)"),
+                ["order-number-column", "order-production-column", "order-actions-column", "order-status-column"]);
+              check(`${context}: selection is inside first column`,
+                await evaluate("document.querySelectorAll('.order-table tbody tr:first-child > td').length===4&&document.querySelectorAll('.order-table tbody tr:first-child > td:first-child input[type=checkbox]').length"),
+                writable ? 1 : 0);
             }
-            if (admin) {
+            if (writable) {
               await click(`${root} .order-row-menu summary`);
+              check(`${context}: change-status label is explicit and localized`,
+                await evaluate(`document.querySelector(${scoped(".order-row-menu summary")}).textContent.trim()`), lang === "ar" ? "تغيير حالة الطلب" : "Change order status");
               check(`${context}: original menu opens with all three actions`,
-                await evaluate(`document.querySelector(${scoped(".order-row-menu")}).open&&document.querySelectorAll(${scoped(".order-row-menu__items button")}).length===15`));
+                await evaluate(`document.querySelector(${scoped(".order-row-menu")}).open&&document.querySelector(${scoped(".order-row-menu__items")}).querySelectorAll('button').length===3`));
               await click(`${root} .order-row-menu summary`);
-              await capture(`orders-${lang}-${width}`);
+              if (admin) await capture(`orders-${lang}-${width}`);
             }
-            await click(`${root} .order-row-tools__line > button`);
+            await click(`${root} .order-actions__line > button`);
             await wait("!!document.querySelector('.odm-summary-strip')");
             check(`${context}: view still opens actual order-details component`,
               await evaluate("!!document.querySelector('.odm-summary-strip')"));
