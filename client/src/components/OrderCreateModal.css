@@ -133,14 +133,7 @@
   gap: 10px 12px;
 }
 
-.order-create-field { display: grid; align-content: start; gap: 6px; min-width: 0; }
 .order-create-field-wide { grid-column: 1 / -1; }
-
-.order-create-field label, .order-line-field label {
-  color: #59716a;
-  font-size: 12px;
-  font-weight: 750;
-}
 
 .order-create-field input,
 .order-create-field select,

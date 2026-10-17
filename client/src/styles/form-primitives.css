@@ -1,0 +1,56 @@
+.customer-modal-backdrop,
+.production-order-modal-backdrop { padding: 18px; }
+
+.customer-modal-head,
+.production-order-modal-head {
+  align-items: flex-start !important;
+  padding: 21px 24px !important;
+  background: var(--shared-modal-header-background);
+}
+
+.customer-modal-head h3,
+.production-order-modal-head h3 { margin: 2px 0 3px !important; font-size: 21px; color: var(--teal-deep); }
+
+.customer-modal-kicker,
+.production-order-modal-kicker {
+  color: var(--teal);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.customer-modal-close,
+.production-order-modal-close { min-width: 38px; min-height: 38px; padding: 8px !important; }
+
+.customer-modal-footer,
+.production-order-modal-footer {
+  border-top: 1px solid var(--line);
+  padding: 14px 24px;
+  display: flex;
+  justify-content: flex-start;
+  gap: 9px;
+  background: var(--shared-modal-footer-background);
+}
+
+.cp-field,
+.order-create-field { display: grid; align-content: start; gap: 6px; min-width: 0; }
+
+.cp-field label,
+.order-create-field label,
+.order-line-field label {
+  color: var(--shared-field-label-color);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+@media (max-width: 700px) {
+  .customer-modal-head,
+  .production-order-modal-head { padding: 16px !important; }
+
+  .customer-modal-head h3,
+  .production-order-modal-head h3 { font-size: 19px; }
+
+  .customer-modal-footer,
+  .production-order-modal-footer { padding: 13px 16px; }
+}
+

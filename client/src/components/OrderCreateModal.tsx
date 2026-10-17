@@ -1,6 +1,7 @@
 import { localizedName, translate, translateError } from "../i18n";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { AlertCircle, Boxes, Check, ClipboardList, LoaderCircle, Plus, Trash2, X } from "lucide-react";
+import "../styles/form-primitives.css";
 import "./OrderCreateModal.css";
 import CustomerProductSelect from "./CustomerProductSelect";
 import CustomerProductModal from "./CustomerProductModal";

@@ -6,6 +6,7 @@ import { PRINTING_CYLINDERS, customerProductFacingNotice, deriveCustomerProductF
 
 import { buildCustomerProductDirtyPayload, buildCustomerProductPayload, customerProductSourcesChanged, initializeCustomerProductForm, validateCustomerProductForm } from "./customer-product-form";
 import { CustomerPicker, ProductValueSelect, PRODUCT_SELECT_VALUES, unitWeightLabel } from "./customer-product-controls";
+import "../styles/form-primitives.css";
 import "./CustomerProductModal.css";
 import MasterBatchSwatch from "./MasterBatchSwatch";
 import CustomerModal from "./CustomerModal";
