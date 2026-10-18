@@ -41,7 +41,7 @@ import {
   system_settings,
   users,
 } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { nextCategoryId } from "./category-id";
 import { nextItemId } from "./item-id";
 import { nextSectionId } from "./section-id";
@@ -52,6 +52,7 @@ import { customerFormSchema, nextCustomerId, salesRepresentativeRoleCondition, v
 import { allocateOrderNumber, previewOrderNumber, productionOrderNumber, productionOrderSequence } from "./order-number";
 import { deliveryDateFromDays, orderDateInRiyadh } from "./order-delivery";
 import { getOrderDetails } from "./order-details";
+import { customerOrderHistory } from "./customer-order-history";
 import { createPublicOrderPrintRouter, publicOrderPrintPath } from "./public-order-print";
 import { customerProductFacingNotice, deriveCustomerProductFields, PRINTING_CYLINDERS } from "@shared/customer-product-fields";
 import { authenticate, hashPassword, requireAnyPermission, requireAuth, requirePermission } from "./auth";
@@ -2058,6 +2059,17 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
     } catch (error) { next(error); }
   });
 }
+
+router.get("/customers/:id/order-history", businessRead, async (req, res, next) => {
+  try {
+    const customerId = z.string().min(1).max(20).parse(req.params.id);
+    const { limit, offset } = z.object({
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+      offset: z.coerce.number().int().min(0).max(2147483547).default(0),
+    }).parse(req.query);
+    res.json(await customerOrderHistory(pool, customerId, limit, offset));
+  } catch (error) { next(error); }
+});
 
 router.get("/customers/:id/detail", businessRead, async (req, res, next) => {
   try {

@@ -79,6 +79,7 @@
 - [Intl calendar defaults](intl-calendar-defaults.md) — Saudi locale with Latin digits still defaults to Hijri; date tests must account for the intended calendar.
 - [Category overrun scope](category-overrun-scope.md) — user approved category-based planning for new production orders only; preserve saved percentages on existing orders.
 - [Customer profile product order](customer-profile-product-order.md) — user chose alphabetical category names, not codes; this preference is scoped to the customer profile.
+- [Customer history actual output](customer-order-history.md) — final-stage output only; zero before final output, partial completion counts, independent of warehouse movements.
 - [Language selector preference](language-selector-preference.md) — user chose a compact current-language flag dropdown, not adjacent flag buttons.
 - [Print pagination verification](print-pagination-verification.md) — continuous print-media checks can miss trailing PDF pages; inspect real page contents and render boundary cases.
 - [Factory roll-label printer](roll-label-printer.md) — user approved Zebra 4 × 6 inch portrait labels through browser printing; direct printer integration needs separate approval.
