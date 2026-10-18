@@ -1,6 +1,6 @@
 import i18n, { translate, translateError } from "../i18n";
 import { fetchAllPages, LIST_PAGE_SIZE } from "./listing";
-import type { OrderDisplayFolder } from "./order-workspace";
+import type { OrderDisplayFilter } from "./order-workspace";
 import { latinDigits } from "./number-input";
 
 export type Row = Record<string, any>;
@@ -33,7 +33,7 @@ export const api = async (path: string, options: RequestInit = {}) => {
   return normalizePayload(body);
 };
 
-export const listPage = (path: string, search = "", offset = 0, limit = LIST_PAGE_SIZE, displayFolder?: OrderDisplayFolder, categoryId?: string) => {
+export const listPage = (path: string, search = "", offset = 0, limit = LIST_PAGE_SIZE, displayFolder?: Exclude<OrderDisplayFilter, "all">, categoryId?: string) => {
   const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (search) query.set("search", search);
   if (displayFolder) query.set("display_folder", displayFolder);
