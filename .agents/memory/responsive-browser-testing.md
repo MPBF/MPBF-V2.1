@@ -103,3 +103,15 @@ layout change. Waiting alone did not resolve the false failures.
 **How to apply:** require the intended computed minimum height and allow a
 small tolerance (such as half a pixel) in rendered bounds. Continue checking
 that controls are enabled and contained; do not relax functional assertions.
+
+Use coordinate hit testing and browser pointer events for overlay regressions,
+not DOM `.click()` alone. Probe the underlying navigation's screen area too.
+
+**Why:** programmatic activation bypasses occlusion, so an obscured save button
+can appear functional in a test. Comparing z-index numbers alone also ignores
+ancestor stacking contexts.
+
+**How to apply:** scroll controls into view, wait for finite entrance animations,
+and check that `elementFromPoint` belongs to the intended control before sending
+pointer events. Choose visible openers before testing focus restoration; a
+selector list returns the first element in document order, not selector priority.

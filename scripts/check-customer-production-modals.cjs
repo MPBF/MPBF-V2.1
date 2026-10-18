@@ -159,6 +159,34 @@ const WebSocket = require("ws");
       const result = await send("Page.captureScreenshot", { format: "png" });
       await fs.writeFile(`generated-artifacts/customer-production-checks/${name}.png`, Buffer.from(result.data, "base64"));
     };
+    // DOM .click() bypasses occlusion. Use hit testing and real pointer events
+    // for the layering regression, scrolling each control into view first.
+    const pointerClick = async (selector) => {
+      await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:"center"})`);
+      await evaluate("Promise.allSettled(document.getAnimations().filter(a=>a.effect?.target instanceof Element && a.effect.target.closest('[role=dialog]')).map(a=>a.finished))");
+      const point = await evaluate(`(()=>{
+        const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect();
+        const x=r.left+r.width/2,y=r.top+r.height/2;
+        return {x,y,reachable:x>=0&&x<innerWidth&&y>=0&&y<innerHeight&&e.contains(document.elementFromPoint(x,y))};
+      })()`);
+      verify(`pointer reaches ${selector}`, point.reachable);
+      await send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+      await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
+    };
+    const checkNavigationCovered = async (width, backdrop) => {
+      if (width !== 390) return;
+      verify(`${width}: ${backdrop} covers the navigation hit area`, await evaluate(`(()=>{
+        const bar=document.querySelector('.mobile-navigation-bar'),r=bar.getBoundingClientRect();
+        return r.height>0&&[.1,.5,.9].every(part=>{
+          const hit=document.elementFromPoint(r.left+r.width*part,r.top+r.height/2);
+          return !!hit?.closest(${JSON.stringify(backdrop)});
+        });
+      })()`));
+    };
+    const pressEscape = async () => {
+      await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    };
 
     if (immediateProducts) {
       const chooseCustomer = async () => {
@@ -260,10 +288,24 @@ const WebSocket = require("ws");
       return;
     }
 
-    for (const width of [390, 768, 1024]) {
+    for (const width of [390, 768, 1024, 1280]) {
       await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });
       await navigate("/customers");
+      await wait("[...document.querySelectorAll('button')].some(b=>b.textContent.includes('إضافة عميل'))");
+      await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('إضافة عميل')).focus()");
       await openCustomer();
+      await checkNavigationCovered(width, ".customer-modal-backdrop");
+      for (const selector of ["#customer-name-ar", "#customer-name", "#customer-tax-number", "#customer-phone", "#customer-sales-rep", "#customer-city", "#customer-active", "#customer-drawer-letter", "#customer-drawer-number", "#customer-drawer-code"]) {
+        await pointerClick(selector);
+        // Close any native select popup without closing the dialog.
+        if (selector.includes("sales-rep") || selector.includes("drawer-letter") || selector.includes("drawer-number")) {
+          await pointerClick("#customer-drawer-code");
+        }
+      }
+      const beforeEmptySave = writes.length;
+      await pointerClick(".customer-modal-submit");
+      await wait("!!document.querySelector('.customer-modal-save-error')");
+      verify(`${width}: reachable save validates without writing`, writes.length, beforeEmptySave);
       verify(`${width}: no customer code input`, await evaluate("!document.querySelector('[role=dialog] input[name=id], [role=dialog] #id') && document.querySelectorAll('[role=dialog] input:not([readonly])').length===6"));
       verify(`${width}: only representatives endpoint choices`, await evaluate("document.querySelector('#customer-sales-rep').options.length"), 2);
       verify(`${width}: modal/page do not overflow`, await evaluate("document.documentElement.scrollWidth <= innerWidth && document.querySelector('[role=dialog]').getBoundingClientRect().width<=innerWidth"));
@@ -272,20 +314,43 @@ const WebSocket = require("ws");
         verify(`${width}: three contact fields in one row`, await evaluate("(()=>{const ys=['#customer-tax-number','#customer-phone','#customer-sales-rep'].map(s=>document.querySelector(s).getBoundingClientRect().top);return Math.max(...ys)-Math.min(...ys)<2})()"));
       }
       await screenshot(`customer-form-${width}`);
-      await close();
+      await pointerClick(".customer-modal-footer button[type=button]");
+      await wait("!document.querySelector('.customer-modal')");
+      verify(`${width}: customer cancel restores opener focus`, await evaluate("document.activeElement.textContent.includes('إضافة عميل')"));
+      const navSelector = width === 390 ? ".mobile-navigation-bar a" : ".sidebar .nav a";
+      const navPath = await evaluate(`new URL(document.querySelector(${JSON.stringify(navSelector)}).href).pathname`);
+      await pointerClick(navSelector);
+      await wait(`location.pathname===${JSON.stringify(navPath)}&&!document.querySelector('[role=dialog]')`);
+      verify(`${width}: navigation works after cancel`, await evaluate(`location.pathname===${JSON.stringify(navPath)}`));
       await navigate("/orders?tab=production");
       await wait("!!document.querySelector('[aria-label=\"عرض أمر الإنتاج\"]')");
       await click('[aria-label="عرض أمر الإنتاج"]');
       await wait("!!document.querySelector('.production-order-details')");
+      await checkNavigationCovered(width, ".production-order-modal-backdrop");
       verify(`${width}: view is read-only`, await evaluate("document.querySelectorAll('[role=dialog] input,[role=dialog] select,[role=dialog] textarea,[role=dialog] form').length"), 0);
       verify(`${width}: view shows order and customer`, await evaluate("document.querySelector('[role=dialog]').textContent.includes('123-01')&&document.querySelector('[role=dialog]').textContent.includes('عميل تجريبي')"));
       verify(`${width}: view fits viewport`, await evaluate("document.querySelector('[role=dialog]').getBoundingClientRect().width<=innerWidth"));
       await screenshot(`production-view-${width}`);
       await close();
+      await evaluate("[...document.querySelectorAll('[aria-label=\"تعديل أمر إنتاج\"]')].find(e=>e.offsetParent!==null).focus()");
       await click('[aria-label="تعديل أمر إنتاج"]');
       await wait("!!document.querySelector('#production-order-quantity')");
+      await checkNavigationCovered(width, ".production-order-modal-backdrop");
+      await pointerClick("#production-order-quantity");
+      await input("#production-order-quantity", "");
+      const beforeEmptyQuantity = writes.length;
+      await pointerClick(".production-order-submit");
+      await wait("!!document.querySelector('.production-order-error')");
+      verify(`${width}: reachable production save validates without writing`, writes.length, beforeEmptyQuantity);
       verify(`${width}: edit has exactly one quantity input`, await evaluate("document.querySelectorAll('[role=dialog] input,[role=dialog] select,[role=dialog] textarea').length"), 1);
-      await close();
+      await pointerClick(".production-order-modal footer button[type=button]");
+      await wait("!document.querySelector('.production-order-modal')");
+      verify(`${width}: production cancel restores opener focus`, await evaluate("document.activeElement.getAttribute('aria-label')==='تعديل أمر إنتاج'"));
+      await click('[aria-label="تعديل أمر إنتاج"]');
+      await wait("!!document.querySelector('.production-order-modal')?.contains(document.activeElement)");
+      await pressEscape();
+      await wait("!document.querySelector('.production-order-modal')");
+      verify(`${width}: Escape restores production opener focus`, await evaluate("document.activeElement.getAttribute('aria-label')==='تعديل أمر إنتاج'"));
     }
 
     await navigate("/customers");
@@ -365,10 +430,30 @@ const WebSocket = require("ws");
     verify("parent product dialog is inert while adding a customer",
       await evaluate("document.querySelector('.cp-modal').inert"));
     for (const width of [390, 768, 1280]) {
-      await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });
       verify(`nested customer dialog fits ${width}px`,
         await evaluate("(()=>{const r=document.querySelector('.customer-modal').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&document.documentElement.scrollWidth<=innerWidth})()"));
+      await checkNavigationCovered(width, ".customer-modal-backdrop");
+      await pointerClick("#customer-name");
+      await pointerClick(".customer-modal-submit");
+      await wait("!!document.querySelector('.customer-modal-save-error')");
+      verify(`${width}: child save is reachable without writing`, writes.length, inlineStart);
       await screenshot(`inline-customer-${width}`);
+      await pointerClick(".customer-modal-footer button[type=button]");
+      await wait("!document.querySelector('.customer-modal')&&document.activeElement.id==='cp-customer'");
+      verify(`${width}: child cancel restores parent and its values`,
+        await evaluate("!document.querySelector('.cp-modal').inert&&document.querySelector('#cp-width').value==='30'&&document.querySelector('.cp-modal textarea').value==='Keep the product draft during customer creation'"));
+      await pointerClick("#cp-customer");
+      await wait("!!document.querySelector('.cp-customer-menu')");
+      await pointerClick(".cp-customer-create");
+      await wait("!!document.querySelector('.customer-modal')&&!document.querySelector('.customer-modal-submit').disabled");
+      await pressEscape();
+      await wait("!document.querySelector('.customer-modal')&&document.activeElement.id==='cp-customer'");
+      verify(`${width}: child Escape leaves parent open`, await evaluate("!!document.querySelector('.cp-modal')&&!document.querySelector('.cp-modal').inert"));
+      await pointerClick("#cp-customer");
+      await wait("!!document.querySelector('.cp-customer-menu')");
+      await pointerClick(".cp-customer-create");
+      await wait("!!document.querySelector('.customer-modal')&&!document.querySelector('.customer-modal-submit').disabled");
     }
     await input("#customer-name", "Cancelled inline fixture");
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
