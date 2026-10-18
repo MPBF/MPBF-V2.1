@@ -88,7 +88,7 @@ export class ProductionMonitoringService {
         (COALESCE(m.mixed,0)-COALESCE(r.consumed,0))::text remaining_kg,
         COALESCE(r.film,0)::text film_kg,COALESCE(r.uncovered,0)::text uncovered_kg
         FROM machines ma
-        LEFT JOIN LATERAL (SELECT sum(total_kg) mixed FROM factory_mixes WHERE machine_id=ma.id AND id>$1) m ON true
+        LEFT JOIN LATERAL (SELECT sum(total_kg) mixed FROM factory_mixes WHERE machine_id=ma.id AND id>$1 AND deleted_at IS NULL) m ON true
         LEFT JOIN LATERAL (SELECT sum(weight_kg) film,sum(uncovered_kg) uncovered,sum(weight_kg-uncovered_kg) consumed
           FROM factory_roll_mix_tracking WHERE machine_id=ma.id) r ON true
         WHERE lower(ma.type)='extruder' OR m.mixed IS NOT NULL OR r.film IS NOT NULL ORDER BY ma.id`,[boundary.last_mix_id]);
@@ -104,7 +104,7 @@ export class ProductionMonitoringService {
       const limit = filters.limit??50, scope = JSON.stringify(["mixes",filters.machine_id??""]);
       const cursor = await this.cursor(tx,scope,filters.cursor);
       const records = await rows<MixMonitorRecord>(tx,`SELECT ${mixRead} ${mixJoins}
-        WHERE m.id<$1::bigint AND ($2::text IS NULL OR m.machine_id=$2)
+        WHERE m.deleted_at IS NULL AND m.id<$1::bigint AND ($2::text IS NULL OR m.machine_id=$2)
         AND pg_visible_in_snapshot(m.xmin::text::xid8,$3::pg_snapshot)
         ORDER BY m.id DESC LIMIT $4`,[cursor.id,filters.machine_id??null,cursor.snapshot,limit+1]);
       const page = records.slice(0,limit);
@@ -124,7 +124,7 @@ export class ProductionMonitoringService {
   }
   mix(actor: ProductionUser, id: number, cursor?: string): Promise<MixMonitorDetail> {
     return this.read(actor,async tx => ({
-      mix:await one<MixMonitorRecord>(tx,`SELECT ${mixRead} ${mixJoins} WHERE m.id=$1`,[id]),
+      mix:await one<MixMonitorRecord>(tx,`SELECT ${mixRead} ${mixJoins} WHERE m.id=$1 AND m.deleted_at IS NULL`,[id]),
       allocations:await this.allocations(tx,"mix",id,cursor),
     }));
   }

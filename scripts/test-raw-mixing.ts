@@ -50,6 +50,8 @@ try {
       INSERT INTO items VALUES('ITM001','RAW','HDPE','HDPE','بولي إيثيلين','active'),
         ('ITM002','RAW','LDPE','LDPE','خام منخفض','active'),('ITM003','BAG','BAG','Bag','كيس','active');`);
     await tx.query(readFileSync("migrations/0014_raw_material_mixing.sql","utf8"));
+    await tx.query("CREATE TABLE factory_mix_activation(id integer PRIMARY KEY,last_mix_id integer); CREATE TABLE factory_mix_allocations(mix_id integer);");
+    await tx.query(readFileSync("migrations/0023_mix_corrections.sql","utf8"));
     await tx.query(readFileSync("migrations/0017_raw_mixing_screws.sql","utf8"));
     await tx.query(readFileSync("migrations/0017_raw_mixing_screws.sql","utf8"));
     await tx.query(readFileSync("migrations/0015_raw_catalogue_movements.sql","utf8"));

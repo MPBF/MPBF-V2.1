@@ -104,6 +104,7 @@ try {
   await setup.query(readFileSync("migrations/0014_raw_material_mixing.sql", "utf8"));
   await setup.query(readFileSync("migrations/0017_raw_mixing_screws.sql", "utf8"));
   await setup.query(readFileSync("migrations/0018_production_monitoring.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0023_mix_corrections.sql", "utf8"));
   await setup.query(readFileSync("migrations/0019_finished_receipts_kg_only.sql", "utf8"));
   await setup.query(readFileSync("migrations/0021_finished_deliveries.sql", "utf8"));
   setup.release(); setup = undefined;

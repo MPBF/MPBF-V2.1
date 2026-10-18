@@ -1,7 +1,8 @@
 import { kgHundredths, kgString, type ProductionUser } from "../../shared/production";
-import { canRecordMixing, canViewMixing, canViewRawInventory, type MixingInput, type MixingRecord, type MixingState, type RawMaterial, type RawMovementInput, type RawVoucher } from "../../shared/raw-mixing";
+import { canRecordMixing, canViewMixing, canViewRawInventory, type MixingInput, type MixingRecord, type MixingState, type RawMaterial, type RawMovementInput, type RawVoucher, type MixingUpdateInput, type MixingDeleteInput } from "../../shared/raw-mixing";
 import { mutate, one, permission, ProductionError, rows, type ConnectionPool, type Connection } from "./core";
 import { lockMixMachine } from "./mix-consumption";
+import { correctMix } from "./mix-corrections";
 
 const filmTypes = ["extruder"];
 // The catalogue owns material identities; stock and operational forms cannot
@@ -10,7 +11,9 @@ const rawCategorySQL = `(lower(trim(c.name)) IN ('raw','raw material','raw mater
   OR trim(c.name_ar) IN ('خام','الخامات','مواد خام','المواد الخام'))`;
 // Resolve catalog names without turning an internal identifier into a name.
 // Stock-voucher/inventory presentation deliberately keeps its existing contract.
-export const mixProjection = `m.id,m.machine_id,m.screw,m.created_by,m.created_at,m.notes,m.total_kg::text,
+export const mixProjection = `m.id,m.machine_id,m.screw,m.created_by,m.created_at,m.notes,m.total_kg::text,m.revision,
+  (m.deleted_at IS NULL AND EXISTS(SELECT 1 FROM factory_mix_activation activation WHERE m.id>activation.last_mix_id)
+    AND NOT EXISTS(SELECT 1 FROM factory_mix_allocations allocated WHERE allocated.mix_id=m.id)) can_edit_contents,
   ma.name machine_name,ma.name_ar machine_name_ar,
   COALESCE(NULLIF(u.display_name,''),u.username) actor_name,
   COALESCE(NULLIF(u.display_name_ar,''),NULLIF(u.full_name,''),u.username) actor_name_ar,
@@ -34,7 +37,7 @@ export class RawMixingService {
         ORDER BY i.id ON CONFLICT (item_id) DO NOTHING`);
     } finally { connection.release(); }
   }
-  private async lockMaterials(tx: Connection, items: MixingInput["items"]) {
+  private async lockMaterials(tx: Connection, items: MixingInput["items"], previousIds: number[] = []) {
     if (!items.length || items.length > 100 || new Set(items.map(i => i.material_id)).size !== items.length)
       throw new ProductionError("اختر مواد من القائمة دون تكرار", "Select catalogue materials without duplicates.", 400);
     const ids = items.map(i => i.material_id).sort((a,b) => a-b);
@@ -44,9 +47,10 @@ export class RawMixingService {
       ORDER BY r.id FOR SHARE OF i,c`, [ids]);
     if (eligible.length !== ids.length)
       throw new ProductionError("اختر أصنافًا نشطة من فئة المواد الخام المعرّفة مسبقًا", "Select active predefined raw-category items.", 400);
+    const allIds = [...new Set([...ids, ...previousIds])].sort((a,b) => a-b);
     const locked = await rows<{id:number; is_active:boolean}>(tx,
-      "SELECT id,is_active FROM factory_raw_materials WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE", [ids]);
-    if (locked.length!==ids.length || locked.some(r => !r.is_active))
+      "SELECT id,is_active FROM factory_raw_materials WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE", [allIds]);
+    if (locked.length!==allIds.length || locked.some(r => ids.includes(r.id) && !r.is_active))
       throw new ProductionError("الصنف غير نشط", "The item is inactive.", 400);
     const quantities = items.map(i => kgHundredths(i.quantity_kg));
     if (quantities.some(q => q<=0n)) throw new ProductionError("كميات المواد يجب أن تكون موجبة", "Material weights must be positive.", 400);
@@ -68,14 +72,14 @@ export class RawMixingService {
         "SELECT id,name,name_ar,status,screw_type FROM machines WHERE lower(type)=ANY($1::text[]) ORDER BY id", [filmTypes]) : [];
       const history = canViewMixing(actor) ? await rows<MixingRecord>(tx, `SELECT ${mixProjection}
         FROM factory_mixes m JOIN machines ma ON ma.id=m.machine_id JOIN users u ON u.id=m.created_by
-        WHERE ($1::int IS NULL OR m.id<$1) ORDER BY m.id DESC LIMIT 51`, [before ?? null]) : [];
+        WHERE m.deleted_at IS NULL AND ($1::int IS NULL OR m.id<$1) ORDER BY m.id DESC LIMIT 51`, [before ?? null]) : [];
       // Two indexed top-one probes per film machine, independent of history
       // cursors. Include historical B even if configuration later changes to A.
       const latest_mixes = canViewMixing(actor) ? await rows<MixingRecord>(tx, `SELECT ${mixProjection}
         FROM machines ma CROSS JOIN (VALUES ('A'),('B')) AS s(screw)
         CROSS JOIN LATERAL (
           SELECT * FROM factory_mixes fm
-          WHERE fm.machine_id=ma.id AND fm.screw=s.screw ORDER BY fm.id DESC LIMIT 1
+          WHERE fm.machine_id=ma.id AND fm.screw=s.screw AND fm.deleted_at IS NULL ORDER BY fm.id DESC LIMIT 1
         ) m JOIN users u ON u.id=m.created_by
         WHERE lower(ma.type)=ANY($1::text[]) ORDER BY ma.id,m.screw`, [filmTypes]) : [];
       const raw_vouchers = canViewRawInventory(actor) ? await rows<RawVoucher>(tx, `SELECT v.id,v.kind,v.total_kg::text,
@@ -123,6 +127,14 @@ export class RawMixingService {
       }
       return { ...mix, balances };
     });
+  }
+  update(actor: ProductionUser, mixId: number, input: MixingUpdateInput) {
+    return correctMix(this.pool, actor, mixId, input, false,
+      (tx, items, oldIds) => this.lockMaterials(tx, items, oldIds));
+  }
+  delete(actor: ProductionUser, mixId: number, input: MixingDeleteInput) {
+    return correctMix(this.pool, actor, mixId, input, true,
+      (tx, items, oldIds) => this.lockMaterials(tx, items, oldIds));
   }
   movement(actor: ProductionUser, input: RawMovementInput) {
     permission(actor,"manage_raw_materials");

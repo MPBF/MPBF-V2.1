@@ -93,6 +93,22 @@ router.post("/mixing", handler(async (req, res) => {
   }).parse(req.body);
   res.json(await mixing.record(req.user!, input));
 }));
+const mixRevision = z.number().int().min(0).max(2147483646);
+router.patch("/mixing/:id", handler(async (req, res) => {
+  const input = request.extend({
+    expected_revision: mixRevision, notes: safeText(2000).optional(),
+    contents: z.object({
+      machine_id: machine, screw: z.enum(["A","B"]).optional(),
+      items: z.array(z.object({material_id:id,quantity_kg:weight}).strict()).min(1).max(100)
+        .refine(items => new Set(items.map(i => i.material_id)).size===items.length),
+    }).strict().optional(),
+  }).refine(value => value.notes !== undefined || value.contents !== undefined).parse(req.body);
+  res.json(await mixing.update(req.user!, id.parse(req.params.id), input));
+}));
+router.delete("/mixing/:id", handler(async (req, res) => {
+  const input = request.extend({ expected_revision: mixRevision }).parse(req.body);
+  res.json(await mixing.delete(req.user!, id.parse(req.params.id), input));
+}));
 router.post("/raw-materials", handler(async (_req, res) => {
   // Retire the old free-form definition endpoint rather than silently accepting
   // stale editors. Catalogue definitions belong to the existing Items module.

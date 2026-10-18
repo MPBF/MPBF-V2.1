@@ -761,6 +761,8 @@
   --theme-raw-operations-raw-ops-banner-warning-surface: #fbf5e4;
   --theme-raw-operations-raw-ops-banner-warning-text: #705b2b;
   --theme-raw-operations-raw-ops-card-shadow: rgba(27,64,57,.04);
+  --theme-raw-operations-raw-ops-dialog-backdrop: rgba(18,29,28,.48);
+  --theme-raw-operations-raw-ops-dialog-shadow: rgba(20,31,30,.2);
   --theme-raw-operations-raw-ops-field-input-border: #c8d8cf;
   --theme-raw-operations-raw-ops-field-input-surface: #fff;
   --theme-raw-operations-raw-ops-field-input-focus-focus: rgba(188,104,71,.28);
