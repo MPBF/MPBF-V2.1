@@ -136,8 +136,11 @@ const releaseOnly = process.argv.includes("--production-release-only");
       else if (route === "/orders" && activeOnly) {
         const params = new URL(request.url).searchParams;
         const folder = params.get("display_folder");
+        const statusFilter = params.get("status_filter");
+        const states = { active:["waiting","in_production"],new:["waiting"],production:["in_production"],completed:["completed"],cancelled:["cancelled"] };
         const matching = activeFixtures.filter((row) =>
           (!folder || (folder === "active" ? ["waiting", "in_production"].includes(row.status) : row.display_folder === folder))
+          && (!statusFilter || statusFilter === "all" || states[statusFilter]?.includes(row.status))
           && (!params.get("search") || row.order_number.includes(params.get("search"))));
         const offset = Number(params.get("offset") || 0);
         body = matching.slice(offset, offset + Number(params.get("limit") || 50));
@@ -154,6 +157,16 @@ const releaseOnly = process.argv.includes("--production-release-only");
           })),
         }))
         : [{ ...order, customer_name_ar: "عميل تجريبي", production_orders_summary: [] }];
+      else if (route === "/orders/status-counts") {
+        const folder = new URL(request.url).searchParams.get("display_folder");
+        const records = activeOnly ? activeFixtures.filter(row => !folder || row.display_folder === folder) : [order];
+        body = { counts: { all:records.length,
+          active:records.filter(r=>["waiting","in_production"].includes(r.status)).length,
+          new:records.filter(r=>r.status==="waiting").length,
+          production:records.filter(r=>r.status==="in_production").length,
+          completed:records.filter(r=>r.status==="completed").length,
+          cancelled:records.filter(r=>r.status==="cancelled").length } };
+      }
       else if (route === "/orders/display-folders") body = activeOnly
         ? { counts: { active: 2, new: 4, production: 2, urgent: 1, archive: 2 }, total: 9 }
         : { counts: { active: compactOnly ? 2 : 1, new: 1, production: 0, urgent: 0, archive: 0 }, total: 1 };
@@ -242,8 +255,22 @@ const releaseOnly = process.argv.includes("--production-release-only");
           check(`${context}: All count does not include Active twice`,
             await evaluate("document.querySelector('.order-workspace__folders button:nth-child(2) .order-workspace__count').textContent"), "9");
           await click(".order-workspace__folders button:nth-child(3)");
-          await wait(`document.querySelectorAll('${root} .order-number-code').length===4`);
-          check(`${context}: existing manual New folder remains independent`, await codes(), ["O-ACT-3", "O-ACT-4", "O-ACT-6", "O-ACT-7"]);
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===1`);
+          check(`${context}: New excludes completed orders in New folder`, await codes(), ["O-ACT-1"]);
+          for (const [position, code, label] of [[4,"O-ACT-2",lang==="ar"?"قيد الإنتاج":"In production"],[5,"O-ACT-3",lang==="ar"?"مكتمل":"Completed"],[6,"O-ACT-4",lang==="ar"?"ملغي":"Cancelled"]]) {
+            await click(`.order-workspace__folders button:nth-child(${position})`);
+            await wait(`document.querySelector('.order-workspace__folders button:nth-child(${position})').getAttribute('aria-current')==='page'&&document.querySelectorAll('${root} .order-number-code').length===1&&document.querySelector('${root} .order-number-code').textContent===${JSON.stringify(code)}`);
+            check(`${context}: ${label} matches status`, await codes(), [code]);
+            check(`${context}: ${label} label and counter`, await evaluate(`document.querySelector('.order-workspace__folders button:nth-child(${position})').textContent`),`${label}1`);
+          }
+          await click(".order-workspace__folders button:nth-child(5)");
+          await evaluate("(()=>{const s=document.querySelector('.order-workspace__folder-filter select');s.value='new';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+          await wait(`document.querySelector('.order-workspace__folders button:nth-child(2) .order-workspace__count').textContent==='4'&&document.querySelectorAll('${root} .order-number-code').length===1`);
+          check(`${context}: Completed can be in manual New folder`,await codes(),["O-ACT-3"]);
+          await click(".order-workspace__folders button:nth-child(3)");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===0`);
+          check(`${context}: manual New never implies New status`, await codes(), []);
+          await evaluate("(()=>{const s=document.querySelector('.order-workspace__folder-filter select');s.value='all';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
           await click(".order-workspace__folders button:first-child");
           await wait(`document.querySelectorAll('${root} .order-number-code').length===2`);
           check(`${context}: returning to Active resets the list`, await codes(), ["O-ACT-1", "O-ACT-2"]);

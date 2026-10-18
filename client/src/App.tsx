@@ -18,7 +18,7 @@ import MasterBatchSwatch from "./components/MasterBatchSwatch";
 import { createLatestRequestGate, LIST_PAGE_SIZE, runLatestRequest } from "./lib/listing";
 import { api, can, latinDigits, list, listPage, type Row } from "./lib/app-api";
 import { sortCustomerProductsByCategory } from "./lib/customer-product-sort";
-import type { OrderWorkspaceAction } from "../../shared/order-workspace";
+import type { OrderWorkspaceAction, OrderStatusFilter } from "../../shared/order-workspace";
 import type { OrderDisplayFolder } from "./lib/order-workspace";
 import { canViewOrderWorkflow } from "../../shared/order-workflow";
 import { canonicalMachineType, eligibleInlinePrinterMachines, MACHINE_CAPACITY_TYPES, MACHINE_RAW_MATERIAL_TYPES, machineTypeMatches, newAdminFormDefaults, usesGeneratedAdminId } from "./lib/admin-form-review";
@@ -382,8 +382,9 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
     setViewingOrder(viewOrderQuery && /^\d+$/.test(viewOrderQuery) && Number.isSafeInteger(id) && id > 0 ? id : null);
   }, [kind, viewOrderQuery]);
   const cfg = useMemo(() => localizeConfig(configs[kind]), [kind, i18n.language]); const [loadedRows, setRows] = useState<Row[]>([]); const [search, setSearch] = useState(""); const [page, setPage] = useState(0); const [resultKey, setResultKey] = useState(""); const [busyState, setBusy] = useState(true); const [error, setError] = useState(""); const [edit, setEdit] = useState<Row | null>(null);
-  const [displayFolder, setDisplayFolder] = useState<"active" | OrderDisplayFolder | "all">("active");
-  const [folderCounts, setFolderCounts] = useState<Record<OrderDisplayFolder | "active", number>>({ active: 0, new: 0, production: 0, urgent: 0, archive: 0 });
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("active");
+  const [displayFolder, setDisplayFolder] = useState<OrderDisplayFolder | "all">("all");
+  const [folderCounts, setFolderCounts] = useState<Record<OrderStatusFilter, number>>({ active: 0, all: 0, new: 0, production: 0, completed: 0, cancelled: 0 });
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
@@ -393,7 +394,8 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
   const showActions = viewable || writable || deletable || clonable;
   const requestGate = useRef(createLatestRequestGate());
   const activeFolder = kind === "orders" && displayFolder !== "all" ? displayFolder : undefined;
-  const activeKey = `${cfg.path}|${search}|${page}|${activeFolder || "all"}|${activeCategoryId || "all"}|${refreshToken}`;
+  const activeStatus = kind === "orders" ? statusFilter : undefined;
+  const activeKey = `${cfg.path}|${search}|${page}|${activeFolder || "all"}|${activeStatus || "all"}|${activeCategoryId || "all"}|${refreshToken}`;
   const rows = resultKey === activeKey ? loadedRows : [];
   const busy = busyState || resultKey !== activeKey;
   const load = useCallback(() => {
@@ -402,7 +404,7 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
     setBusy(true);
     setResultKey("");
     setError("");
-    void runLatestRequest(requestGate.current, request, listPage(cfg.path, search, page * LIST_PAGE_SIZE, LIST_PAGE_SIZE, activeFolder, activeCategoryId), {
+    void runLatestRequest(requestGate.current, request, listPage(cfg.path, search, page * LIST_PAGE_SIZE, LIST_PAGE_SIZE, activeFolder, activeCategoryId, activeStatus), {
       onSuccess: (value) => {
         setRows(value.map((row, index) => ({ ...row, __sequence: page * LIST_PAGE_SIZE + index + 1 })));
         setResultKey(requestKey);
@@ -414,7 +416,7 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
       },
       onSettled: () => setBusy(false),
     });
-  }, [activeKey, activeFolder, activeCategoryId, cfg.path, page, search]);
+  }, [activeKey, activeFolder, activeStatus, activeCategoryId, cfg.path, page, search]);
   const latestLoad = useRef(load);
   latestLoad.current = load;
   useEffect(() => {
@@ -425,20 +427,21 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
   useEffect(() => {
     if (kind !== "orders") return;
     let active = true;
-    void api("/orders/display-folders").then((response) => {
+    void api(`/orders/status-counts${activeFolder ? `?display_folder=${activeFolder}` : ""}`).then((response) => {
       if (!active || !response?.counts) return;
       setFolderCounts({
         active: Number(response.counts.active || 0),
+        all: Number(response.counts.all || 0),
         new: Number(response.counts.new || 0),
         production: Number(response.counts.production || 0),
-        urgent: Number(response.counts.urgent || 0),
-        archive: Number(response.counts.archive || 0),
+        completed: Number(response.counts.completed || 0),
+        cancelled: Number(response.counts.cancelled || 0),
       });
     }).catch((countError) => {
       if (active) setWorkspaceError((countError as Error).message || translate("تعذر تحميل مجلدات الطلبات"));
     });
     return () => { active = false; };
-  }, [kind, folderCountsVersion, refreshToken]);
+  }, [kind, activeFolder, folderCountsVersion, refreshToken]);
   const refreshRowsAndCounts = () => {
     latestLoad.current();
     if (kind === "orders") setFolderCountsVersion((version) => version + 1);
@@ -568,6 +571,7 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
       {kind === "orders" && <OrderWorkspaceControls
         rows={rows as WorkspaceOrder[]}
         folder={displayFolder}
+        filter={statusFilter}
         counts={folderCounts}
         selected={selectedOrderIds}
         canManage={writable}
@@ -576,6 +580,7 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
         error={workspaceError}
         searchControl={<div className="tools order-workspace__search">{searchInput}</div>}
         onFolderChange={(folder) => { setDisplayFolder(folder); setPage(0); setSelectedOrderIds([]); setEdit(null); setWorkspaceError(""); }}
+        onFilterChange={(filter) => { setStatusFilter(filter); setPage(0); setSelectedOrderIds([]); setEdit(null); setWorkspaceError(""); }}
         onSelectPage={selectPageOrders}
         onClear={() => setSelectedOrderIds([])}
         onAction={performWorkspaceAction}

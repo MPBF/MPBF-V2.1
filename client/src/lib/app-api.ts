@@ -1,6 +1,7 @@
 import i18n, { translate, translateError } from "../i18n";
 import { fetchAllPages, LIST_PAGE_SIZE } from "./listing";
 import type { OrderDisplayFilter } from "./order-workspace";
+import type { OrderStatusFilter } from "../../../shared/order-workspace";
 import { latinDigits } from "./number-input";
 
 export type Row = Record<string, any>;
@@ -33,11 +34,12 @@ export const api = async (path: string, options: RequestInit = {}) => {
   return normalizePayload(body);
 };
 
-export const listPage = (path: string, search = "", offset = 0, limit = LIST_PAGE_SIZE, displayFolder?: Exclude<OrderDisplayFilter, "all">, categoryId?: string) => {
+export const listPage = (path: string, search = "", offset = 0, limit = LIST_PAGE_SIZE, displayFolder?: Exclude<OrderDisplayFilter, "all">, categoryId?: string, statusFilter?: OrderStatusFilter) => {
   const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (search) query.set("search", search);
   if (displayFolder) query.set("display_folder", displayFolder);
   if (categoryId) query.set("category_id", categoryId);
+  if (statusFilter) query.set("status_filter", statusFilter);
   return api(`${path}?${query.toString()}`).then((value) => {
     if (!Array.isArray(value)) throw new Error(translate("تعذر تحميل قائمة البيانات"));
     return value as Row[];

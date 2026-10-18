@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from "@je
 import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "../server/db";
 import router from "../server/routes";
-import { orderFolderCounts } from "../server/order-workspace";
+import { orderFolderCounts, orderStatusCounts } from "../server/order-workspace";
 import { ORDER_ACTIVE_STATUSES, ORDER_DISPLAY_FOLDERS } from "../shared/order-workspace";
 import { ORDER_FILTER_KEYS } from "../client/src/lib/order-workspace";
 
@@ -59,7 +59,7 @@ describe("active order filter", () => {
     fetch(`${url}/api/orders${query}`, { headers: { "x-test-permission": permission } });
 
   it("places Active first without converting it to a writable display folder", () => {
-    expect(ORDER_FILTER_KEYS).toEqual(["active", "all", "new", "production", "archive"]);
+    expect(ORDER_FILTER_KEYS).toEqual(["active", "all", "new", "production", "completed", "cancelled"]);
     expect(ORDER_ACTIVE_STATUSES).toEqual(["waiting", "in_production"]);
     expect(ORDER_DISPLAY_FOLDERS).not.toContain("active");
     expect(ORDER_DISPLAY_FOLDERS).toContain("urgent");
@@ -91,6 +91,58 @@ describe("active order filter", () => {
     expect((await request("?display_folder=bogus")).status).toBe(400);
     expect((await request("?display_folder=active", "manage_users")).status).toBe(403);
     expect(db.select).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["new", ["waiting"]],
+    ["production", ["in_production"]],
+    ["completed", ["completed"]],
+    ["cancelled", ["cancelled"]],
+    ["active", ["waiting", "in_production"]],
+  ])("filters %s by lifecycle status, never folder membership", async (filter, statuses) => {
+    expect((await request(`?status_filter=${filter}`)).status).toBe(200);
+    expect(where?.params).toEqual(statuses);
+    expect(where?.sql).toContain('"orders"."status" in');
+    expect(where?.sql).not.toContain('"order_display_folder_assignments"."folder" =');
+  });
+  it("intersects a manual folder with status and search before pagination", async () => {
+    expect((await request("?status_filter=new&display_folder=archive&search=customer&offset=50&limit=25")).status).toBe(200);
+    expect(where?.params).toContain("waiting");
+    expect(where?.params).toContain("archive");
+    expect(where?.params).toContain("%customer%");
+    expect(phases).toEqual(["where", "limit", "offset"]);
+    expect(requestedOffset).toBe(50);
+  });
+  it("All includes every status, including legacy states", async () => {
+    expect((await request("?status_filter=all")).status).toBe(200);
+    expect(where).toBeUndefined();
+  });
+  it("rejects invalid status filters and protects counts permissions", async () => {
+    expect((await request("?status_filter=urgent")).status).toBe(400);
+    expect((await request("/status-counts", "manage_users")).status).toBe(403);
+    expect((await request("/status-counts?display_folder=active")).status).toBe(400);
+    expect(db.select).not.toHaveBeenCalled();
+  });
+  it("counts each state independently; All is not a sum of overlapping filters", async () => {
+    const query = jest.fn<any>().mockResolvedValue({ rows: [
+      { status: "waiting", count: 3 }, { status: "in_production", count: 2 },
+      { status: "completed", count: 7 }, { status: "cancelled", count: 4 },
+      { status: "for_production", count: 5 }, { status: "paused", count: 6 },
+    ] });
+    const release = jest.fn();
+    expect(await orderStatusCounts(undefined, { connect: async () => ({ query, release }) } as any)).toEqual({
+      counts: { active: 5, all: 27, new: 3, production: 2, completed: 7, cancelled: 4 }, total: 27,
+    });
+    expect(query.mock.calls[0][1]).toEqual([null]);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+  it("scopes status counters to the separately chosen manual folder, including default New", async () => {
+    const query = jest.fn<any>().mockResolvedValue({ rows: [] });
+    const source = { connect: async () => ({ query, release: jest.fn() }) };
+    expect((await orderStatusCounts("new", source as any)).counts).toEqual({
+      active: 0, all: 0, new: 0, production: 0, completed: 0, cancelled: 0,
+    });
+    expect(query.mock.calls[0][0]).toContain("COALESCE(f.folder,'new')");
+    expect(query.mock.calls[0][1]).toEqual(["new"]);
   });
   it("counts active orders across every manual folder without double-counting All", async () => {
     const query = jest.fn<any>().mockResolvedValue({ rows: [

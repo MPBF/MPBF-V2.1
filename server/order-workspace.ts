@@ -1,7 +1,7 @@
 import { pool } from "./db";
 import type { Connection, ConnectionPool } from "./production/core";
 import { validateOrderRelease } from "./order-production-release";
-import { canApplyOrderAction, ORDER_ACTIVE_STATUSES, ORDER_DISPLAY_FOLDERS, ORDER_WORKSPACE_ACTIONS,
+import { canApplyOrderAction, ORDER_ACTIVE_STATUSES, ORDER_DISPLAY_FOLDERS, ORDER_FILTER_STATUSES, ORDER_STATUS_FILTERS, ORDER_WORKSPACE_ACTIONS,
   type OrderActionItem, type OrderDisplayFolder, type OrderFolderItem, type OrderWorkspaceAction } from "../shared/order-workspace";
 
 class WorkspaceError extends Error {
@@ -105,5 +105,23 @@ export async function orderFolderCounts(source: ConnectionPool = pool) {
     for (const row of rows) counts[row.folder as OrderDisplayFolder] = row.count;
     return { counts: { ...counts, active: rows.reduce((sum, row) => sum + Number(row.active_count), 0) },
       total: Object.values(counts).reduce((sum, count) => sum + count, 0) };
+  } finally { client.release(); }
+}
+
+export async function orderStatusCounts(folder?: OrderDisplayFolder, source: ConnectionPool = pool) {
+  const client = await source.connect();
+  try {
+    const { rows } = await client.query(`SELECT o.status,count(*)::int count
+      FROM orders o LEFT JOIN order_display_folder_assignments f ON f.order_id=o.id
+      WHERE ($1::text IS NULL OR COALESCE(f.folder,'new')=$1::text) GROUP BY o.status`, [folder ?? null]);
+    const counts = Object.fromEntries(ORDER_STATUS_FILTERS.map(filter => [filter, 0])) as Record<typeof ORDER_STATUS_FILTERS[number], number>;
+    for (const row of rows) {
+      const count = Number(row.count);
+      counts.all += count;
+      for (const key of Object.keys(ORDER_FILTER_STATUSES) as (keyof typeof ORDER_FILTER_STATUSES)[]) {
+        if ((ORDER_FILTER_STATUSES[key] as readonly string[]).includes(row.status)) counts[key] += count;
+      }
+    }
+    return { counts, total: counts.all };
   } finally { client.release(); }
 }
