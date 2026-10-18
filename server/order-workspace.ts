@@ -1,7 +1,7 @@
 import { pool } from "./db";
 import type { Connection, ConnectionPool } from "./production/core";
 import { validateOrderRelease } from "./order-production-release";
-import { canApplyOrderAction, ORDER_DISPLAY_FOLDERS, ORDER_WORKSPACE_ACTIONS,
+import { canApplyOrderAction, ORDER_ACTIVE_STATUSES, ORDER_DISPLAY_FOLDERS, ORDER_WORKSPACE_ACTIONS,
   type OrderActionItem, type OrderDisplayFolder, type OrderFolderItem, type OrderWorkspaceAction } from "../shared/order-workspace";
 
 class WorkspaceError extends Error {
@@ -97,10 +97,13 @@ export async function moveOrderFolders(folder: OrderDisplayFolder, items: OrderF
 export async function orderFolderCounts(source: ConnectionPool = pool) {
   const client = await source.connect();
   try {
-    const { rows } = await client.query(`SELECT COALESCE(f.folder,'new') folder,count(*)::int count
-      FROM orders o LEFT JOIN order_display_folder_assignments f ON f.order_id=o.id GROUP BY COALESCE(f.folder,'new')`);
+    const { rows } = await client.query(`SELECT COALESCE(f.folder,'new') folder,count(*)::int count,
+      count(*) FILTER (WHERE o.status=ANY($1::text[]))::int active_count
+      FROM orders o LEFT JOIN order_display_folder_assignments f ON f.order_id=o.id GROUP BY COALESCE(f.folder,'new')`,
+      [ORDER_ACTIVE_STATUSES]);
     const counts = Object.fromEntries(ORDER_DISPLAY_FOLDERS.map(folder => [folder, 0])) as Record<OrderDisplayFolder, number>;
     for (const row of rows) counts[row.folder as OrderDisplayFolder] = row.count;
-    return { counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0) };
+    return { counts: { ...counts, active: rows.reduce((sum, row) => sum + Number(row.active_count), 0) },
+      total: Object.values(counts).reduce((sum, count) => sum + count, 0) };
   } finally { client.release(); }
 }

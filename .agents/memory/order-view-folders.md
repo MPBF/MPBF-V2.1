@@ -15,3 +15,14 @@ description: User-defined separation between display organization and order life
 **How to apply:** keep folder membership separate from lifecycle status; do not
 implement these folders as status filters or use the archive folder to archive
 an order's business state.
+
+استثناء مقصود: فلتر «نشط» هو أول فلتر والافتراضي في صفحة الطلبات، ويعرض
+الطلبات الجديدة وقيد الإنتاج فقط، وفق الحالة لا وفق المجلد. استبدل زر
+فلتر «عاجل» دون حذف بيانات المجلد القديم أو تحويل «نشط» إلى وجهة نقل يدوية.
+
+**Why:** طلب المستخدم استبدال فلتر «عاجل» بـ«نشط»، وجعله الأول والافتراضي،
+وتحديد محتواه بالطلبات الجديدة وقيد الإنتاج فقط.
+
+**How to apply:** احسب نتائج وعدّاد «نشط» من الحالات على الخادم قبل البحث
+والترقيم الصفحي، بصرف النظر عن مجلد الطلب. لا تضف عدّاده إلى مجموع «الكل»
+مرة أخرى، ولا تغيّر قواعد النقل اليدوي لبقية المجلدات.

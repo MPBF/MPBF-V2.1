@@ -123,6 +123,7 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         };
         else if (url.pathname === "/api/customers") data = [customer];
         else if (url.pathname === "/api/customer-products") data = [product];
+        else if (url.pathname === "/api/orders/next-number") data = { order_number: "O0001" };
         else if (url.pathname === "/api/orders") data = [{ ...order, production_orders_summary: [] }];
         else if (url.pathname === "/api/orders/7/details" || url.pathname === "/api/public/orders/7/print") data = details;
         else if (url.pathname === "/api/orders/7/print-link") data = { path: publicPath };
@@ -223,6 +224,17 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
       return evaluate("window.__observedLoadingText");
     };
     const open = async route => { assets.length = 0; await send("Page.navigate", { url: origin + route }); };
+    if (process.argv.includes("--theme-colors")) {
+      signedIn = true;
+      permissions = ["admin"];
+      for (const lang of ["ar", "en"]) {
+        language = lang;
+        await require("./lib/theme-color-browser.cjs")({ language: lang, open, wait, evaluate, send, check });
+      }
+      check("No theme fixture browser errors", errors, []);
+      console.log(`Verified ${checks} responsive theme checks using isolated data only.`);
+      return;
+    }
     await checkReceiptPagination({ temp, open, wait, evaluate, send });
     const click = async selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
     const adminChunks = /(?:UsersAdmin|RolesAdmin|SettingsAdmin|DataTransferAdmin)-.*\.js$/;

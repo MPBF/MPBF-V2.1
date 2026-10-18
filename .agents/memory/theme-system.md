@@ -1,16 +1,21 @@
 ---
-name: Theme system (light/dark/blue)
-description: How MPBF's three themes are wired and why blue is a separate root class, not a dark variant.
+name: Theme defaults and lazy CSS
+description: Why centralized theme defaults must remain chunk-scoped and lower-specificity than theme overrides.
 ---
 
-# Theme system
+# Theme defaults and lazy CSS
 
-MPBF supports three opt-in themes: `light` (default), `dark`, and `blue` ("Professional Blue", high-contrast). Selection persists in `localStorage` key `mpbf_theme`. The picker lives in the Header dropdown, the Settings "Appearance" card, and the mobile drawer (MobileShell) — keep all three in sync if the option set changes.
+Keep the editable screen palette centralized without eagerly downloading every
+feature's defaults. Defaults arriving with lazy CSS must have lower specificity
+than a root theme override, regardless of navigation order.
 
-## Rules
-- Each theme maps to a root class: light=none, dark=`.dark`, blue=`.theme-blue`. Only one is applied at a time on `document.documentElement`.
-- **Why blue is its own class, not a `.dark` variant:** Light and Dark must stay byte-for-byte unchanged. `.theme-blue` redefines the SAME existing CSS variable names from `:root`, so all Tailwind utilities flow through with no `tailwind.config.ts` change.
-- High-contrast is an INDEPENDENT overlay (`.high-contrast` class + injected stylesheet), unrelated to the 3-theme selector. Don't conflate them.
-- Theme-wide readability rules (bold text, strong borders, centered table cells/headers, colored h1–h3, dropdown sizing) live as **unlayered scoped CSS under `.theme-blue`** in `client/src/index.css`. Unlayered rules beat Tailwind `@layer utilities`, so they CAN override component layouts in blue mode — scope carefully and avoid blanket `justify-content`/`min-width: max-content` (mobile overflow). Use bounded `max-width: min(92vw, …)` for popovers.
+**Why:** Shipping the whole registry at login breached the existing initial-load
+budget even though feature selectors stayed lazy. Ordinary root defaults can
+also override an earlier theme selector of equal specificity when a new chunk
+arrives.
 
-**How to apply:** adding a 4th theme = extend `Theme` union + `THEME_CLASSES` in `ThemeContext.tsx`, add a `:root`-mirroring class block in `index.css`, and add the option to Header/Settings/MobileShell pickers.
+**How to apply:** Preserve chunk-scoped emission and consistent token naming
+across chunks. Production compaction must not rename a CSS-only copy of a token
+also referenced by JavaScript; such names are runtime interfaces, not private CSS.
+Keep document ink, QR contrast, and physical product-color samples independent
+of screen themes.

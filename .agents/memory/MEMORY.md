@@ -8,7 +8,7 @@
 - [AI agent vs MCP](ai-agent-vs-mcp.md) — the in-app AI agent and the MCP system are independent; remove/replace one without touching the other.
 - [MCP ChatGPT OAuth discovery](mcp-chatgpt-oauth-discovery.md) — "Client not registered" = incomplete discovery; need WWW-Authenticate on /mcp 401 + RFC 9728 protected-resource + path-suffixed AS meta + lazy client register.
 - [MCP tool metadata](mcp-tool-metadata.md) — ChatGPT-facing MCP tools need `registerTool` config with explicit descriptions and safety annotations; legacy `.tool` is deprecated.
-- [Theme system](theme-system.md) — 3 opt-in themes (light/dark/blue); blue is its own `.theme-blue` root class redefining the same CSS vars, not a dark variant; high-contrast is a separate overlay; pickers in Header/Settings/MobileShell.
+- [Theme defaults and lazy CSS](theme-system.md) — central palettes must respect the login budget; late feature defaults must not override a selected root theme.
 - [Roll creation deadlock](roll-creation-deadlock.md) — roll-create paths must share one transaction + a single lock order (advisory then row); nested cross-connection txns hang undetectably.
 - [Plastic-roll products skip cutting](roll-products-skip-cutting.md) — name-detected roll items bypass cutting (film→[printing]→done→hall); gate order 'done' on filmDone; pinning created_at avoids cut_completed_at CHECK violation.
 - [Film dashboard visibility](film-dashboard-visibility.md) — film-operator order list must filter `production_stage='film'`; film_completed only set by Final Roll button, so quantity-complete orders otherwise linger.

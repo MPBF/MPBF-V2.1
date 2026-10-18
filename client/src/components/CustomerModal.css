@@ -1,6 +1,6 @@
 .customer-modal {
   width: min(760px, 100%);
-  border: 1px solid rgba(11, 119, 112, .14);
+  border: 1px solid var(--theme-customer-modal-customer-modal-border);
   animation: customer-modal-enter .18s ease-out both;
 }
 .customer-modal-head p { margin: 0; color: var(--muted); font-size: 12px; }
@@ -27,7 +27,7 @@
   margin: -5px 0 15px;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  background: #f7faf7;
+  background: var(--theme-customer-modal-customer-modal-drawer-legacy-surface);
   color: var(--muted);
   font-size: 11px;
 }
@@ -45,7 +45,7 @@
   align-items: center;
   gap: 10px;
   border: 1px solid var(--line);
-  background: #f7faf7;
+  background: var(--theme-customer-modal-customer-modal-drawer-legacy-surface);
   cursor: pointer;
 }
 .customer-modal-active input { width: 17px; height: 17px; margin: 0; accent-color: var(--teal); }
@@ -56,9 +56,9 @@
 .customer-modal-alert {
   margin: 16px 24px 0;
   padding: 11px 13px;
-  border: 1px solid #ecd6b5;
-  background: #fbf3e4;
-  color: #785c2d;
+  border: 1px solid var(--theme-customer-modal-customer-modal-alert-border);
+  background: var(--theme-customer-modal-customer-modal-alert-surface);
+  color: var(--theme-customer-modal-customer-modal-alert-text);
   display: flex;
   align-items: center;
   flex-wrap: wrap;

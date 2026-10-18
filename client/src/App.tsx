@@ -1,4 +1,4 @@
-import { lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, Boxes, Copy, Eye, Factory, FileText, Gauge, LogOut, Package, Pencil, Plus, Printer, Search, Shield, Trash2, Users, UsersRound, Wrench, X, Settings2, Cog, KeyRound } from "lucide-react";
 import { Link, Redirect, Route, Switch, useLocation, useRoute, useSearchParams } from "wouter";
@@ -9,7 +9,6 @@ import { initialPlanningPath } from "./lib/planning-navigation";
 import { initialWarehousePath } from "./lib/warehouse-navigation";
 import { canOpenWarehouseAccountPath, isWarehouseOnlyAccount } from "../../shared/warehouse-access";
 import { defaultBranding, fetchBrandingSnapshot, type BrandingSnapshot } from "./lib/branding";
-import PageHero from "./components/PageHero";
 import LoginPresentation from "./components/LoginPresentation";
 import DeferredContent from "./components/DeferredContent";
 import FlagLanguageSelector from "./components/FlagLanguageSelector";
@@ -24,6 +23,10 @@ import { canonicalMachineType, eligibleInlinePrinterMachines, MACHINE_CAPACITY_T
 import i18n, { applyLanguage, localizedName, normalizeLanguage, translate, translateError } from "./i18n";
 
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
+const LazyPageHero = lazy(() => import("./components/PageHero"));
+function PageHero(props: ComponentProps<typeof LazyPageHero>) {
+  return <DeferredContent><LazyPageHero {...props} /></DeferredContent>;
+}
 const HumanResources = lazy(() => import("./pages/HumanResources"));
 const ProductionPage = lazy(() => import("./pages/production/ProductionPage"));
 const RawMixingPage = lazy(() => import("./pages/production/RawMixingPage"));
@@ -372,8 +375,8 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
     setViewingOrder(viewOrderQuery && /^\d+$/.test(viewOrderQuery) && Number.isSafeInteger(id) && id > 0 ? id : null);
   }, [kind, viewOrderQuery]);
   const cfg = useMemo(() => localizeConfig(configs[kind]), [kind, i18n.language]); const [loadedRows, setRows] = useState<Row[]>([]); const [search, setSearch] = useState(""); const [page, setPage] = useState(0); const [resultKey, setResultKey] = useState(""); const [busyState, setBusy] = useState(true); const [error, setError] = useState(""); const [edit, setEdit] = useState<Row | null>(null);
-  const [displayFolder, setDisplayFolder] = useState<OrderDisplayFolder | "all">("all");
-  const [folderCounts, setFolderCounts] = useState<Record<OrderDisplayFolder, number>>({ new: 0, production: 0, urgent: 0, archive: 0 });
+  const [displayFolder, setDisplayFolder] = useState<"active" | OrderDisplayFolder | "all">("active");
+  const [folderCounts, setFolderCounts] = useState<Record<OrderDisplayFolder | "active", number>>({ active: 0, new: 0, production: 0, urgent: 0, archive: 0 });
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
@@ -418,6 +421,7 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
     void api("/orders/display-folders").then((response) => {
       if (!active || !response?.counts) return;
       setFolderCounts({
+        active: Number(response.counts.active || 0),
         new: Number(response.counts.new || 0),
         production: Number(response.counts.production || 0),
         urgent: Number(response.counts.urgent || 0),
@@ -427,7 +431,11 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
       if (active) setWorkspaceError((countError as Error).message || translate("تعذر تحميل مجلدات الطلبات"));
     });
     return () => { active = false; };
-  }, [kind, folderCountsVersion]);
+  }, [kind, folderCountsVersion, refreshToken]);
+  const refreshRowsAndCounts = () => {
+    latestLoad.current();
+    if (kind === "orders") setFolderCountsVersion((version) => version + 1);
+  };
   if (!readable) return <div className="empty"><strong>{translate("لا تملك صلاحية العرض")}</strong>{translate("تواصل مع مدير النظام.")}</div>;
   const remove = async (id: any) => {
     const warning = cfg.path === "/orders"
@@ -626,8 +634,8 @@ function EntityPage({ kind, user, refreshToken = 0, showHero = true }: { kind: s
     </section>
     <DeferredContent>
     {viewingProduction && <ProductionOrderModal row={viewingProduction} mode="view" onClose={() => setViewingProduction(null)} />}
-    {viewingOrder && <OrderDetailsModal id={viewingOrder} canRelease={writable} onOrderChanged={() => latestLoad.current()} onClose={closeOrder} onPrint={() => printOrder(viewingOrder)} />}
-    {edit && (kind === "customers" ? <CustomerModal row={edit} onClose={() => setEdit(null)} onSaved={(saved) => { const created = !edit.id; setEdit(null); if (created) setLocation(`/customers/${encodeURIComponent(String(saved.id))}`); else latestLoad.current(); }} /> : kind === "orders" && !edit.id ? <OrderCreateModal onClose={() => setEdit(null)} onSaved={() => { setEdit(null); latestLoad.current(); }} /> : <EntityModal cfg={cfg} row={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); latestLoad.current(); }} />)}
+    {viewingOrder && <OrderDetailsModal id={viewingOrder} canRelease={writable} onOrderChanged={refreshRowsAndCounts} onClose={closeOrder} onPrint={() => printOrder(viewingOrder)} />}
+    {edit && (kind === "customers" ? <CustomerModal row={edit} onClose={() => setEdit(null)} onSaved={(saved) => { const created = !edit.id; setEdit(null); if (created) setLocation(`/customers/${encodeURIComponent(String(saved.id))}`); else latestLoad.current(); }} /> : kind === "orders" && !edit.id ? <OrderCreateModal onClose={() => setEdit(null)} onSaved={() => { setEdit(null); refreshRowsAndCounts(); }} /> : <EntityModal cfg={cfg} row={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); refreshRowsAndCounts(); }} />)}
     </DeferredContent>
   </>;
 }

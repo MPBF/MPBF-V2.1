@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Check, ChevronDown, MoveRight } from "lucide-react";
-import { canApplyOrderAction, type OrderDisplayFolder, type OrderWorkspaceAction } from "../../../shared/order-workspace";
-import { ORDER_FOLDER_KEYS, ORDER_FOLDER_LABELS } from "../lib/order-workspace";
+import { canApplyOrderAction, type OrderDisplayFolder, type OrderDisplayFilter, type OrderWorkspaceAction } from "../../../shared/order-workspace";
+import { ORDER_FOLDER_KEYS, ORDER_FOLDER_LABELS, ORDER_FILTER_KEYS, ORDER_FILTER_LABELS } from "../lib/order-workspace";
 import { translate } from "../i18n";
 import "./OrderWorkspaceControls.css";
 import "./OrderTable.css";
@@ -9,15 +9,15 @@ import "./OrderTable.css";
 export type WorkspaceOrder = { id: number; status: string; display_folder?: OrderDisplayFolder };
 type Props = {
   rows: WorkspaceOrder[];
-  folder: OrderDisplayFolder | "all";
-  counts: Record<OrderDisplayFolder, number>;
+  folder: OrderDisplayFilter;
+  counts: Record<OrderDisplayFolder | "active", number>;
   selected: number[];
   canManage: boolean;
   canDelete?: boolean;
   busy?: boolean;
   error?: string;
   searchControl?: ReactNode;
-  onFolderChange: (folder: OrderDisplayFolder | "all") => void;
+  onFolderChange: (folder: OrderDisplayFilter) => void;
   onSelectPage: (checked: boolean) => void;
   onClear: () => void;
   onAction: (action: OrderWorkspaceAction, items: { id: number; expected_status: string }[]) => Promise<void>;
@@ -82,8 +82,7 @@ export default function OrderWorkspaceControls(props: Props) {
   return <div className="order-workspace">
     <div className="order-workspace__filters">
       <nav className="order-workspace__folders" aria-label={translate("مجلدات العرض المشتركة")}>
-      <button type="button" className="order-workspace__folder" aria-current={props.folder === "all" ? "page" : undefined} onClick={() => props.onFolderChange("all")}>{translate("الكل")}<span className="order-workspace__count">{props.counts.new + props.counts.production + props.counts.urgent + props.counts.archive}</span></button>
-      {ORDER_FOLDER_KEYS.map((key) => <button type="button" key={key} className="order-workspace__folder" aria-current={props.folder === key ? "page" : undefined} onClick={() => props.onFolderChange(key)}>{translate(ORDER_FOLDER_LABELS[key])}<span className="order-workspace__count">{props.counts[key]}</span></button>)}
+      {ORDER_FILTER_KEYS.map((key) => <button type="button" key={key} className="order-workspace__folder" aria-current={props.folder === key ? "page" : undefined} onClick={() => props.onFolderChange(key)}>{translate(ORDER_FILTER_LABELS[key])}<span className="order-workspace__count">{key === "all" ? props.counts.new + props.counts.production + props.counts.urgent + props.counts.archive : props.counts[key]}</span></button>)}
       </nav>
       {props.searchControl}
     </div>

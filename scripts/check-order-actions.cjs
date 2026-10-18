@@ -8,9 +8,10 @@ const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
 const compactOnly = process.argv.includes("--compact-actions-only");
+const activeOnly = process.argv.includes("--active-filter-only");
 const headerOnly = process.argv.includes("--print-header-only");
 const columnsOnly = process.argv.includes("--print-columns-only") || headerOnly;
-const outputDir = compactOnly ? "/tmp/order-compact-actions" : headerOnly
+const outputDir = activeOnly ? "/tmp/order-active-filter" : compactOnly ? "/tmp/order-compact-actions" : headerOnly
   ? path.join("generated-artifacts", "order-print-header") : columnsOnly
   ? path.join("generated-artifacts", "order-print-columns") : path.join("screenshots", "order-signatures");
 const releaseOnly = process.argv.includes("--production-release-only");
@@ -60,6 +61,12 @@ const releaseOnly = process.argv.includes("--production-release-only");
     const order = { id: 7, order_number: "ORD123", customer_id: "CID010", status: "in_production",
       previous_status: "waiting", notes: "تعليمات الطلب التجريبي", created_by: 42,
       created_at: "2026-10-02T22:30:00.000Z", delivery_date: "2026-10-18", delivery_days: 15 };
+    const activeFixtures = ["waiting", "in_production", "completed", "cancelled", "for_production", "on_hold", "paused", "delivered", "archived"]
+      .map((status, index) => ({
+        ...order, id: 7 + index, order_number: `O-ACT-${index + 1}`, status,
+        display_folder: ["archive", "urgent", "new", "new", "production", "new", "new", "archive", "production"][index],
+        customer_name_ar: "عميل تجريبي", customer_name: "Test customer", production_orders_summary: [],
+      }));
     const product = { id: 11, customer_id: "CID010", category_id: "CAT01", item_id: "ITM01",
       size_caption: "28.4+7.5+7.5X41.49", width: "28.40", left_facing: "7.50", right_facing: "7.50", thickness: "10",
       universal_thickness: "25.40", density: "0.95", bag_weight_grams: "4.85", bags_per_kilo: "206",
@@ -126,6 +133,15 @@ const releaseOnly = process.argv.includes("--production-release-only");
         status=route==="/public/orders/7/print"&&new URL(request.url).searchParams.get("key")===publicKey?200:404;
         body=status===200?{...detail(),public_print_path:publicPath}:{message:"الطلب غير موجود",message_en:"Order not found."};
       }
+      else if (route === "/orders" && activeOnly) {
+        const params = new URL(request.url).searchParams;
+        const folder = params.get("display_folder");
+        const matching = activeFixtures.filter((row) =>
+          (!folder || (folder === "active" ? ["waiting", "in_production"].includes(row.status) : row.display_folder === folder))
+          && (!params.get("search") || row.order_number.includes(params.get("search"))));
+        const offset = Number(params.get("offset") || 0);
+        body = matching.slice(offset, offset + Number(params.get("limit") || 50));
+      }
       else if (route === "/orders") body = compactOnly
         ? ["waiting", "in_production", "completed", "cancelled", "unknown_test"].map((status, index) => ({
           ...order, id: 7 + index, order_number: `O-TEST-${index + 1}`, status,
@@ -138,7 +154,9 @@ const releaseOnly = process.argv.includes("--production-release-only");
           })),
         }))
         : [{ ...order, customer_name_ar: "عميل تجريبي", production_orders_summary: [] }];
-      else if (route === "/orders/display-folders") body = { counts: { new: 1, production: 0, urgent: 0, archive: 0 }, total: 1 };
+      else if (route === "/orders/display-folders") body = activeOnly
+        ? { counts: { active: 2, new: 4, production: 2, urgent: 1, archive: 2 }, total: 9 }
+        : { counts: { active: compactOnly ? 2 : 1, new: 1, production: 0, urgent: 0, archive: 0 }, total: 1 };
       else if (route === "/master-batch-colors") body = palette;
       else if (route === "/customer-products") body = paletteProducts();
       else if (route === "/customers") body = [detail().customer];
@@ -193,6 +211,49 @@ const releaseOnly = process.argv.includes("--production-release-only");
       const shot = await send("Page.captureScreenshot", { format: "png" });
       await fs.writeFile(path.join(outputDir, `${name}.png`), Buffer.from(shot.data, "base64"));
     };
+    if (activeOnly) {
+      for (const lang of ["ar", "en"]) {
+        language = lang;
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 1100, deviceScaleFactor: 1, mobile: false });
+          permissions = ["view_orders"];
+          const context = `${lang} ${width}px`;
+          const root = width < 701 ? ".mobile-cards--orders" : ".order-table";
+          const codes = () => evaluate(`[...document.querySelectorAll('${root} .order-number-code')].map(e=>e.textContent)`);
+          await navigate("/orders");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===2`);
+          await wait("document.querySelector('.order-workspace__folders button:first-child .order-workspace__count')?.textContent==='2'");
+          check(`${context}: Active is the first and default filter`,
+            await evaluate("(()=>{const b=document.querySelector('.order-workspace__folders button');return b.getAttribute('aria-current')==='page'&&b.textContent;})()"),
+            lang === "ar" ? "نشط2" : "Active2");
+          check(`${context}: only new and in-production orders, even in archive/urgent folders`, await codes(), ["O-ACT-1", "O-ACT-2"]);
+          check(`${context}: Urgent is removed from filter buttons`,
+            await evaluate(`[...document.querySelectorAll('.order-workspace__folders button')].every(e=>!e.textContent.includes(${JSON.stringify(lang === "ar" ? "عاجل" : "Urgent")}))`));
+          check(`${context}: no horizontal page overflow`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+          await capture(`active-${lang}-${width}`);
+          await evaluate(`(()=>{const e=document.querySelector('.order-workspace__filters input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'O-ACT-2');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===1`);
+          check(`${context}: search stays inside Active`, await codes(), ["O-ACT-2"]);
+          await evaluate(`(()=>{const e=document.querySelector('.order-workspace__filters input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===2`);
+          await click(".order-workspace__folders button:nth-child(2)");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===9`);
+          check(`${context}: All still includes completed/cancelled/other statuses`, (await codes()).length, 9);
+          check(`${context}: All count does not include Active twice`,
+            await evaluate("document.querySelector('.order-workspace__folders button:nth-child(2) .order-workspace__count').textContent"), "9");
+          await click(".order-workspace__folders button:nth-child(3)");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===4`);
+          check(`${context}: existing manual New folder remains independent`, await codes(), ["O-ACT-3", "O-ACT-4", "O-ACT-6", "O-ACT-7"]);
+          await click(".order-workspace__folders button:first-child");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===2`);
+          check(`${context}: returning to Active resets the list`, await codes(), ["O-ACT-1", "O-ACT-2"]);
+        }
+      }
+      check("active filter never writes data", requests.every((r) => r.method === "GET"));
+      check("active filter has no browser exceptions", errors, []);
+      console.log(`Active order filter passed ${passed} browser checks with isolated fixtures.`);
+      return;
+    }
     if (compactOnly) {
       const visibleRoot = (width) => width < 701 ? ".mobile-cards" : ".table-wrap table";
       for (const lang of ["ar", "en"]) {
@@ -205,6 +266,8 @@ const releaseOnly = process.argv.includes("--production-release-only");
             const writable = admin || grants.includes("manage_orders");
             const context = `${lang} ${width}px ${grants[0]}`;
             await navigate("/orders");
+            await wait("!!document.querySelector('.order-workspace__folders button:nth-child(2)')");
+            await click(".order-workspace__folders button:nth-child(2)");
             await wait(`document.querySelectorAll('${visibleRoot(width)} .order-actions').length===5`);
             const root = visibleRoot(width);
             const scoped = (selector) => JSON.stringify(`${root} ${selector}`);

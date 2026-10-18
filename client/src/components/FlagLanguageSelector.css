@@ -1,10 +1,10 @@
 .flag-language-selector,
 .flag-language-selector__menu {
-  --flag-selector-ink: var(--ink, #182a2c);
-  --flag-selector-muted: var(--muted, #647779);
-  --flag-selector-panel: var(--panel, #fff);
-  --flag-selector-line: var(--line, #d9e3df);
-  --flag-selector-accent: var(--teal, #0b7770);
+  --flag-selector-ink: var(--ink, var(--theme-flag-language-selector-flag-language-selector-flag-selector-ink));
+  --flag-selector-muted: var(--muted, var(--theme-flag-language-selector-flag-language-selector-flag-selector-muted));
+  --flag-selector-panel: var(--panel, var(--theme-flag-language-selector-flag-language-selector-flag-selector-panel));
+  --flag-selector-line: var(--line, var(--theme-flag-language-selector-flag-language-selector-flag-selector-line));
+  --flag-selector-accent: var(--teal, var(--theme-flag-language-selector-flag-language-selector-flag-selector-accent));
 }
 
 .flag-language-selector {
@@ -42,7 +42,7 @@
 
 .flag-language-selector__trigger:focus-visible,
 .flag-language-selector__item:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--orange, #de7542) 58%, transparent);
+  outline: 3px solid color-mix(in srgb, var(--orange, var(--theme-flag-language-selector-flag-language-selector-trigger-focus-visible-focus)) 58%, transparent);
   outline-offset: 2px;
 }
 
@@ -57,10 +57,10 @@
   height: 17px;
   flex: 0 0 auto;
   overflow: hidden;
-  border: 1px solid rgba(25, 43, 42, .16);
+  border: 1px solid var(--theme-flag-language-selector-flag-language-selector-flag-border);
   border-radius: 2px;
   object-fit: cover;
-  box-shadow: 0 1px 2px rgba(24, 42, 44, .12);
+  box-shadow: 0 1px 2px var(--theme-flag-language-selector-flag-language-selector-flag-shadow);
 }
 
 .flag-language-selector__chevron {
@@ -78,7 +78,7 @@
   border-radius: 10px;
   background: var(--flag-selector-panel);
   color: var(--flag-selector-ink);
-  box-shadow: 0 8px 24px rgba(24, 42, 44, .16);
+  box-shadow: 0 8px 24px var(--theme-flag-language-selector-flag-language-selector-menu-shadow);
   transform-origin: var(--radix-dropdown-menu-content-transform-origin);
   animation: flag-selector-enter 120ms ease-out;
 }

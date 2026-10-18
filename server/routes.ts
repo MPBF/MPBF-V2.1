@@ -5,7 +5,7 @@ import { releaseOrderToProduction } from "./order-production-release";
 import { deleteOrderProduction, lockOrderProductionDeletion } from "./order-production-delete";
 import { deleteOrdersAtomically } from "./order-bulk-delete";
 import { ORDER_PRODUCTION_RELEASE_STATUSES } from "../shared/order-production-release";
-import { ORDER_DISPLAY_FOLDERS, ORDER_WORKSPACE_ACTIONS, ORDER_WORKSPACE_STATUSES } from "../shared/order-workspace";
+import { ORDER_ACTIVE_STATUSES, ORDER_DISPLAY_FILTERS, ORDER_DISPLAY_FOLDERS, ORDER_WORKSPACE_ACTIONS, ORDER_WORKSPACE_STATUSES } from "../shared/order-workspace";
 import { applyOrderActions, moveOrderFolders, orderFolderCounts } from "./order-workspace";
 import { order_display_folder_assignments } from "../shared/schema";
 import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, or, aliasedTable, sql } from "drizzle-orm";
@@ -1412,7 +1412,7 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
           .where(search ? or(...conditions) : undefined)
           .orderBy(desc(customer_products.id)).limit(limit).offset(offset);
       } else if (path === "orders") {
-        const folder = z.enum(ORDER_DISPLAY_FOLDERS).optional().parse(req.query.display_folder);
+        const folder = z.enum(ORDER_DISPLAY_FILTERS).optional().parse(req.query.display_folder);
         const conditions = [...entitySearch[path], customers.name, customers.name_ar].map((column) => ilike(column, term));
         rows = await db.select({
           ...getTableColumns(orders),
@@ -1423,7 +1423,8 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
           .leftJoin(customers, eq(orders.customer_id, customers.id))
           .leftJoin(order_display_folder_assignments, eq(order_display_folder_assignments.order_id, orders.id))
           .where(and(search ? or(...conditions) : undefined,
-            folder === "new" ? or(isNull(order_display_folder_assignments.order_id), eq(order_display_folder_assignments.folder, "new"))
+            folder === "active" ? inArray(orders.status, [...ORDER_ACTIVE_STATUSES])
+              : folder === "new" ? or(isNull(order_display_folder_assignments.order_id), eq(order_display_folder_assignments.folder, "new"))
               : folder ? eq(order_display_folder_assignments.folder, folder) : undefined))
           .orderBy(desc(orders.id)).limit(limit).offset(offset);
         if (rows.length) {

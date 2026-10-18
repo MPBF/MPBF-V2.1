@@ -1,5 +1,8 @@
 export const ORDER_DISPLAY_FOLDERS = ["new", "production", "urgent", "archive"] as const;
 export type OrderDisplayFolder = typeof ORDER_DISPLAY_FOLDERS[number];
+export const ORDER_DISPLAY_FILTERS = ["active", ...ORDER_DISPLAY_FOLDERS] as const;
+export type OrderDisplayFilter = typeof ORDER_DISPLAY_FILTERS[number] | "all";
+export const ORDER_ACTIVE_STATUSES = ["waiting", "in_production"] as const;
 export const ORDER_WORKSPACE_ACTIONS = ["release", "pause", "cancel"] as const;
 export type OrderWorkspaceAction = typeof ORDER_WORKSPACE_ACTIONS[number];
 export const ORDER_WORKSPACE_STATUSES = ["waiting", "on_hold", "for_production", "in_production", "paused", "cancelled", "completed", "delivered", "archived"] as const;

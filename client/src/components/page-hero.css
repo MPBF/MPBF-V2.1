@@ -1,25 +1,25 @@
 .page-hero {
-  background: linear-gradient(115deg, #0b4d4b, #0b7770);
-  color: #fff;
+  background: linear-gradient(115deg, var(--theme-page-hero-page-hero-surface), var(--theme-page-hero-page-hero-surface-2));
+  color: var(--theme-page-hero-page-hero-text);
   padding: 25px 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
   border-radius: 10px;
-  box-shadow: 0 14px 35px rgba(7, 82, 79, .16);
+  box-shadow: 0 14px 35px var(--theme-page-hero-page-hero-shadow);
   margin-bottom: 20px;
   min-width: 0;
 }
 .page-hero-copy { min-width: 0; }
 .page-hero-copy span { font-size: 10px; font-weight: 900; letter-spacing: 1.3px; opacity: .75; }
-.page-hero-copy h2 { font-size: 30px; margin: 4px 0; color: #fff; overflow-wrap: anywhere; }
-.page-hero-copy p { margin: 0; color: #c9e2dc; }
+.page-hero-copy h2 { font-size: 30px; margin: 4px 0; color: var(--theme-page-hero-page-hero-text); overflow-wrap: anywhere; }
+.page-hero-copy p { margin: 0; color: var(--theme-page-hero-page-hero-copy-p-text); }
 .page-hero-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; flex-shrink: 0; }
 .page-hero-actions button {
   border: 0;
-  background: #f2bd5b;
-  color: #173d3c;
+  background: var(--theme-page-hero-page-hero-actions-button-surface);
+  color: var(--theme-page-hero-page-hero-actions-button-text);
   min-height: 42px;
   padding: 0 16px;
   border-radius: 7px;
@@ -29,8 +29,8 @@
   justify-content: center;
   gap: 8px;
 }
-.page-hero-actions button:not(.page-hero-refresh) { background: #fff; }
-.page-hero-actions button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.page-hero-actions button:not(.page-hero-refresh) { background: var(--theme-page-hero-page-hero-actions-button-not-page-hero-refresh-surface); }
+.page-hero-actions button:focus-visible { outline: 3px solid var(--theme-page-hero-page-hero-actions-button-focus-visible-focus); outline-offset: 3px; }
 .page-hero-actions button:disabled { opacity: .55; cursor: not-allowed; }
 .hr-page > .page-hero, .self-page > .page-hero { margin-bottom: 0; }
 @media (max-width: 900px) {
