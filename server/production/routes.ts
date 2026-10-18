@@ -4,12 +4,13 @@ import QRCode from "qrcode";
 import { requireAuth } from "../auth";
 import { pool } from "../db";
 import { kgHundredths } from "../../shared/production";
-import { ProductionError, type ConnectionPool } from "./core";
+import { permission, ProductionError, type ConnectionPool } from "./core";
 import { ProductionExecutionService } from "./execution";
 import { ProductionWarehouseService } from "./warehouse";
 import { FinishedDeliveryService } from "./delivery";
 import { ProductionReadService } from "./read";
 import { RawMixingService } from "./mixing";
+import { mixRevisionHistory } from "./mix-revision-history";
 import { ProductionMonitoringService, monitoringPermission } from "./monitoring";
 
 const request = z.object({ request_id: z.string().uuid() }).strict();
@@ -79,6 +80,17 @@ router.get("/monitoring/mixes/:id",handler(async(req,res)=>{
 router.get("/monitoring/rolls/:id",handler(async(req,res)=>{
   const {cursor}=z.object({cursor:monitoringCursor}).strict().parse(req.query);
   res.json(await monitoring.roll(req.user!,id.parse(req.params.id),cursor));
+}));
+router.get("/mixing/revisions", handler(async (req, res) => {
+  // Check access before parsing filters or touching storage.
+  permission(req.user!, "manage_mixing");
+  const { mix_id, before } = z.object({
+    mix_id: id.optional(),
+    before: z.string().regex(/^[1-9]\d{0,9}:[1-9]\d{0,9}$/).optional(),
+  }).strict().parse(req.query);
+  const cursor = before?.split(":").map(value => id.parse(value)) as [number, number] | undefined;
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await mixRevisionHistory(connectionPool, req.user!, mix_id, cursor));
 }));
 router.get("/mixing", handler(async (req, res) => {
   const { before } = z.object({ before: id.optional() }).strict().parse(req.query);

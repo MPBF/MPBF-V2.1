@@ -19,12 +19,13 @@ const { Pool } = require("pg");
   };
   const key = () => ({ request_id: randomUUID() });
   try {
-    await build({ entryPoints: ["server/production/mixing.ts", "server/production/mix-consumption.ts", "server/production/monitoring.ts"],
+    await build({ entryPoints: ["server/production/mixing.ts", "server/production/mix-consumption.ts", "server/production/monitoring.ts", "server/production/mix-revision-history.ts"],
       bundle: true, platform: "node", format: "cjs", outdir: temp, logLevel: "silent" });
     // esbuild follows the input filenames; .js outputs are CommonJS in /tmp.
     const { RawMixingService } = require(path.join(temp, "mixing.js"));
     const { consumeMixes, lockMixMachine } = require(path.join(temp, "mix-consumption.js"));
     const { ProductionMonitoringService } = require(path.join(temp, "monitoring.js"));
+    const { mixRevisionHistory } = require(path.join(temp, "mix-revision-history.js"));
     execFileSync("initdb", ["-D", data, "--auth=trust", "--no-locale", "--encoding=UTF8"], { stdio: "pipe" });
     execFileSync("pg_ctl", ["-D", data, "-l", path.join(temp, "postgres.log"), "-o",
       `-k ${temp} -p 16546 -c listen_addresses='' -c fsync=off`, "-w", "start"], { stdio: "pipe" });
@@ -90,10 +91,30 @@ const { Pool } = require("pg");
     check("cancelled quantities excluded from machine mixed totals",
       (await new ProductionMonitoringService(pool).summary(admin)).machines.find(m => m.machine_id === "F2").mixed_kg, "0");
     check("soft delete retains original recipe and actor", (await pool.query("SELECT count(*)::int n FROM factory_mix_items WHERE mix_id=$1", [mixed.id])).rows[0].n, 1);
+    const beforeHistoryRead = await balance();
+    const history = await mixRevisionHistory(pool, manager, mixed.id);
+    check("audit includes cancellation and revisions newest-first", history.records.map(r => [r.revision, r.action]),
+      [[3, "delete"], [2, "edit"], [1, "edit"]]);
+    check("audit executor comes from correction not original mixing operator", history.records.map(r => r.created_by), [3, 1, 3]);
+    check("audit resolves bilingual material labels", history.records[2].before_data.items[0],
+      { material_id: a, code: "HD", name: "HD", name_ar: "خام 1", quantity_kg: "10.25" });
+    check("audit retains prior machine and changed screw", [
+      history.records[1].before_data.machine_id, history.records[1].after_data.machine_id,
+      history.records[1].before_data.screw, history.records[1].after_data.screw,
+    ], ["F1", "F2", "A", "B"]);
+    check("audit cancellation has saved pre-cancel materials and no post-cancel materials",
+      [history.records[0].before_data.items[0].quantity_kg, history.records[0].after_data.items.length], ["0.05", 0]);
+    check("audit returns historical signed stock decimals not current balance", history.records[2].stock_adjustments.map(a => [a.quantity_kg, a.balance_after_kg]),
+      [["-5.05", "-15.30"], ["-2.10", "-2.10"]]);
+    check("audit does not change stock", await balance(), beforeHistoryRead);
+    check("audit cursor can continue inside same cancelled mix", (await mixRevisionHistory(pool, admin, mixed.id, [mixed.id, 3])).records.map(r => r.revision), [2, 1]);
+    await rejected("film operator cannot access audit reader", () => mixRevisionHistory(pool, film), 403);
     await rejected("second independent delete cannot refund twice", () => service.delete(admin, mixed.id, { ...key(), expected_revision: 3 }));
     await rejected("legacy cannot be proven unused", () => service.delete(admin, 1, { ...key(), expected_revision: 0 }));
     await service.update(manager, 1, { ...key(), expected_revision: 0, notes: "legacy note" });
     check("legacy notes can be corrected without inventory movement", await balance(), ["0.00", "0.00"]);
+    const notesAudit = (await mixRevisionHistory(pool, admin, 1)).records[0];
+    check("audit shows notes-only change without stock adjustments", [notesAudit.after_data.notes, notesAudit.stock_adjustments], ["legacy note", []]);
     const available = await record([{ material_id: a, quantity_kg: "20.00" }]);
     const consume = async (machineId, weight, hold) => {
       const tx = await pool.connect();
