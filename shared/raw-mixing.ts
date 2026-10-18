@@ -1,5 +1,10 @@
 import { hasProductionPermission, type ProductionUser } from "./production";
 
+export const formatMixNumber = (id: number): string =>
+  Number.isSafeInteger(id) && id > 0 ? `Mix-${String(id).padStart(4, "0")}` : "—";
+export const canManageMixing = (user: ProductionUser): boolean =>
+  hasProductionPermission(user, "manage_mixing");
+
 export function canRecordMixing(user: ProductionUser): boolean {
   return hasProductionPermission(user, "manage_mixing") ||
     (hasProductionPermission(user, "operate_film") &&
@@ -29,7 +34,13 @@ export type MixingRecord = {
   created_by: number; actor_name: string | null; actor_name_ar: string | null;
   created_at: string; notes: string | null; total_kg: string;
   items: { material_id: number; code: string; name: string; name_ar: string; quantity_kg: string }[];
+  revision?: number; can_edit_contents?: boolean;
 };
+export type MixingUpdateInput = {
+  request_id: string; expected_revision: number; notes?: string;
+  contents?: Omit<MixingInput, "request_id" | "notes">;
+};
+export type MixingDeleteInput = { request_id: string; expected_revision: number };
 export type MixingState = {
   materials: RawMaterial[];
   machines: { id: string; name: string | null; name_ar: string | null; status: string; screw_type: string | null }[];

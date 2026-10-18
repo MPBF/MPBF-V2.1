@@ -84,6 +84,23 @@
 .raw-ops-material-chip { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding: 6px 8px; border: 1px solid var(--theme-raw-operations-raw-ops-material-chip-border); background: var(--theme-raw-operations-raw-ops-material-chip-surface); font-size: 11px; }
 .raw-ops-material-chip strong { color: var(--raw-deep); font: 700 10px "IBM Plex Mono", monospace; }
 .raw-ops-record-notes { margin: 9px 0 0; color: var(--raw-muted); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.raw-mix-admin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 12px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--raw-line); }
+.raw-mix-admin-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.raw-mix-admin-buttons .raw-btn { min-height: 34px; padding: 5px 9px; font-size: 11px; }
+.raw-ops.raw-mix-dialog-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; overflow-y: auto; width: auto; max-width: none; margin: 0; padding: 20px; background: var(--theme-raw-operations-raw-ops-dialog-backdrop); animation: none; transform: none; }
+.raw-mix-dialog { width: min(100%, 620px); max-height: min(90dvh, 800px); overflow-y: auto; border: 1px solid var(--raw-line); background: var(--raw-card); color: var(--raw-ink); box-shadow: 0 18px 60px var(--theme-raw-operations-raw-ops-dialog-shadow); }
+.raw-mix-dialog-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--raw-line); background: var(--raw-card); }
+.raw-mix-dialog-head h2 { margin: 3px 0 0; font-size: 16px; }
+.raw-mix-dialog-close { min-height: 36px !important; padding: 7px !important; }
+.raw-mix-dialog-body { display: grid; gap: 12px; padding: 16px; }
+.raw-mix-dialog-body > p { margin: 0; }
+.raw-mix-edit-toggle { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--raw-line); color: var(--raw-deep); font-size: 12px; font-weight: 750; cursor: pointer; }
+.raw-mix-edit-toggle input { width: 17px; height: 17px; accent-color: var(--raw-deep); }
+.raw-mix-edit-fields { padding: 11px; border: 1px solid var(--raw-line); background: var(--theme-raw-operations-raw-ops-banner-surface); }
+.raw-mix-edit-notes { display: grid; gap: 6px; }
+.raw-mix-edit-notes label { color: var(--raw-muted); font-size: 11px; font-weight: 750; }
+.raw-mix-edit-notes textarea { min-height: 68px; padding: 8px 10px; border: 1px solid var(--theme-raw-operations-raw-ops-field-input-border); background: var(--theme-raw-operations-raw-ops-field-input-surface); color: var(--raw-ink); font: inherit; font-size: 12px; resize: vertical; }
+.raw-mix-edit-notes textarea:focus { outline: 2px solid var(--theme-raw-operations-raw-ops-field-input-focus-focus); border-color: var(--raw-copper); }
 .raw-mix-single-screw { min-height: 43px; display: flex; align-items: center; padding: 9px 10px; border: 1px solid var(--theme-raw-operations-raw-ops-field-input-border); background: var(--theme-raw-operations-raw-ops-raw-btn-outline-surface); color: var(--raw-deep); font-size: 13px; font-weight: 750; }
 .raw-mix-note-area { display: grid; gap: 7px; }
 .raw-mix-note-area > .raw-btn { justify-self: start; }
@@ -135,6 +152,10 @@
   .raw-ops-record-total { white-space: normal; }
   .raw-ops .raw-btn { min-height: 44px; }
   .raw-mix-saved-grid { grid-template-columns: minmax(0,1fr); }
+  .raw-ops.raw-mix-dialog-backdrop { padding: 9px; align-items: end; }
+  .raw-mix-dialog { max-height: 92dvh; }
+  .raw-mix-dialog-body { padding: 12px; }
+  .raw-mix-dialog-head { padding: 11px 12px; }
   .raw-mix-composition-line { grid-template-columns: minmax(0,1fr) auto; }
   .raw-mix-composition-line small { grid-column: 2; justify-self: end; }
   .raw-mix-note-head .raw-btn { min-height: 38px; }

@@ -60,7 +60,11 @@ try{
   `);
   for(const file of ["0011_factory_roll_production.sql","0013_order_number_allocations.sql","0014_raw_material_mixing.sql","0015_raw_catalogue_movements.sql","0017_raw_mixing_screws.sql"])
     await query(readFileSync(`migrations/${file}`,"utf8"));
-  material=(await mixing.state(admin)).materials[0].id;
+  // Historical records precede activation; prepare catalogue identity directly
+  // rather than querying the post-activation editable-history projection.
+  material=(await query(`INSERT INTO factory_raw_materials(item_id,code,name,name_ar)
+    SELECT id,'item:'||id,name,name_ar FROM items WHERE category_id='RAW' ORDER BY id LIMIT 1 RETURNING id`))[0].id;
+  await query(readFileSync("migrations/0023_mix_corrections.sql","utf8"));
   const historicalMix=await mix("100");
   await plan(1);
   // Historical film registered before activation, with genuine inline printing.

@@ -1,16 +1,18 @@
+import { AlertTriangle, ChevronDown, EyeOff, Pencil, Plus, RefreshCw, RotateCw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
-import { AlertTriangle, ChevronDown, EyeOff, Plus, RefreshCw, RotateCw, Trash2 } from "lucide-react";
-import type { MixingInput, MixingRecord, MixingState } from "../../../../shared/raw-mixing";
-import { canRecordMixing, canViewMixing, canViewSavedMixingComposition } from "../../../../shared/raw-mixing";
+
 import { hasProductionPermission, type ProductionUser } from "../../../../shared/production";
-import { availableProductionViews } from "../../lib/production-navigation";
-import { confirmedProductionRejection } from "../../lib/production-api";
-import { rawMixingApi } from "../../lib/raw-mixing-api";
-import { normalizeRawNumber as latin, rawQuantityValue as quantityValue } from "../../lib/raw-quantity";
+import { canManageMixing, canRecordMixing, canViewMixing, canViewSavedMixingComposition, formatMixNumber, type MixingDeleteInput, type MixingInput, type MixingRecord, type MixingState, type MixingUpdateInput } from "../../../../shared/raw-mixing";
 import { formatNumber, formatWholeNumber } from "../../lib/format-number";
+import { confirmedProductionRejection, productionRequest } from "../../lib/production-api";
+import { availableProductionViews } from "../../lib/production-navigation";
+import { rawMixingApi } from "../../lib/raw-mixing-api";
 import { mixingComposition, type CompositionLine } from "../../lib/raw-mixing-composition";
+import { normalizeRawNumber as latin, rawQuantityValue as quantityValue } from "../../lib/raw-quantity";
+
 import "./production.css";
 import "./raw-operations.css";
 
@@ -20,6 +22,8 @@ type Screw = "A" | "B";
 type PendingDraft = { machine: string; screw?: Screw; rows: MaterialLine[]; notes: string; notesVisible?: boolean };
 type PendingMix = { id: string; payload: MixingInput; fingerprint: string; draft?: PendingDraft };
 type MachineConfig = MixingState["machines"][number];
+type AdminMode = "edit" | "delete";
+type AdminPending = { mode: AdminMode; recordId: number; payload: MixingUpdateInput | MixingDeleteInput };
 
 const messages: Record<string, [string, string]> = {
   title: ["خلط مواد الخام", "Raw material mixing"],
@@ -59,6 +63,24 @@ const messages: Record<string, [string, string]> = {
   partial: ["إجمالي جزئي", "Partial total"], materialPercent: ["النسبة", "Share"], switchConfirm: ["سيؤدي تغيير الماكينة أو اللولب إلى حذف بيانات الخلطة الحالية. هل تريد المتابعة؟", "Changing machine or screw will discard the current mix draft. Continue?"],
   legacyScrew: ["لولب غير محدد", "Unidentified screw"],
   unavailableComposition: ["تعذر احتساب التركيبة بسبب أوزان غير صالحة.", "Composition unavailable because saved weights are invalid."],
+  editMix: ["تعديل سجل الخلطة", "Edit mix record"], deleteMix: ["حذف خلطة غير مستهلكة", "Delete unused mix"],
+  editNotesOnly: ["تعديل الملاحظات فقط", "Edit notes only"],
+  contentsToggle: ["تصحيح الماكينة والمواد", "Correct machine and materials"],
+  unavailablePrevious: ["القيمة السابقة غير متاحة أو غير نشطة. اختر قيمة نشطة قبل حفظ التركيبة.", "A previous value is unavailable or inactive. Choose an active value before saving contents."],
+  unavailableMachine: ["الماكينة السابقة غير متاحة أو غير نشطة. اختر ماكينة فيلم نشطة.", "The previous machine is unavailable or inactive. Choose an active film machine."],
+  chooseScrewError: ["اختر لولباً صالحاً للماكينة.", "Choose a screw valid for this machine."],
+  editWeight: ["أدخل أوزاناً موجبة لا تتجاوز منزلتين عشريتين.", "Enter positive weights with no more than two decimal places."],
+  editMaterial: ["اختر مواد نشطة من الدليل دون تكرار.", "Choose active catalog materials without duplicates."],
+  deleteConfirm: ["سيُعاد رصيد المواد إلى مخزون الخام. سيظل سجل المحاسبة الأصلي محفوظاً للتدقيق.", "Material quantities will return to raw stock. The original accounting record will be retained for audit."],
+  consumedDelete: ["لا يمكن حذف هذه الخلطة: مستهلكة أو سجل تاريخي غير قابل للتحقق.", "This mix cannot be deleted: it is consumed or unverifiable historical data."],
+  editError: ["تعذر تحديث سجل الخلطة.", "The mix record could not be updated."],
+  deleteError: ["تعذر حذف سجل الخلطة.", "The mix record could not be deleted."],
+  conflict: ["تغير السجل منذ تحميله. أعد تحميل السجل قبل أي تعديل آخر.", "This record changed since it was loaded. Reload before making another change."],
+  retryAdmin: ["أعد إرسال العملية نفسها بالطلب نفسه.", "Retry this exact operation with the same request."],
+  editSuccess: ["تم تحديث سجل الخلطة.", "Mix record updated."], deleteSuccess: ["تم حذف الخلطة وإعادة الرصيد.", "Mix deleted and stock returned."],
+  reloadRecord: ["إعادة تحميل السجل", "Reload record"], cancel: ["إلغاء", "Cancel"], confirmDelete: ["تأكيد الحذف", "Confirm delete"],
+  adminActions: ["إجراءات المدير", "Manager actions"], addEditLine: ["إضافة مادة", "Add material"], editRemove: ["إزالة", "Remove"],
+  legacyMaterial: ["المادة المسجلة غير متاحة", "Previously recorded material unavailable"],
 };
 const tx = (key: string, en: boolean) => messages[key]?.[en ? 1 : 0] ?? key;
 const dateTime = (raw: string, en: boolean) => {
@@ -133,7 +155,7 @@ function LoadingRows({ label }: { label: string }) {
 export default function RawMixingPage({ user }: RawMixingPageProps) {
   const { i18n } = useTranslation();
   const en = i18n.language === "en";
-  const allowed = canViewMixing(user), writable = canRecordMixing(user);
+  const allowed = canViewMixing(user), writable = canRecordMixing(user), manager = canManageMixing(user);
   const storageKey = mixingStorageKey(user.id);
   const [initialPending] = useState(() => readPendingMix(storageKey));
   const [recoveredDraft] = useState(() => initialPending ? recoverMixDraft(initialPending) : null);
@@ -150,6 +172,20 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
     return initialPending ? { ...initialPending, fingerprint: recoverFingerprint(initialPending) } : null;
   });
   const [pendingFailed, setPendingFailed] = useState(Boolean(initialPending));
+  const [adminRecord, setAdminRecord] = useState<MixingRecord | null>(null);
+  const [adminMode, setAdminMode] = useState<AdminMode>("edit");
+  const [adminContents, setAdminContents] = useState(false);
+  const [adminMachine, setAdminMachine] = useState("");
+  const [adminScrew, setAdminScrew] = useState<Screw | "">("");
+  const [adminRows, setAdminRows] = useState<MaterialLine[]>([]);
+  const [adminNotes, setAdminNotes] = useState("");
+  const [adminPending, setAdminPending] = useState<AdminPending | null>(null);
+  const [adminBusy, setAdminBusy] = useState(false);
+  const [adminError, setAdminError] = useState("");
+  const [adminConflict, setAdminConflict] = useState(false);
+  const [adminSuccess, setAdminSuccess] = useState("");
+  const adminBusyRef = useRef(false);
+  const adminDialogRef = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
   const hydratedKey = useRef(storageKey);
   const draftFingerprint = cleanDraft(machine, screw, rows, notes);
@@ -175,7 +211,142 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
       if (current === generation.current) { setLoading(false); setOlderLoading(false); }
     }
   }, [allowed, en]);
-  useEffect(() => { void load(); return () => { generation.current++; }; }, [load]);
+  useEffect(() => {
+    void load();
+    const currentGeneration = generation;
+    return () => { currentGeneration.current++; };
+  }, [load]);
+  const closeAdminDialog = () => {
+    if (adminBusyRef.current || adminPending) return;
+    setAdminRecord(null); setAdminMode("edit"); setAdminContents(false); setAdminMachine(""); setAdminScrew("");
+    setAdminRows([]); setAdminNotes(""); setAdminError(""); setAdminConflict(false);
+  };
+  const openAdminDialog = (record: MixingRecord, mode: AdminMode) => {
+    if (!canManageMixing(user) || adminBusyRef.current || adminPending) return;
+    setAdminRecord(record); setAdminMode(mode); setAdminContents(false); setAdminMachine(record.machine_id);
+    const existingMachine = state?.machines.find(item => item.id === record.machine_id);
+    setAdminScrew((existingMachine?.screw_type ?? "").trim().toUpperCase() === "ABA" ? record.screw ?? "" : "A");
+    setAdminRows(record.items.map(item => ({ materialId: String(item.material_id), quantity: item.quantity_kg })));
+    setAdminNotes(record.notes ?? ""); setAdminPending(null); setAdminError(""); setAdminConflict(false); setAdminSuccess("");
+  };
+  const sendAdminOperation = async (operation: AdminPending) => {
+    if (adminBusyRef.current || !canManageMixing(user)) return;
+    adminBusyRef.current = true; setAdminBusy(true); setAdminError("");
+    try {
+      if (operation.mode === "edit") {
+        await productionRequest(`/mixing/${operation.recordId}`, operation.payload, "PATCH");
+        setAdminSuccess(tx("editSuccess", en));
+      } else {
+        await productionRequest(`/mixing/${operation.recordId}`, operation.payload, "DELETE");
+        setAdminSuccess(tx("deleteSuccess", en));
+      }
+      window.dispatchEvent(new Event("production-data-changed"));
+      setAdminPending(null);
+      setAdminRecord(null);
+      await load();
+    } catch (cause) {
+      const status = cause && typeof cause === "object" && "status" in cause ? Number((cause as { status?: unknown }).status) : 0;
+      if (status === 409) {
+        setAdminPending(null); setAdminConflict(true); setAdminError(tx("conflict", en));
+      } else if (confirmedProductionRejection(cause)) {
+        setAdminPending(null); setAdminError(errorMessage(cause, en));
+      } else {
+        setAdminPending(operation);
+        setAdminError(errorMessage(cause, en));
+      }
+    } finally {
+      adminBusyRef.current = false; setAdminBusy(false);
+    }
+  };
+  const submitAdminEdit = () => {
+    if (!adminRecord || !canManageMixing(user) || adminBusyRef.current || adminPending || adminConflict) return;
+    if (adminNotes.length > 2000) { setAdminError(tx("invalidNotes", en)); return; }
+    const payload: MixingUpdateInput = {
+      request_id: "",
+      expected_revision: Number.isSafeInteger(adminRecord.revision) && (adminRecord.revision as number) >= 0 ? adminRecord.revision as number : 0,
+      notes: adminNotes.trim(),
+    };
+    if (adminContents && adminRecord.can_edit_contents === true) {
+      const machine = state?.machines.find(item => item.id === adminMachine);
+      if (!machine || machine.status !== "active") { setAdminError(tx("unavailableMachine", en)); return; }
+      const dual = (machine.screw_type ?? "").trim().toUpperCase() === "ABA";
+      if (!adminScrew || (dual ? adminScrew !== "A" && adminScrew !== "B" : adminScrew !== "A")) {
+        setAdminError(tx("chooseScrewError", en)); return;
+      }
+      if (!adminRows.length || adminRows.length > 100 ||
+        adminRows.some(row => !row.materialId || !state?.materials.some(material => String(material.id) === row.materialId && material.is_active)) ||
+        new Set(adminRows.map(row => row.materialId)).size !== adminRows.length) {
+        setAdminError(tx("editMaterial", en)); return;
+      }
+      const items: MixingInput["items"] = [];
+      for (const row of adminRows) {
+        const material = state?.materials.find(item => String(item.id) === row.materialId);
+        if (!material || !material.is_active) { setAdminError(tx("unavailablePrevious", en)); return; }
+        const quantity = quantityValue(row.quantity);
+        if (!quantity) { setAdminError(tx("editWeight", en)); return; }
+        items.push({ material_id: material.id, quantity_kg: quantity });
+      }
+      payload.contents = { machine_id: machine.id, screw: adminScrew, items };
+    }
+    try { payload.request_id = requestId(); }
+    catch { setAdminError(tx("secure", en)); return; }
+    const operation: AdminPending = { mode: "edit", recordId: adminRecord.id, payload };
+    setAdminPending(operation);
+    void sendAdminOperation(operation);
+  };
+  const submitAdminDelete = () => {
+    if (!adminRecord || adminRecord.can_edit_contents !== true || !canManageMixing(user) || adminBusyRef.current || adminPending || adminConflict) return;
+    let id: string;
+    try { id = requestId(); } catch { setAdminError(tx("secure", en)); return; }
+    const operation: AdminPending = {
+      mode: "delete", recordId: adminRecord.id,
+      payload: { request_id: id, expected_revision: Number.isSafeInteger(adminRecord.revision) && (adminRecord.revision as number) >= 0 ? adminRecord.revision as number : 0 },
+    };
+    setAdminPending(operation);
+    void sendAdminOperation(operation);
+  };
+  const reloadAfterConflict = async () => {
+    setAdminConflict(false);
+    setAdminPending(null);
+    await load();
+    setAdminRecord(null); setAdminError("");
+  };
+  useEffect(() => {
+    if (!adminRecord) return;
+    const opener = document.activeElement;
+    const focusTimer = window.setTimeout(() => {
+      adminDialogRef.current?.querySelector<HTMLElement>("button:not([disabled]),textarea:not([disabled])")?.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(focusTimer);
+      if (opener instanceof HTMLElement && opener.isConnected) {
+        requestAnimationFrame(() => opener.focus({ preventScroll: true }));
+      }
+    };
+  }, [adminRecord?.id]);
+  useEffect(() => {
+    if (!adminRecord) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !adminBusyRef.current && !adminPending) {
+        setAdminRecord(null); setAdminMode("edit"); setAdminContents(false); setAdminMachine(""); setAdminScrew("");
+        setAdminRows([]); setAdminNotes(""); setAdminError(""); setAdminConflict(false);
+      }
+      if (event.key === "Tab") {
+        const focusable = Array.from(adminDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? []);
+        if (!focusable.length) { event.preventDefault(); return; }
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (event.shiftKey && (document.activeElement === first || !adminDialogRef.current?.contains(document.activeElement))) {
+          event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !adminDialogRef.current?.contains(document.activeElement))) {
+          event.preventDefault(); first.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [adminRecord, adminPending]);
   useEffect(() => {
     if (hydratedKey.current === storageKey) return;
     hydratedKey.current = storageKey;
@@ -337,6 +508,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
       {negativeBalance && <div className="raw-ops-banner warning" role="status"><AlertTriangle size={17} />{tx("negative", en)}</div>}
       {(saveError || pending) && <div className="raw-ops-banner error" role="alert"><div>{pending ? <>{tx("failedRetry", en)}<div className="raw-ops-helper">{saveError || tx("recovered", en)}</div>{!writable && <div className="raw-ops-helper">{tx("retryPermission", en)}</div>}</> : saveError}</div>{pending && <button className="raw-btn" onClick={() => void save(true)} disabled={busy || !writable}><RotateCw />{busy ? tx("loading", en) : tx("retry", en)}</button>}</div>}
       {success && <div className="raw-ops-banner success" role="status">{success}</div>}
+      {adminSuccess && <div className="raw-ops-banner success" role="status">{adminSuccess}</div>}
       <section className="raw-ops-card">
         <div className="raw-ops-card-head"><h2>{tx("form", en)}</h2></div>
         <div className="raw-ops-card-body">
@@ -420,16 +592,107 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
           {loading && !state ? <LoadingRows label={tx("loading", en)} /> : state?.records.length ? <>
             {state.records.map(record => <article className="raw-ops-record" key={record.id}>
               <div className="raw-ops-record-head">
-                <div><div className="raw-ops-record-machine">{getMachine(record)} · {((record as MixingRecord & { screw?: Screw | null }).screw === "A" ? tx("screwA", en) : (record as MixingRecord & { screw?: Screw | null }).screw === "B" ? tx("screwB", en) : tx("legacyScrew", en))}</div><div className="raw-ops-record-meta"><span>{tx("actor", en)}: {getActor(record)}</span><time dateTime={record.created_at}>{tx("date", en)}: {dateTime(record.created_at, en)}</time><span className="raw-ops-number">#{record.id}</span></div></div>
+                <div><div className="raw-ops-record-machine">{getMachine(record)} · {((record as MixingRecord & { screw?: Screw | null }).screw === "A" ? tx("screwA", en) : (record as MixingRecord & { screw?: Screw | null }).screw === "B" ? tx("screwB", en) : tx("legacyScrew", en))}</div><div className="raw-ops-record-meta"><span>{tx("actor", en)}: {getActor(record)}</span><time dateTime={record.created_at}>{tx("date", en)}: {dateTime(record.created_at, en)}</time><span className="raw-ops-number">{formatMixNumber(record.id)}</span></div></div>
                 <div className="raw-ops-record-total">{tx("total", en)}: {formatNumber(record.total_kg)} kg</div>
               </div>
               <div className="raw-ops-record-lines">{record.items.map((item, index) => <div className="raw-ops-material-chip" key={`${item.material_id}-${index}`}><span>{bilingualMaterialName(item.name_ar, item.name)}</span><b className="raw-ops-number">{formatNumber(item.quantity_kg)} kg</b></div>)}</div>
               {record.notes && <p className="raw-ops-record-notes">{tx("comments", en)}: {record.notes}</p>}
+              {manager && <div className="raw-mix-admin-actions">
+                <div className="raw-mix-admin-buttons">
+                  <button className="raw-btn quiet" type="button" onClick={() => openAdminDialog(record, "edit")} disabled={adminBusy || Boolean(adminPending)}><Pencil />{tx("editMix", en)}</button>
+                  <button className="raw-btn quiet" type="button" onClick={() => openAdminDialog(record, "delete")} disabled={adminBusy || Boolean(adminPending) || record.can_edit_contents !== true} aria-describedby={record.can_edit_contents !== true ? `mix-delete-note-${record.id}` : undefined}><Trash2 />{tx("deleteMix", en)}</button>
+                </div>
+                {record.can_edit_contents !== true && <span className="raw-ops-helper" id={`mix-delete-note-${record.id}`}>{tx("consumedDelete", en)}</span>}
+              </div>}
             </article>)}
             {state.next_before ? <div className="raw-ops-form-actions"><button className="raw-btn outline" onClick={() => void load(state.next_before ?? undefined)} disabled={olderLoading}><ChevronDown />{olderLoading ? tx("loading", en) : tx("more", en)}</button></div> : <p className="raw-ops-helper">{tx("noMore", en)}</p>}
           </> : <div className="raw-ops-empty"><strong>{tx("noHistory", en)}</strong><span>{tx("notVoucher", en)}</span></div>}
         </div>
       </section>
     </>}
+    {adminRecord && createPortal(<div className="raw-ops raw-mix-dialog-backdrop">
+      <section ref={adminDialogRef} className="raw-mix-dialog" role="dialog" aria-modal="true" aria-labelledby="raw-mix-dialog-title" aria-describedby="raw-mix-dialog-description" dir={en ? "ltr" : "rtl"}>
+        <header className="raw-mix-dialog-head">
+          <div><span className="raw-ops-helper">{formatMixNumber(adminRecord.id)}</span><h2 id="raw-mix-dialog-title">{tx(adminMode === "delete" ? "deleteMix" : "editMix", en)}</h2></div>
+          <button className="raw-btn quiet raw-mix-dialog-close" type="button" autoFocus aria-label={tx("cancel", en)} onClick={closeAdminDialog} disabled={adminBusy || Boolean(adminPending)}><X /></button>
+        </header>
+        <div className="raw-mix-dialog-body">
+          <p id="raw-mix-dialog-description" className="raw-ops-helper">
+            {adminMode === "delete" ? tx("deleteConfirm", en) : (adminRecord.can_edit_contents === true ? tx("contentsToggle", en) : tx("editNotesOnly", en))}
+          </p>
+          {adminError && <div className="raw-ops-banner error" role="alert">{adminError}</div>}
+          {adminMode === "delete" ? <>
+            {adminRecord.can_edit_contents !== true && <div className="raw-ops-banner warning">{tx("consumedDelete", en)}</div>}
+            {adminPending && !adminConflict && <div className="raw-ops-banner warning">{tx("retryAdmin", en)}</div>}
+            <div className="raw-ops-form-actions">
+              {adminConflict ? <button className="raw-btn" type="button" onClick={() => void reloadAfterConflict()} disabled={adminBusy}><RefreshCw />{tx("reloadRecord", en)}</button> :
+                adminPending ? <button className="raw-btn" type="button" onClick={() => void sendAdminOperation(adminPending)} disabled={adminBusy}><RotateCw />{adminBusy ? tx("loading", en) : tx("retry", en)}</button> :
+                  <button className="raw-btn" type="button" onClick={submitAdminDelete} disabled={adminBusy || adminRecord.can_edit_contents !== true}><Trash2 />{tx("confirmDelete", en)}</button>}
+              {!adminPending && !adminConflict && <button className="raw-btn quiet" type="button" onClick={closeAdminDialog} disabled={adminBusy}>{tx("cancel", en)}</button>}
+            </div>
+          </> : <>
+            {adminRecord.can_edit_contents === true && <label className="raw-mix-edit-toggle">
+              <input type="checkbox" checked={adminContents} disabled={adminBusy || Boolean(adminPending) || adminConflict} onChange={event => { setAdminContents(event.target.checked); setAdminError(""); }} />
+              <span>{tx("contentsToggle", en)}</span>
+            </label>}
+            {adminRecord.can_edit_contents !== true && <p className="raw-ops-helper">{tx("editNotesOnly", en)}</p>}
+            {adminContents && adminRecord.can_edit_contents === true && <div className="raw-ops-form-grid raw-mix-edit-fields">
+              <div className="raw-ops-field raw-ops-wide">
+                <label htmlFor="mix-edit-machine">{tx("machine", en)}</label>
+                <select id="mix-edit-machine" value={adminMachine} disabled={adminBusy || Boolean(adminPending) || adminConflict} onChange={event => {
+                  const next = event.target.value;
+                  const machineOption = state?.machines.find(item => item.id === next);
+                  setAdminMachine(next);
+                  setAdminScrew(next ? ((machineOption?.screw_type ?? "").trim().toUpperCase() === "ABA" ? "" : "A") : "");
+                  setAdminError("");
+                }}>
+                  <option value="">{tx("chooseMachine", en)}</option>
+                  {adminMachine && !state?.machines.some(item => item.id === adminMachine && item.status === "active") && <option value={adminMachine} disabled>{getMachine(adminRecord)} — {tx("unavailable", en)}</option>}
+                  {(state?.machines ?? []).filter(item => item.status === "active").map(item => <option key={item.id} value={item.id}>{localized(item.name_ar, item.name, en, tx("unavailable", en))}</option>)}
+                </select>
+                {(!state?.machines.some(item => item.id === adminMachine && item.status === "active")) && <span className="raw-ops-helper">{tx("unavailableMachine", en)}</span>}
+              </div>
+              {adminMachine && <div className="raw-ops-field raw-ops-wide">
+                <label htmlFor="mix-edit-screw">{tx("screw", en)}</label>
+                {(state?.machines.find(item => item.id === adminMachine)?.screw_type ?? "").trim().toUpperCase() === "ABA" ?
+                  <select id="mix-edit-screw" value={adminScrew} disabled={adminBusy || Boolean(adminPending) || adminConflict} onChange={event => setAdminScrew(event.target.value as Screw | "")}>
+                    <option value="">{tx("chooseScrew", en)}</option><option value="A">{tx("screwA", en)}</option><option value="B">{tx("screwB", en)}</option>
+                  </select> : <div className="raw-mix-single-screw">{tx("screwA", en)}</div>}
+              </div>}
+              <div className="raw-ops-wide raw-ops-items">
+                {adminRows.map((row, index) => {
+                  const prior = adminRecord.items.find(item => String(item.material_id) === row.materialId);
+                  const material = state?.materials.find(item => String(item.id) === row.materialId);
+                  return <div className="raw-ops-item" key={`edit-${index}`}>
+                    <div className="raw-ops-field"><label htmlFor={`mix-edit-material-${index}`}>{tx("material", en)}</label>
+                      <select id={`mix-edit-material-${index}`} value={row.materialId} disabled={adminBusy || Boolean(adminPending) || adminConflict} onChange={event => { setAdminRows(old => old.map((item, rowIndex) => rowIndex === index ? { ...item, materialId: event.target.value } : item)); setAdminError(""); }}>
+                        <option value="">{tx("chooseMaterial", en)}</option>
+                        {row.materialId && (!material || !material.is_active) && <option value={row.materialId} disabled>{prior ? bilingualMaterialName(prior.name_ar, prior.name) : `${tx("legacyMaterial", en)} (${row.materialId})`}</option>}
+                        {(state?.materials ?? []).filter(item => item.is_active && (!adminRows.some((other, otherIndex) => otherIndex !== index && other.materialId === String(item.id)) || row.materialId === String(item.id))).map(item => <option key={item.id} value={String(item.id)}>{bilingualMaterialName(item.name_ar, item.name)}</option>)}
+                      </select>
+                      {row.materialId && (!material || !material.is_active) && <span className="raw-ops-helper">{tx("unavailablePrevious", en)}</span>}
+                    </div>
+                    <div className="raw-ops-field"><label htmlFor={`mix-edit-quantity-${index}`}>{tx("weight", en)}</label><input id={`mix-edit-quantity-${index}`} inputMode="decimal" maxLength={15} value={row.quantity} disabled={adminBusy || Boolean(adminPending) || adminConflict} onChange={event => { setAdminRows(old => old.map((item, rowIndex) => rowIndex === index ? { ...item, quantity: event.target.value } : item)); setAdminError(""); }} placeholder="0.00" /></div>
+                    <button className="raw-btn quiet raw-ops-remove" type="button" onClick={() => setAdminRows(old => old.filter((_, rowIndex) => rowIndex !== index))} disabled={adminBusy || Boolean(adminPending) || adminConflict || adminRows.length < 2}><Trash2 />{tx("editRemove", en)}</button>
+                  </div>;
+                })}
+                <button className="raw-btn outline" type="button" onClick={() => setAdminRows(old => [...old, { materialId: "", quantity: "" }])} disabled={adminBusy || Boolean(adminPending) || adminConflict || adminRows.length >= 100}><Plus />{tx("addEditLine", en)}</button>
+              </div>
+            </div>}
+            <div className="raw-ops-field raw-mix-edit-notes">
+              <label htmlFor="mix-edit-notes">{tx("notes", en)}</label>
+              <textarea id="mix-edit-notes" maxLength={2000} value={adminNotes} disabled={adminBusy || Boolean(adminPending) || adminConflict} onChange={event => { setAdminNotes(event.target.value); setAdminError(""); }} />
+            </div>
+            {adminPending && !adminConflict && <div className="raw-ops-banner warning">{tx("retryAdmin", en)}</div>}
+            <div className="raw-ops-form-actions">
+              {adminConflict ? <button className="raw-btn" type="button" onClick={() => void reloadAfterConflict()} disabled={adminBusy}><RefreshCw />{tx("reloadRecord", en)}</button> :
+                adminPending ? <button className="raw-btn" type="button" onClick={() => void sendAdminOperation(adminPending)} disabled={adminBusy}><RotateCw />{adminBusy ? tx("loading", en) : tx("retry", en)}</button> :
+                  <button className="raw-btn" type="button" onClick={submitAdminEdit} disabled={adminBusy}><Pencil />{adminBusy ? tx("loading", en) : tx("save", en)}</button>}
+              {!adminPending && !adminConflict && <button className="raw-btn quiet" type="button" onClick={closeAdminDialog} disabled={adminBusy}>{tx("cancel", en)}</button>}
+            </div>
+          </>}
+        </div>
+      </section>
+    </div>, document.body)}
   </main>;
 }

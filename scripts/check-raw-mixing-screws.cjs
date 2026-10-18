@@ -11,7 +11,8 @@ const literal=JSON.stringify;
   const chrome=spawn(process.env.CHROMIUM_PATH||execFileSync("which",["chromium"],{encoding:"utf8"}).trim(),
     ["--headless=new","--no-sandbox","--disable-gpu","--remote-debugging-port=0",`--user-data-dir=${profile}`,"about:blank"],
     {stdio:["ignore","ignore","pipe"]});
-  let ws,session,serial=0,passed=0,language="en",permissions=["operate_film"],acceptDialog=false,dialogs=0;
+  // Saved composition belongs to management, not the film-operator surface.
+  let ws,session,serial=0,passed=0,language="en",permissions=["manage_mixing"],acceptDialog=false,dialogs=0;
   let loseResponse=false,holdResponse=false,held=null;
   const pending=new Map(),ledger=new Map(),writes=[],errors=[];
   const materials=[

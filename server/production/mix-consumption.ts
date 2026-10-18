@@ -21,7 +21,7 @@ export async function consumeMixes(tx: Connection, rollId: number, machineId: st
   const mixes: {id:number;remaining:string;cursor_at:string}[] = await rows(tx, `SELECT m.id,
     to_char(m.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') cursor_at,
     (m.total_kg-COALESCE((SELECT sum(a.allocated_kg) FROM factory_mix_allocations a WHERE a.mix_id=m.id),0))::text remaining
-    FROM factory_mixes m WHERE m.machine_id=$1 AND m.id>$2
+    FROM factory_mixes m WHERE m.machine_id=$1 AND m.id>$2 AND m.deleted_at IS NULL
     AND m.created_at<=(SELECT created_at FROM factory_rolls WHERE id=$3)
     AND ($4::timestamptz IS NULL OR (m.created_at,m.id)>($4::timestamptz,$5::integer))
     AND m.total_kg>COALESCE((SELECT sum(a.allocated_kg) FROM factory_mix_allocations a WHERE a.mix_id=m.id),0)

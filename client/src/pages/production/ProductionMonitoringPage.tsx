@@ -1,7 +1,7 @@
+import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import type { ProductionStage, ProductionUser } from "../../../../shared/production";
+
 import {
   canMonitorProduction,
   type MixMonitorDetail,
@@ -11,14 +11,18 @@ import {
   type ProductionEvent,
   type RollMixDetail,
 } from "../../../../shared/production-monitoring";
-import { availablePlanningViews } from "../../lib/planning-navigation";
-import { PlanningHeader, PlanningNavigation } from "./PlanningChrome";
-import { monitoringApi } from "../../lib/production-monitoring-api";
+import { formatMixNumber } from "../../../../shared/raw-mixing";
 import { formatNumber } from "../../lib/format-number";
+import { availablePlanningViews } from "../../lib/planning-navigation";
+import { monitoringApi } from "../../lib/production-monitoring-api";
+
+import { PlanningHeader, PlanningNavigation } from "./PlanningChrome";
 import "./production.css";
 import "./raw-operations.css";
 import "./production-monitoring.css";
 import "./planning.css";
+
+import type { ProductionStage, ProductionUser } from "../../../../shared/production";
 
 export type ProductionMonitoringPageProps = { user: ProductionUser };
 
@@ -528,7 +532,7 @@ function AllocationRows({ records, en, emptyLabel, showMixSource = false }: {
 }) {
   return records.length ? <div className="pm-allocation-list">
     {records.map((item, index) => <div className="pm-allocation" key={`${item.mix_id}-${item.roll_id}-${index}`}>
-      <span><b>{showMixSource ? `${en?"Mix":"خلطة"} #${formatNumber(item.mix_id)}` : item.roll_number || `#${item.roll_id}`}</b><small>{stamp(item.mix_registered_at, en)}</small></span>
+      <span><b>{showMixSource ? formatMixNumber(item.mix_id) : item.roll_number || `#${item.roll_id}`}</b><small>{stamp(item.mix_registered_at, en)}</small></span>
       <span className="pm-allocation-screw">{item.screw ? `${en ? "Screw" : "اللولب"} ${item.screw}` : (en ? "Screw unspecified" : "لولب غير محدد")}</span>
       <strong className="raw-ops-number">{kg(item.allocated_kg)}</strong>
     </div>)}
@@ -542,7 +546,7 @@ function MixCard({ mix, open, detail, en, onToggle, onRetry, onPrevious, onNext 
   const materialLines = mix.items ?? [];
   return <article className="pm-mix-card">
     <div className="pm-mix-head">
-      <div className="pm-mix-id"><span className="pm-mix-mark">MIX / {formatNumber(mix.id)}</span><strong>{localized(mix.machine_name_ar, mix.machine_name, en, mix.machine_id)}</strong><small>{stamp(mix.created_at, en)} · {localized(mix.actor_name_ar, mix.actor_name, en, en ? "Unavailable" : "غير متاح")}</small></div>
+      <div className="pm-mix-id"><span className="pm-mix-mark">{formatMixNumber(mix.id)}</span><strong>{localized(mix.machine_name_ar, mix.machine_name, en, mix.machine_id)}</strong><small>{stamp(mix.created_at, en)} · {localized(mix.actor_name_ar, mix.actor_name, en, en ? "Unavailable" : "غير متاح")}</small></div>
       <div className="pm-mix-total"><small>{tr("total", en)}</small><b className="raw-ops-number">{kg(mix.total_kg)}</b></div>
       <button className="pm-expand" type="button" aria-expanded={open} aria-controls={`mix-detail-${mix.id}`} onClick={onToggle}><ChevronDown aria-hidden="true" />{open ? tr("collapse", en) : tr("expandMix", en)}</button>
     </div>
