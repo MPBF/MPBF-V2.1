@@ -103,3 +103,38 @@ layout change. Waiting alone did not resolve the false failures.
 **How to apply:** require the intended computed minimum height and allow a
 small tolerance (such as half a pixel) in rendered bounds. Continue checking
 that controls are enabled and contained; do not relax functional assertions.
+
+Use coordinate hit testing and browser pointer events for overlay regressions,
+not DOM `.click()` alone. Probe the underlying navigation's screen area too.
+
+**Why:** programmatic activation bypasses occlusion, so an obscured save button
+can appear functional in a test. Comparing z-index numbers alone also ignores
+ancestor stacking contexts.
+
+**How to apply:** scroll controls into view, wait for finite entrance animations,
+and check that `elementFromPoint` belongs to the intended control before sending
+pointer events. Choose visible openers before testing focus restoration; a
+selector list returns the first element in document order, not selector priority.
+
+Separate modal focus checks for cancel/Escape from successful saves and
+responsive layout changes.
+
+**Why:** list refreshes can detach the saved opener, and a phone-to-desktop
+breakpoint can hide it even when the modal itself remains usable. Passing
+cancel checks alone does not establish focus recovery through those transitions.
+
+**How to apply:** verify the visible logical opener after each transition.
+Keep physical rotation dimensions consistent with the chosen phone, and test
+breakpoint-crossing focus separately rather than treating it as ordinary
+low-height keyboard coverage.
+
+Distinguish native browser confirmations from application dialogs in isolated
+headless tests. Never replace `window.confirm` just to exercise nested dialogs.
+
+**Why:** Native confirmations live outside the page DOM. CDP can observe and
+accept/dismiss them, but protocol dismissal does not prove that a physical
+Escape key works in the operating system's browser prompt.
+
+**How to apply:** trigger the real prompt with pointer events, verify its type
+and message, dismiss/accept through the browser protocol, and test application
+Escape separately with keyboard input. State this boundary in test reports.
