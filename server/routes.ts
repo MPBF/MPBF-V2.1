@@ -5,8 +5,8 @@ import { releaseOrderToProduction } from "./order-production-release";
 import { deleteOrderProduction, lockOrderProductionDeletion } from "./order-production-delete";
 import { deleteOrdersAtomically } from "./order-bulk-delete";
 import { ORDER_PRODUCTION_RELEASE_STATUSES } from "../shared/order-production-release";
-import { ORDER_ACTIVE_STATUSES, ORDER_DISPLAY_FILTERS, ORDER_DISPLAY_FOLDERS, ORDER_WORKSPACE_ACTIONS, ORDER_WORKSPACE_STATUSES } from "../shared/order-workspace";
-import { applyOrderActions, moveOrderFolders, orderFolderCounts } from "./order-workspace";
+import { ORDER_ACTIVE_STATUSES, ORDER_DISPLAY_FILTERS, ORDER_DISPLAY_FOLDERS, ORDER_FILTER_STATUSES, ORDER_STATUS_FILTERS, ORDER_WORKSPACE_ACTIONS, ORDER_WORKSPACE_STATUSES } from "../shared/order-workspace";
+import { applyOrderActions, moveOrderFolders, orderFolderCounts, orderStatusCounts } from "./order-workspace";
 import { order_display_folder_assignments } from "../shared/schema";
 import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, or, aliasedTable, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
@@ -1115,6 +1115,12 @@ const workspaceFailure = (error: unknown, res: Response, next: (error?: unknown)
 router.get("/orders/display-folders", ordersRead, async (_req, res, next) => {
   try { res.json(await orderFolderCounts()); } catch (error) { workspaceFailure(error, res, next); }
 });
+router.get("/orders/status-counts", ordersRead, async (req, res, next) => {
+  try {
+    const folder = z.enum(ORDER_DISPLAY_FOLDERS).optional().parse(req.query.display_folder);
+    res.json(await orderStatusCounts(folder));
+  } catch (error) { workspaceFailure(error, res, next); }
+});
 router.post("/orders/actions", ordersWrite, async (req, res, next) => {
   try {
     const input = z.object({ action: z.enum(ORDER_WORKSPACE_ACTIONS), items: workspaceItems }).strict().parse(req.body);
@@ -1439,6 +1445,7 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
           .orderBy(desc(customer_products.id)).limit(limit).offset(offset);
       } else if (path === "orders") {
         const folder = z.enum(ORDER_DISPLAY_FILTERS).optional().parse(req.query.display_folder);
+        const statusFilter = z.enum(ORDER_STATUS_FILTERS).optional().parse(req.query.status_filter);
         const conditions = [...entitySearch[path], customers.name, customers.name_ar].map((column) => ilike(column, term));
         rows = await db.select({
           ...getTableColumns(orders),
@@ -1449,6 +1456,7 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
           .leftJoin(customers, eq(orders.customer_id, customers.id))
           .leftJoin(order_display_folder_assignments, eq(order_display_folder_assignments.order_id, orders.id))
           .where(and(search ? or(...conditions) : undefined,
+            statusFilter && statusFilter !== "all" ? inArray(orders.status, [...ORDER_FILTER_STATUSES[statusFilter]]) : undefined,
             folder === "active" ? inArray(orders.status, [...ORDER_ACTIVE_STATUSES])
               : folder === "new" ? or(isNull(order_display_folder_assignments.order_id), eq(order_display_folder_assignments.folder, "new"))
               : folder ? eq(order_display_folder_assignments.folder, folder) : undefined))

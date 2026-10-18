@@ -13,7 +13,8 @@
 .order-workspace__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--theme-order-workspace-controls-order-workspace-toolbar-surface); }
 .order-workspace__selection { display: flex; align-items: center; gap: 8px; margin-inline-end: auto; font-weight: 700; }
 .order-workspace__selection-count { min-width: 25px; padding: 2px 6px; border-radius: 4px; background: var(--aqua); color: var(--teal-deep); text-align: center; font: 600 12px "IBM Plex Mono", monospace; direction: ltr; }
-.order-workspace__toolbar select { min-height: 34px; max-width: 175px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); }
+.order-workspace__folder-filter { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; }
+.order-workspace__toolbar select, .order-workspace__folder-filter select { min-height: 34px; max-width: 175px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); }
 .order-workspace__toolbar .btn { min-height: 34px; }
 .order-workspace__toolbar > .order-row-menu { min-width: min(200px, 100%); }
 .order-workspace__toolbar .order-row-menu > summary { width: 100%; }
