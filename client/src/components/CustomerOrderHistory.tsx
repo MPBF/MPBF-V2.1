@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "wouter";
 import { api } from "../lib/app-api";
 import { formatNumber } from "../lib/format-number";
 import type { CustomerHistoryOrder, CustomerOrderHistoryPage } from "../../../shared/customer-order-history";
@@ -23,7 +24,7 @@ function productionRows(order: CustomerHistoryOrder) {
   return order.production_orders.length ? order.production_orders : [null];
 }
 
-export default function CustomerOrderHistory({ customerId }: { customerId: string }) {
+export default function CustomerOrderHistory({ customerId, canViewWorkflow = false }: { customerId: string; canViewWorkflow?: boolean }) {
   const { t, i18n } = useTranslation();
   const language = i18n.language === "en" ? "en" : "ar";
   const [orders, setOrders] = useState<CustomerHistoryOrder[]>([]);
@@ -148,7 +149,7 @@ export default function CustomerOrderHistory({ customerId }: { customerId: strin
                       <tr key={production?.id ?? `${order.id}-no-production`}>
                         {index === 0 && (
                           <>
-                            <th scope="rowgroup" className="customer-history__order-number" rowSpan={rows.length}>{order.order_number || "—"}</th>
+                            <th scope="rowgroup" className="customer-history__order-number" rowSpan={rows.length}>{canViewWorkflow ? <Link className="customer-history__workflow-link" href={`/orders/${encodeURIComponent(String(order.id))}/workflow`}>{order.order_number || "—"}</Link> : order.order_number || "—"}</th>
                             <td className="customer-history__date" rowSpan={rows.length}>{formatOrderDate(order.created_at, language)}</td>
                           </>
                         )}
@@ -167,7 +168,7 @@ export default function CustomerOrderHistory({ customerId }: { customerId: strin
             {visibleOrders.map((order) => (
               <article className="customer-history__order-card" key={order.id}>
                 <div className="customer-history__card-heading">
-                  <strong>{order.order_number || "—"}</strong>
+                  <strong>{canViewWorkflow ? <Link className="customer-history__workflow-link" href={`/orders/${encodeURIComponent(String(order.id))}/workflow`}>{order.order_number || "—"}</Link> : order.order_number || "—"}</strong>
                   <time dateTime={order.created_at}>{formatOrderDate(order.created_at, language)}</time>
                 </div>
                 {productionRows(order).map((production) => (

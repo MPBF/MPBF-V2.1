@@ -80,6 +80,15 @@
   font-weight: 700;
   white-space: nowrap;
 }
+.customer-history__workflow-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--history-accent) 45%, transparent);
+}
+.customer-history__workflow-link:hover {
+  color: var(--history-accent);
+  border-color: currentColor;
+}
 
 .customer-history__date {
   min-width: 104px;
