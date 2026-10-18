@@ -127,3 +127,14 @@ cancel checks alone does not establish focus recovery through those transitions.
 Keep physical rotation dimensions consistent with the chosen phone, and test
 breakpoint-crossing focus separately rather than treating it as ordinary
 low-height keyboard coverage.
+
+Distinguish native browser confirmations from application dialogs in isolated
+headless tests. Never replace `window.confirm` just to exercise nested dialogs.
+
+**Why:** Native confirmations live outside the page DOM. CDP can observe and
+accept/dismiss them, but protocol dismissal does not prove that a physical
+Escape key works in the operating system's browser prompt.
+
+**How to apply:** trigger the real prompt with pointer events, verify its type
+and message, dismiss/accept through the browser protocol, and test application
+Escape separately with keyboard input. State this boundary in test reports.

@@ -3,6 +3,7 @@ import { Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { translate } from "../../i18n";
 import { api, can, list, listPage, type Row } from "../../lib/app-api";
 import { createLatestRequestGate, LIST_PAGE_SIZE, runLatestRequest } from "../../lib/listing";
+import { useDialogReturnFocus } from "../../lib/use-dialog-return-focus";
 
 const professionOptions = [
   "مدير",
@@ -40,9 +41,17 @@ const nationalityOptions = [
 ] as const;
 
 function UserModal({ row, user, onClose, onSaved }: { row: Row; user: Row; onClose: () => void; onSaved: () => void }) {
+  useDialogReturnFocus();
   const [form, setForm] = useState<Row>({ status: "active", include_in_attendance: true, must_change_password: false, is_system_user: false, ...row });
   const [roles, setRoles] = useState<Row[]>([]); const [sections, setSections] = useState<Row[]>([]); const [error, setError] = useState(""); const [lookupError, setLookupError] = useState(""); const [loadingLookups, setLoadingLookups] = useState(true); const [saving, setSaving] = useState(false); const [retryLookups, setRetryLookups] = useState(0);
   const isAdmin = can(user, ["admin"]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [saving, onClose]);
   useEffect(() => {
     let active = true;
     setLoadingLookups(true);

@@ -5,6 +5,7 @@ import { localizedName, translate } from "../../i18n";
 import { api, can, list, type Row } from "../../lib/app-api";
 import { finishedGoodsPermissionGroup, finishedGoodsPermissionDescriptions } from "../../lib/finished-goods-permissions";
 import { createLatestRequestGate } from "../../lib/listing";
+import { useDialogReturnFocus } from "../../lib/use-dialog-return-focus";
 
 const permissionGroups = [
   { label: "النظام والإدارة", items: [["admin","مدير النظام"],["manage_users","إدارة المستخدمين"],["manage_roles","إدارة الأدوار والصلاحيات"],["manage_sections","إدارة الأقسام"],["manage_settings","إدارة الإعدادات"],["manage_definitions","إدارة التعريفات"],["view_system_health","صحة النظام"],["view_system_monitoring","مراقبة النظام"]] },
@@ -20,6 +21,7 @@ const permissionGroups = [
 const allPermissionLabels = new Map<string, string>(permissionGroups.flatMap((group) => group.items as readonly (readonly [string, string])[]));
 
 function RoleModal({ row, user, onClose, onSaved }: { row: Row; user: Row; onClose: () => void; onSaved: () => void }) {
+  useDialogReturnFocus();
   const existing: string[] = Array.isArray(row.permissions) ? row.permissions.map(String) : []; const [form, setForm] = useState<Row>({ ...row, permissions: existing, production_role_binding: row.production_role_binding ?? { mode: "general", stages: [] } }); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
   const actorPermissions: string[] = Array.isArray(user.permissions) ? user.permissions.map(String) : [];
   const isAdmin = can(user, ["admin"]);

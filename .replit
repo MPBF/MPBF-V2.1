@@ -43,6 +43,10 @@ args = "Start application"
 task = "workflow.run"
 args = "initial-load"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "general-modals"
+
 [[workflows.workflow]]
 name = "initial-load"
 author = "agent"
@@ -50,6 +54,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node --test tests/initial-load-budget.test.cjs && npm run build && node scripts/check-initial-load-budget.cjs && node scripts/check-deferred-loading.cjs"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "general-modals"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run test:general-modals"
 
 [workflows.workflow.metadata]
 isValidation = true

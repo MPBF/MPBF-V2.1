@@ -5,6 +5,7 @@ import { Link, Redirect, Route, Switch, useLocation, useRoute, useSearchParams }
 import { availableOrderTabs, selectedOrderTab, type OrderPageTab } from "./lib/order-tabs";
 import { productionPermissions } from "../../shared/production";
 import { initialProductionPath } from "./lib/production-navigation";
+import { useDialogReturnFocus } from "./lib/use-dialog-return-focus";
 import { initialPlanningPath } from "./lib/planning-navigation";
 import { initialWarehousePath } from "./lib/warehouse-navigation";
 import { canOpenWarehouseAccountPath, isWarehouseOnlyAccount } from "../../shared/warehouse-access";
@@ -651,6 +652,7 @@ function EntityModal(props: { cfg: Config; row: Row; onClose: () => void; onSave
 }
 
 function EntityFormModal({ cfg, row, onClose, onSaved }: { cfg: Config; row: Row; onClose: () => void; onSaved: () => void }) {
+  useDialogReturnFocus();
   const [form, setForm] = useState<Row>(() => {
     const createDefaults: Row = row.id ? {} : newAdminFormDefaults(cfg.path);
     const initial: Row = { ...createDefaults, ...row, permissions: Array.isArray(row.permissions) ? JSON.stringify(row.permissions, null, 2) : row.permissions };
