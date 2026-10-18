@@ -53,6 +53,8 @@ import { allocateOrderNumber, previewOrderNumber, productionOrderNumber, product
 import { deliveryDateFromDays, orderDateInRiyadh } from "./order-delivery";
 import { getOrderDetails } from "./order-details";
 import { customerOrderHistory } from "./customer-order-history";
+import { orderWorkflow } from "./order-workflow";
+import { canViewOrderWorkflow } from "../shared/order-workflow";
 import { createPublicOrderPrintRouter, publicOrderPrintPath } from "./public-order-print";
 import { customerProductFacingNotice, deriveCustomerProductFields, PRINTING_CYLINDERS } from "@shared/customer-product-fields";
 import { authenticate, hashPassword, requireAnyPermission, requireAuth, requirePermission } from "./auth";
@@ -1152,6 +1154,29 @@ router.get("/orders/:id/print-link", ordersRead, async (req, res, next) => {
     const [order] = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, id)).limit(1);
     if (!order) return res.status(404).json({ message: "الطلب غير موجود" });
     res.json({ path: publicOrderPrintPath(id) });
+  } catch (error) { next(error); }
+});
+
+router.get("/orders/:id/workflow", requireAuth, (req, res, next) => {
+  if (!canViewOrderWorkflow(req.user as { permissions?: string[] } | undefined)) {
+    return res.status(403).json({
+      message: "سير العمل متاح لمدير النظام وإدارة الإنتاج فقط",
+      message_en: "Order workflow is available to administrators and production managers only.",
+    });
+  }
+  next();
+}, async (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const id = z.coerce.number().int().positive().max(2147483647).parse(req.params.id);
+    const filters = z.object({
+      limit: z.coerce.number().int().min(1).max(100).default(30),
+      offset: z.coerce.number().int().min(0).max(2147483547).default(0),
+      production_order_id: z.coerce.number().int().positive().max(2147483647).optional(),
+      stage: z.enum(["film", "printing", "done"]).optional(),
+      search: z.string().trim().max(100).optional(),
+    }).parse(req.query);
+    res.json(await orderWorkflow(pool, id, filters));
   } catch (error) { next(error); }
 });
 
