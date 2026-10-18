@@ -33,3 +33,13 @@ Absence of allocations does not prove that a mix predating tracking was unused.
 the original debit plus before/after audit records. Deletion is an audited
 cancellation, not destruction of accounting history. Do not create stock
 vouchers or recalculate existing roll allocations for a correction.
+
+Correction-history access is restricted to explicit `admin` or `manage_mixing`
+grants, not general production management or film operation. It is a read-only
+audit view including cancellations, never permission to restore a mix.
+
+**Why:** the user explicitly limited correction-history access and excluded
+restoration or changes to deduction and FIFO consumption.
+
+**How to apply:** preserve this boundary when extending audit navigation,
+reports, or exports; broader mix-history viewing is not correction-audit access.

@@ -41,6 +41,21 @@ export type MixingUpdateInput = {
   contents?: Omit<MixingInput, "request_id" | "notes">;
 };
 export type MixingDeleteInput = { request_id: string; expected_revision: number };
+export type MixRevisionSnapshot = {
+  machine_id: string; machine_name: string | null; machine_name_ar: string | null;
+  screw: string | null; notes: string | null; total_kg: string;
+  items: MixingRecord["items"];
+};
+export type MixRevision = {
+  mix_id: number; revision: number; action: "edit" | "delete";
+  created_by: number; actor_name: string | null; actor_name_ar: string | null; created_at: string;
+  before_data: MixRevisionSnapshot; after_data: MixRevisionSnapshot;
+  stock_adjustments: {
+    material_id: number; code: string; name: string; name_ar: string;
+    quantity_kg: string; balance_after_kg: string;
+  }[];
+};
+export type MixRevisionPage = { records: MixRevision[]; next_before: string | null };
 export type MixingState = {
   materials: RawMaterial[];
   machines: { id: string; name: string | null; name_ar: string | null; status: string; screw_type: string | null }[];

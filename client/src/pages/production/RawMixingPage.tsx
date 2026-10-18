@@ -12,6 +12,7 @@ import { availableProductionViews } from "../../lib/production-navigation";
 import { rawMixingApi } from "../../lib/raw-mixing-api";
 import { mixingComposition, type CompositionLine } from "../../lib/raw-mixing-composition";
 import { normalizeRawNumber as latin, rawQuantityValue as quantityValue } from "../../lib/raw-quantity";
+import MixRevisionHistory from "./MixRevisionHistory";
 
 import "./production.css";
 import "./raw-operations.css";
@@ -184,6 +185,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
   const [adminError, setAdminError] = useState("");
   const [adminConflict, setAdminConflict] = useState(false);
   const [adminSuccess, setAdminSuccess] = useState("");
+  const [revisionRefresh, setRevisionRefresh] = useState(0);
   const adminBusyRef = useRef(false);
   const adminDialogRef = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
@@ -240,6 +242,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
         await productionRequest(`/mixing/${operation.recordId}`, operation.payload, "DELETE");
         setAdminSuccess(tx("deleteSuccess", en));
       }
+      setRevisionRefresh(value => value + 1);
       window.dispatchEvent(new Event("production-data-changed"));
       setAdminPending(null);
       setAdminRecord(null);
@@ -589,6 +592,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
       <section className="raw-ops-card">
         <div className="raw-ops-card-head"><h2>{tx("history", en)}</h2><span className="raw-ops-helper">{state ? `${formatWholeNumber(state.records.length)} ${en ? "records" : "سجل"}` : ""}</span></div>
         <div className="raw-ops-card-body">
+          {manager && <MixRevisionHistory user={user} en={en} refreshToken={revisionRefresh} />}
           {loading && !state ? <LoadingRows label={tx("loading", en)} /> : state?.records.length ? <>
             {state.records.map(record => <article className="raw-ops-record" key={record.id}>
               <div className="raw-ops-record-head">
@@ -601,6 +605,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
                 <div className="raw-mix-admin-buttons">
                   <button className="raw-btn quiet" type="button" onClick={() => openAdminDialog(record, "edit")} disabled={adminBusy || Boolean(adminPending)}><Pencil />{tx("editMix", en)}</button>
                   <button className="raw-btn quiet" type="button" onClick={() => openAdminDialog(record, "delete")} disabled={adminBusy || Boolean(adminPending) || record.can_edit_contents !== true} aria-describedby={record.can_edit_contents !== true ? `mix-delete-note-${record.id}` : undefined}><Trash2 />{tx("deleteMix", en)}</button>
+                  <MixRevisionHistory user={user} en={en} mixId={record.id} refreshToken={revisionRefresh} />
                 </div>
                 {record.can_edit_contents !== true && <span className="raw-ops-helper" id={`mix-delete-note-${record.id}`}>{tx("consumedDelete", en)}</span>}
               </div>}
