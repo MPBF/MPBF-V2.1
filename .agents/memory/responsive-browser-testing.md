@@ -115,3 +115,15 @@ ancestor stacking contexts.
 and check that `elementFromPoint` belongs to the intended control before sending
 pointer events. Choose visible openers before testing focus restoration; a
 selector list returns the first element in document order, not selector priority.
+
+Separate modal focus checks for cancel/Escape from successful saves and
+responsive layout changes.
+
+**Why:** list refreshes can detach the saved opener, and a phone-to-desktop
+breakpoint can hide it even when the modal itself remains usable. Passing
+cancel checks alone does not establish focus recovery through those transitions.
+
+**How to apply:** verify the visible logical opener after each transition.
+Keep physical rotation dimensions consistent with the chosen phone, and test
+breakpoint-crossing focus separately rather than treating it as ordinary
+low-height keyboard coverage.

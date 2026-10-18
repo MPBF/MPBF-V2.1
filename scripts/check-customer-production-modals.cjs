@@ -1,5 +1,8 @@
 // Isolated browser regression check. Every API request is intercepted:
 // no login credentials, database reads, or real writes are performed.
+// --mobile-keyboard-only runs only CustomerModal/ProductionOrderModal checks.
+// Keyboard coverage uses real viewport resizing, not an emulated OS keyboard
+// or a mocked VisualViewport; visual-only keyboard panning needs a real device.
 const assert = require("node:assert/strict");
 const { spawn, execFileSync } = require("node:child_process");
 const fs = require("node:fs/promises");
@@ -44,6 +47,8 @@ const WebSocket = require("ws");
     const writes = [];
     const requests = [];
     const errors = [];
+    const cancelledNetworkRequests = new Set();
+    const fixtureResponses = new Set();
     let permissions = ["manage_customers", "manage_orders", "manage_production", "view_production"];
     let failReps = false;
     let failSave = false;
@@ -123,13 +128,31 @@ const WebSocket = require("ws");
         pending.delete(event.id);
         if (event.error) handler.reject(new Error(event.error.message));
         else handler.resolve(event.result);
-      } else if (event.method === "Fetch.requestPaused") respond(event).catch((error) => errors.push(error.message));
+      } else if (event.method === "Network.loadingFailed" && event.params.canceled) {
+        cancelledNetworkRequests.add(event.params.requestId);
+      } else if (event.method === "Fetch.requestPaused") {
+        const response = respond(event).catch(async (error) => {
+        // Closing a dialog/navigation can abort a fixture lookup before CDP
+        // fulfills it. Ignore only a confirmed network cancellation, never an
+        // unexpected interception error or a failed application request.
+        if (error.message === "Invalid InterceptionId." && event.params.networkId) {
+          for (let attempt = 0; attempt < 20; attempt++) {
+            if (cancelledNetworkRequests.has(event.params.networkId)) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+        }
+        errors.push(error.message);
+        });
+        fixtureResponses.add(response);
+        response.finally(() => fixtureResponses.delete(response));
+      }
       else if (event.method === "Runtime.exceptionThrown") errors.push(event.params.exceptionDetails.text);
     });
     const { targetId } = await send("Target.createTarget", { url: "about:blank" }, true);
     session = (await send("Target.attachToTarget", { targetId, flatten: true }, true)).sessionId;
     await send("Page.enable");
     await send("Runtime.enable");
+    await send("Network.enable");
     await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/*" }] });
     const evaluate = async (expression) => {
       const result = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
@@ -162,10 +185,14 @@ const WebSocket = require("ws");
     // DOM .click() bypasses occlusion. Use hit testing and real pointer events
     // for the layering regression, scrolling each control into view first.
     const pointerClick = async (selector) => {
-      await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:"center"})`);
+      await evaluate(`(()=>{
+        const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.offsetParent!==null);
+        if(!e)throw Error('No visible control: '+${JSON.stringify(selector)});
+        e.scrollIntoView({block:"center",behavior:"instant"});
+      })()`);
       await evaluate("Promise.allSettled(document.getAnimations().filter(a=>a.effect?.target instanceof Element && a.effect.target.closest('[role=dialog]')).map(a=>a.finished))");
       const point = await evaluate(`(()=>{
-        const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect();
+        const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.offsetParent!==null),r=e.getBoundingClientRect();
         const x=r.left+r.width/2,y=r.top+r.height/2;
         return {x,y,reachable:x>=0&&x<innerWidth&&y>=0&&y<innerHeight&&e.contains(document.elementFromPoint(x,y))};
       })()`);
@@ -187,6 +214,207 @@ const WebSocket = require("ws");
       await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
       await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
     };
+
+    if (!immediateProducts && !process.argv.includes("--capture-only")) {
+      const originalCustomer = { ...customer };
+      const originalProduction = { ...production };
+      const startWrites = writes.length;
+      let safeAreaSupported = true;
+      try {
+        await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, right: 0, bottom: 0, left: 0 } });
+      } catch (error) {
+        // Only an absent experimental CDP command is a supported skip.
+        if (!/wasn't found|not found|not supported/i.test(error.message)) throw error;
+        safeAreaSupported = false;
+        console.log("SKIP safe-area emulation: this Chromium lacks the CDP command.");
+      }
+      const customerFields = ["#customer-name-ar", "#customer-name", "#customer-tax-number",
+        "#customer-phone", "#customer-sales-rep", "#customer-city", "#customer-active",
+        "#customer-drawer-letter", "#customer-drawer-number", "#customer-drawer-code"];
+      const resize = async (label, width, height, landscape = false) => {
+        await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true,
+          screenOrientation: { type: landscape ? "landscapePrimary" : "portraitPrimary", angle: landscape ? 90 : 0 } });
+        await wait(`innerWidth===${width}&&innerHeight===${height}&&Math.abs(visualViewport.height-${height})<1`);
+        verify(`${label}: real layout and visual viewport resized`, await evaluate(`innerHeight===${height}&&visualViewport.height<=${height}+1`));
+      };
+      const probe = async (label, modal, fields, actions) => {
+        await wait(`!!document.querySelector(${JSON.stringify(modal)})?.contains(document.activeElement)`);
+        verify(`${label}: dialog remains within viewport width`, await evaluate(`(()=>{
+          const d=document.querySelector(${JSON.stringify(modal)}),r=d.getBoundingClientRect();
+          return document.documentElement.scrollWidth<=innerWidth&&r.left>=0&&r.right<=innerWidth+1;
+        })()`));
+        for (const selector of [...fields, ...actions]) {
+          // Hit-test actions without activating them yet.
+          if (actions.includes(selector)) {
+            await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);
+            verify(`${label}: action hit point ${selector}`, await evaluate(`(()=>{
+              const e=document.querySelector(${JSON.stringify(selector)}),r=e.getBoundingClientRect();
+              const x=r.left+r.width/2,y=r.top+r.height/2;
+              return !e.disabled&&x>=0&&x<innerWidth&&y>=0&&y<visualViewport.height&&e.contains(document.elementFromPoint(x,y));
+            })()`));
+          } else {
+            await pointerClick(selector);
+            verify(`${label}: field receives focus ${selector}`, await evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`));
+            if (/sales-rep|drawer-letter|drawer-number/.test(selector)) await pointerClick("#customer-drawer-code");
+          }
+        }
+      };
+      const checkScroll = async (label, modal) => {
+        const point = await evaluate(`(()=>{
+          const d=document.querySelector(${JSON.stringify(modal)});
+          d.scrollTop=0;const r=d.getBoundingClientRect();
+          const x=r.left+r.width/2,y=Math.max(0,r.top)+Math.min(r.height,innerHeight)/2;
+          return {x,y,overflow:d.scrollHeight>d.clientHeight+1,reachable:d.contains(document.elementFromPoint(x,y))};
+        })()`);
+        verify(`${label}: scroll target is overflowing and unobscured`, point.overflow && point.reachable);
+        await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: point.x, y: point.y, deltaX: 0, deltaY: 10000 });
+        await wait(`document.querySelector(${JSON.stringify(modal)}).scrollTop>0`);
+        verify(`${label}: browser scroll input moves dialog down`, await evaluate(`document.querySelector(${JSON.stringify(modal)}).scrollTop>0`));
+        await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: point.x, y: point.y, deltaX: 0, deltaY: -10000 });
+        await wait(`document.querySelector(${JSON.stringify(modal)}).scrollTop===0`);
+        verify(`${label}: browser scroll input returns dialog to top`, await evaluate(`document.querySelector(${JSON.stringify(modal)}).scrollTop===0`));
+      };
+      const openProduction = async (mode) => {
+        const selector = mode === "view" ? '[aria-label="عرض أمر الإنتاج"]' : '[aria-label="تعديل أمر إنتاج"]';
+        await wait(`[...document.querySelectorAll(${JSON.stringify(selector)})].some(e=>e.offsetParent!==null)`);
+        await pointerClick(selector);
+        await wait(mode === "view" ? "!!document.querySelector('.production-order-details')" : "!!document.querySelector('#production-order-quantity')");
+      };
+      // Load the app's viewport meta before enabling mobile metrics; about:blank
+      // otherwise uses Chromium's 980px fallback layout viewport.
+      await navigate("/customers");
+      for (const phone of [
+        { name: "small-phone", width: 320, height: 480, keyboard: 260, rotatedWidth: 480, rotatedHeight: 240 },
+        { name: "phone", width: 390, height: 640, keyboard: 300, rotatedWidth: 640, rotatedHeight: 260 },
+      ]) {
+        const label = phone.name;
+        await resize(label, phone.width, phone.height);
+        await navigate("/customers");
+        await wait("[...document.querySelectorAll('button')].some(b=>b.textContent.includes('إضافة عميل'))");
+        await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('إضافة عميل')).focus()");
+        await openCustomer();
+        await pointerClick("#customer-name-ar");
+        await input("#customer-name-ar", "عميل لوحة المفاتيح");
+        await input("#customer-name", "Keyboard fixture");
+        await resize(`${label} keyboard open`, phone.width, phone.keyboard);
+        verify(`${label}: customer focus survives keyboard resize`, await evaluate("document.activeElement.id==='customer-name-ar'"));
+        await probe(label, ".customer-modal", customerFields,
+          [".customer-modal-submit", ".customer-modal-footer button[type=button]"]);
+        await checkScroll(label, ".customer-modal");
+        await screenshot(`keyboard-${label}-customer-portrait`);
+        await resize(`${label} rotate with keyboard`, phone.rotatedWidth, phone.rotatedHeight, true);
+        if (safeAreaSupported) {
+          await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, left: 44, right: 44, bottom: 21 } });
+          verify(`${label}: nonzero safe-area environment is active`, await evaluate(`(()=>{
+            const e=document.createElement('div');e.style.padding='env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+            document.body.append(e);const s=getComputedStyle(e);
+            const ok=s.paddingLeft==='44px'&&s.paddingRight==='44px'&&s.paddingBottom==='21px';e.remove();return ok;
+          })()`));
+        }
+        await probe(`${label} landscape`, ".customer-modal", customerFields,
+          [".customer-modal-submit", ".customer-modal-footer button[type=button]"]);
+        verify(`${label}: customer draft survives rotation`, await evaluate("document.querySelector('#customer-name-ar').value==='عميل لوحة المفاتيح'&&document.querySelector('#customer-name').value==='Keyboard fixture'"));
+        await screenshot(`keyboard-${label}-customer-landscape`);
+        await resize(`${label} customer keyboard dismissed while open`, phone.width, phone.height);
+        if (safeAreaSupported) await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, right: 0, bottom: 0, left: 0 } });
+        await probe(`${label} customer restored`, ".customer-modal", ["#customer-name-ar", "#customer-drawer-code"],
+          [".customer-modal-submit", ".customer-modal-footer button[type=button]"]);
+        await resize(`${label} customer keyboard reopened`, phone.rotatedWidth, phone.rotatedHeight, true);
+        failSave = true;
+        const customerBefore = writes.length;
+        await pointerClick(".customer-modal-submit");
+        await wait("!!document.querySelector('.customer-modal-save-error')&&!document.querySelector('.customer-modal-submit').disabled");
+        verify(`${label}: customer save reaches isolated API`, writes.length, customerBefore + 1);
+        verify(`${label}: failed save preserves customer draft`, await evaluate("document.querySelector('#customer-name').value==='Keyboard fixture'"));
+        failSave = false;
+        await pointerClick(".customer-modal-footer button[type=button]");
+        await wait("!document.querySelector('.customer-modal')");
+        verify(`${label}: customer cancel restores opener focus`, await evaluate("document.activeElement.textContent.includes('إضافة عميل')"));
+        verify(`${label}: cancel does not write`, writes.length, customerBefore + 1);
+        await openCustomer();
+        await pressEscape();
+        await wait("!document.querySelector('.customer-modal')");
+        verify(`${label}: customer Escape restores opener focus`, await evaluate("document.activeElement.textContent.includes('إضافة عميل')"));
+        await openCustomer();
+        await input("#customer-name", "Keyboard saved fixture");
+        await pointerClick(".customer-modal-submit");
+        await wait("location.pathname.startsWith('/customers/CID3')&&!document.querySelector('.customer-modal')");
+        verify(`${label}: customer save redirects to fixture profile`, await evaluate("location.pathname"), `/customers/${customer.id}`);
+        verify(`${label}: customer save succeeds in short landscape`, writes.at(-1).payload.name, "Keyboard saved fixture");
+
+        await resize(`${label} keyboard dismissed`, phone.width, phone.height);
+        if (safeAreaSupported) await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, right: 0, bottom: 0, left: 0 } });
+        await navigate("/orders?tab=production");
+        await openProduction("edit");
+        await pointerClick("#production-order-quantity");
+        await input("#production-order-quantity", "135.25");
+        await resize(`${label} production keyboard`, phone.width, phone.keyboard);
+        verify(`${label}: production focus survives keyboard resize`, await evaluate("document.activeElement.id==='production-order-quantity'"));
+        await probe(label, ".production-order-modal", ["#production-order-quantity"],
+          [".production-order-submit", ".production-order-modal footer button[type=button]"]);
+        await resize(`${label} production rotate`, phone.rotatedWidth, phone.rotatedHeight, true);
+        if (safeAreaSupported) await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, left: 44, right: 44, bottom: 21 } });
+        await probe(`${label} landscape`, ".production-order-modal", ["#production-order-quantity"],
+          [".production-order-submit", ".production-order-modal footer button[type=button]"]);
+        verify(`${label}: quantity survives rotation`, await evaluate("document.querySelector('#production-order-quantity').value"), "135.25");
+        await screenshot(`keyboard-${label}-production-landscape`);
+        await resize(`${label} production keyboard dismissed while open`, phone.width, phone.height);
+        if (safeAreaSupported) await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, right: 0, bottom: 0, left: 0 } });
+        await probe(`${label} production restored`, ".production-order-modal", ["#production-order-quantity"],
+          [".production-order-submit", ".production-order-modal footer button[type=button]"]);
+        await resize(`${label} production keyboard reopened`, phone.rotatedWidth, phone.rotatedHeight, true);
+        const productionBefore = writes.length;
+        await pointerClick(".production-order-modal footer button[type=button]");
+        await wait("!document.querySelector('.production-order-modal')");
+        verify(`${label}: production cancel restores focus`, await evaluate("document.activeElement.getAttribute('aria-label')==='تعديل أمر إنتاج'"));
+        verify(`${label}: production cancel does not write`, writes.length, productionBefore);
+        await openProduction("edit");
+        await input("#production-order-quantity", "135.25");
+        staleProduction = true;
+        await pointerClick(".production-order-submit");
+        await wait("!!document.querySelector('.production-order-error')&&!document.querySelector('.production-order-submit').disabled");
+        verify(`${label}: rejected production save preserves quantity`, await evaluate("document.querySelector('#production-order-quantity').value"), "135.25");
+        staleProduction = false;
+        await pointerClick(".production-order-submit");
+        await wait("!document.querySelector('.production-order-modal')");
+        verify(`${label}: production saved by pointer after isolated rejection`, writes.length, productionBefore + 2);
+        verify(`${label}: production save payload`, writes.at(-1).payload, { quantity_kg: "135.25" });
+        // Successful save refreshes/remounts the list; opener focus recovery
+        // across that refresh is separate from cancel/Escape restoration.
+        await openProduction("edit");
+        await pressEscape();
+        await wait("!document.querySelector('.production-order-modal')");
+        verify(`${label}: production Escape restores focus`, await evaluate("document.activeElement.getAttribute('aria-label')==='تعديل أمر إنتاج'"));
+        await openProduction("view");
+        await checkScroll(`${label} read-only details`, ".production-order-modal");
+        await pointerClick(".production-order-modal footer button[type=button]");
+        await wait("!document.querySelector('.production-order-modal')");
+        verify(`${label}: view close restores focus`, await evaluate("document.activeElement.getAttribute('aria-label')==='عرض أمر الإنتاج'"));
+        await resize(`${label} portrait restored`, phone.width, phone.height);
+        if (safeAreaSupported) await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, right: 0, bottom: 0, left: 0 } });
+        await openProduction("edit");
+        await probe(`${label} restored`, ".production-order-modal", ["#production-order-quantity"],
+          [".production-order-submit", ".production-order-modal footer button[type=button]"]);
+        await screenshot(`keyboard-${label}-restored`);
+        await pressEscape();
+        await wait("!document.querySelector('.production-order-modal')");
+        customer = { ...originalCustomer };
+        production = { ...originalProduction };
+      }
+      verify("keyboard checks use only customer and production fixture writes",
+        writes.slice(startWrites).every(w => (w.route === "/customers" && w.method === "POST") ||
+          (w.route === "/production-orders/8" && w.method === "PUT")));
+      verify("keyboard checks never open the standalone product editor", await evaluate("!document.querySelector('.cp-modal')"));
+      await Promise.all([...fixtureResponses]);
+      verify("keyboard checks have no browser runtime errors", errors, []);
+      if (safeAreaSupported) await send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 0, right: 0, bottom: 0, left: 0 } });
+      nextCustomerNumber = 333;
+      writes.splice(startWrites);
+      if (process.argv.includes("--mobile-keyboard-only")) {
+        console.log(`Mobile keyboard regression passed: ${checks} checks; fixture APIs only. OS keyboard/visual-only pan not emulated.`);
+        return;
+      }
+    }
 
     if (immediateProducts) {
       const chooseCustomer = async () => {
@@ -265,6 +493,7 @@ const WebSocket = require("ws");
         await screenshot(`immediate-product-${width}`);
       }
       verify("no unexpected writes", writes.every(write => ["/customer-products", "/orders/with-items"].includes(write.route)));
+      await Promise.all([...fixtureResponses]);
       verify("no browser runtime errors", errors, []);
       console.log(`Immediate product browser checks passed: ${checks}; fixture APIs only.`);
       return;
@@ -560,6 +789,7 @@ const WebSocket = require("ws");
       await screenshot(`customer-category-sort-${width}`);
     }
     verify("no users/roles endpoint exposed by either form", !requests.some((r) => ["/users", "/roles"].includes(r.route)));
+    await Promise.all([...fixtureResponses]);
     verify("no unexpected browser errors", errors, []);
     console.log(`Browser regression passed: ${checks} checks; all API calls used fixtures.`);
   } finally {
