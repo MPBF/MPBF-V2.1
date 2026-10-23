@@ -496,6 +496,16 @@ const releaseOnly = process.argv.includes("--production-release-only");
         ["الكمية", "Qty"], ["ملاحظات", "Note"],
       ];
       const verifyColumns = async (context) => {
+        check(`${context}: original thickness includes micron unit`, await evaluate("document.querySelector('.opp-spec-row').cells[4].textContent.trim()"), "10 µm");
+        check(`${context}: sizes stay on one line within the sheet`, await evaluate(`(()=>{
+          const table=document.querySelector('.opp-spec-table'),sheet=document.querySelector('.opp-sheet');
+          return table.getBoundingClientRect().width<=sheet.clientWidth+1&&
+            [...table.querySelectorAll('.opp-size-cell')].every(e=>{
+              const range=document.createRange();range.selectNodeContents(e);
+              return getComputedStyle(e).whiteSpace==='nowrap'&&range.getClientRects().length===1&&e.scrollWidth<=e.clientWidth+1;
+            });
+        })()`));
+        check(`${context}: customer text is centered`, await evaluate("getComputedStyle(document.querySelector('.opp-customer-cell')).textAlign"), "center");
         check(`${context}: larger item and size data only`, await evaluate(`(()=>{
           const row=document.querySelector('.opp-spec-row');
           return [row.querySelector('.opp-item-cell strong'),row.querySelector('.opp-item-cell small'),row.querySelector('.opp-size-cell'),

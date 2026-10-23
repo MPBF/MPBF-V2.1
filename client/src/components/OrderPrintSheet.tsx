@@ -84,7 +84,7 @@ function SpecificationRow({ row, index }: { row: OrderPrintProduction; index: nu
     </td>
     <td className="opp-size-cell" dir="ltr">{product ? sizeText(product) : "—"}</td>
     <td dir="ltr">{roundedWithUnit(product?.cutting_length_cm, "cm")}</td>
-    <td dir="ltr">{printNumberText(product?.thickness)}</td>
+    <td dir="ltr">{roundedWithUnit(product?.thickness, "µm")}</td>
     <td>{safeText(product?.raw_material)}</td>
     <td>
       <div className="opp-color-cell">
@@ -148,7 +148,7 @@ export default function OrderPrintSheet({ data, branding }: { data: OrderPrintDe
     {data.actual_production.available === false && <div className="opp-production-disclaimer">{data.actual_production.message}{" "}{translate("الكميات أدناه مخططة وليست سجلاً للإنتاج المنفذ.")}</div>}
 
     <table className="opp-spec-table" aria-label={translate("مواصفات أوامر الإنتاج")}>
-      <colgroup><col style={{ width: "2.5%" }} /><col style={{ width: "13.5%" }} /><col style={{ width: "8.8%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "7%" }} /><col style={{ width: "9%" }} /><col style={{ width: "5%" }} /><col style={{ width: "6%" }} /><col style={{ width: "6%" }} /><col style={{ width: "12%" }} /><col style={{ width: "19.2%" }} /></colgroup>
+      <colgroup><col style={{ width: "2.5%" }} /><col style={{ width: "13.5%" }} /><col style={{ width: "14.8%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "7%" }} /><col style={{ width: "9%" }} /><col style={{ width: "5%" }} /><col style={{ width: "6%" }} /><col style={{ width: "6%" }} /><col style={{ width: "6%" }} /><col style={{ width: "19.2%" }} /></colgroup>
       <thead><tr>
         <th>#</th><th>{columnHeader("الصنف", "Item")}</th><th>{columnHeader("المقاس", "Size")}</th>
         <th>{columnHeader("الطول", "Length")}</th><th>{columnHeader("السماكة", "Thickness")}</th>
