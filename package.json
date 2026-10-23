@@ -200,7 +200,7 @@
     "tsx": "^4.22.0",
     "typescript": "5.6.3",
     "typescript-eslint": "^8.58.2",
-    "vite": "^6.4.2"
+    "vite": "^6.4.5"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
@@ -216,7 +216,7 @@
     "ajv": {
       "fast-uri": "3.1.8"
     },
-    "hono": "4.13.7",
+    "hono": "4.13.13",
     "dompurify": "3.4.17",
     "@xmldom/xmldom@0.8": "0.8.15",
     "browserslist": "4.28.9",
@@ -251,6 +251,7 @@
     "braces": "npm:@dieub/braces-depth-guard@3.0.3-pn.3",
     "argparse@1": "2.0.1",
     "axios@1": "1.20.0",
+    "follow-redirects@1": "1.16.1",
     "js-yaml@3": "3.15.2",
     "js-yaml@4": "4.3.2",
     "proxy-addr": "2.0.8",

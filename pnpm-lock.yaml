@@ -14,7 +14,7 @@ overrides:
   picomatch: 4.0.5
   ip-address: 10.7.4
   ajv>fast-uri: 3.1.8
-  hono: 4.13.7
+  hono: 4.13.13
   dompurify: 3.4.17
   '@xmldom/xmldom@0.8': 0.8.15
   browserslist: 4.28.9
@@ -30,6 +30,7 @@ overrides:
   braces: npm:@dieub/braces-depth-guard@3.0.3-pn.3
   argparse@1: 2.0.1
   axios@1: 1.20.0
+  follow-redirects@1: 1.16.1
   js-yaml@3: 3.15.2
   js-yaml@4: 4.3.2
   proxy-addr: 2.0.8
@@ -436,7 +437,7 @@ importers:
         version: 0.5.20(tailwindcss@3.4.19(tsx@4.22.0))
       '@tailwindcss/vite':
         specifier: ^4.3.3
-        version: 4.3.3(vite@6.4.3(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0))
+        version: 4.3.3(vite@6.4.5(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0))
       '@types/bcrypt':
         specifier: ^6.0.0
         version: 6.0.0
@@ -511,7 +512,7 @@ importers:
         version: 8.58.2(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)
       '@vitejs/plugin-react':
         specifier: ^4.3.2
-        version: 4.7.0(vite@6.4.3(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0))
+        version: 4.7.0(vite@6.4.5(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0))
       autoprefixer:
         specifier: ^10.4.20
         version: 10.5.0(postcss@8.5.25)
@@ -582,8 +583,8 @@ importers:
         specifier: ^8.58.2
         version: 8.58.2(eslint@9.39.4(jiti@1.21.7))(typescript@5.6.3)
       vite:
-        specifier: ^6.4.2
-        version: 6.4.3(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0)
+        specifier: ^6.4.5
+        version: 6.4.5(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0)
     optionalDependencies:
       bufferutil:
         specifier: ^4.0.8
@@ -1151,7 +1152,7 @@ packages:
     resolution: {integrity: sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: 4.13.7
+      hono: 4.13.13
 
   '@hookform/resolvers@3.10.0':
     resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
@@ -1428,6 +1429,7 @@ packages:
   '@opentelemetry/sdk-trace-base@2.10.0':
     resolution: {integrity: sha512-GuYQQT7QD2EeO8lcZLRQzcbOyhqAzL+6WWTKTU9mSUBYBazkEDl+VrQcXQhbB08OWM9anD1aHleVadzulpOaUQ==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
 
@@ -4436,8 +4438,8 @@ packages:
   fn.name@1.1.0:
     resolution: {integrity: sha512-GRnmB5gPyJpAhTQdSZTSp9uaPSvl09KoYcMQtsB9rQoOmzs9dH6ffeccH+Z+cv6P68Hu5bC6JjRh4Ah/mHSNRw==}
 
-  follow-redirects@1.16.0:
-    resolution: {integrity: sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw==}
+  follow-redirects@1.16.1:
+    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -4688,8 +4690,8 @@ packages:
   hls.js@1.6.16:
     resolution: {integrity: sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA==}
 
-  hono@4.13.7:
-    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
+  hono@4.13.13:
+    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
     engines: {node: '>=16.9.0'}
 
   html-entities@2.6.0:
@@ -7172,8 +7174,8 @@ packages:
   victory-vendor@36.9.2:
     resolution: {integrity: sha512-PnpQQMuxlwYdocC8fIJqVXvkeViHYzotI+NJrCuav0ZYFoq912ZHBk3mCeuj+5/VpodOjPe1z0Fk2ihgzlXqjQ==}
 
-  vite@6.4.3:
-    resolution: {integrity: sha512-NTKlcQjlAK7MlQoyb6LgaqHc8sso/pVyUJYWMws3jg21uTJw/LddqIFPcPqP6PzpgbIcZyKI85sFE4HBrQDA8A==}
+  vite@6.4.5:
+    resolution: {integrity: sha512-4enwjFfi4IwtEh0w+jPzpLVOFQiPHmmzPxcHXQOyEur47o6u0jE573DmGpjA+7irXoMLYRZD5ZaFUEneS3abPg==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
     hasBin: true
     peerDependencies:
@@ -8079,9 +8081,9 @@ snapshots:
       - encoding
       - supports-color
 
-  '@hono/node-server@2.0.12(hono@4.13.7)':
+  '@hono/node-server@2.0.12(hono@4.13.13)':
     dependencies:
-      hono: 4.13.7
+      hono: 4.13.13
 
   '@hookform/resolvers@3.10.0(react-hook-form@7.72.1(react@18.3.1))':
     dependencies:
@@ -8326,7 +8328,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.1(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 2.0.12(hono@4.13.7)
+      '@hono/node-server': 2.0.12(hono@4.13.13)
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       content-type: 1.0.5
@@ -8336,7 +8338,7 @@ snapshots:
       eventsource-parser: 3.0.8
       express: 5.2.1
       express-rate-limit: 8.5.2(express@5.2.1)
-      hono: 4.13.7
+      hono: 4.13.13
       jose: 6.2.2
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -9524,12 +9526,12 @@ snapshots:
       postcss-selector-parser: 7.1.6
       tailwindcss: 3.4.19(tsx@4.22.0)
 
-  '@tailwindcss/vite@4.3.3(vite@6.4.3(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0))':
+  '@tailwindcss/vite@4.3.3(vite@6.4.5(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0))':
     dependencies:
       '@tailwindcss/node': 4.3.3
       '@tailwindcss/oxide': 4.3.3
       tailwindcss: 4.3.3
-      vite: 6.4.3(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0)
+      vite: 6.4.5(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0)
 
   '@tanstack/query-core@5.99.2': {}
 
@@ -10232,7 +10234,7 @@ snapshots:
       '@use-gesture/core': 10.3.1
       react: 18.3.1
 
-  '@vitejs/plugin-react@4.7.0(vite@6.4.3(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0))':
+  '@vitejs/plugin-react@4.7.0(vite@6.4.5(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.29.7)
@@ -10240,7 +10242,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 6.4.3(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0)
+      vite: 6.4.5(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -10467,7 +10469,7 @@ snapshots:
 
   axios@1.20.0:
     dependencies:
-      follow-redirects: 1.16.0
+      follow-redirects: 1.16.1
       form-data: 4.0.6
       https-proxy-agent: 5.0.1
       proxy-from-env: 2.1.0
@@ -11790,7 +11792,7 @@ snapshots:
 
   fn.name@1.1.0: {}
 
-  follow-redirects@1.16.0: {}
+  follow-redirects@1.16.1: {}
 
   fontkit@2.0.4:
     dependencies:
@@ -12085,7 +12087,7 @@ snapshots:
 
   hls.js@1.6.16: {}
 
-  hono@4.13.7: {}
+  hono@4.13.13: {}
 
   html-entities@2.6.0: {}
 
@@ -14910,7 +14912,7 @@ snapshots:
       d3-time: 3.1.0
       d3-timer: 3.0.1
 
-  vite@6.4.3(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0):
+  vite@6.4.5(@types/node@20.16.11)(jiti@1.21.7)(lightningcss@1.32.0)(tsx@4.22.0):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.5)

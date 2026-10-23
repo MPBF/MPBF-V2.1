@@ -3,6 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createRequire } = require("node:module");
 const { execFileSync } = require("node:child_process");
+const http = require("node:http");
+const { once } = require("node:events");
 const test = require("node:test");
 
 // Exact affected releases from the dependency findings. Check resolved versions,
@@ -12,7 +14,9 @@ const affected = {
   axios: ["1.18.1", "1.19.0"],
   xlsx: ["0.20.3"],
   "@xmldom/xmldom": ["0.8.13"],
-  hono: ["4.12.32"],
+  hono: ["4.12.32", "4.13.7"],
+  vite: ["6.4.3"],
+  "follow-redirects": ["1.16.0"],
   "brace-expansion": ["1.1.18", "2.1.4", "5.0.9"],
   "proxy-addr": ["2.0.7"],
   uuid: ["8.3.2", "9.0.1"],
@@ -38,7 +42,7 @@ const affected = {
 // caches are vendor/build outputs, not deployable application projects.
 const pruned = new Set([
   "node_modules", ".git", "vendor", ".venv", "venv", "target", "dist", "build",
-  ".next", ".cache", ".config", ".npm", "generated-artifacts",
+  ".next", ".cache", ".config", ".local", ".npm", "generated-artifacts",
 ]);
 function manifests(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -127,4 +131,81 @@ test("document conversion and patched validation dependencies retain their runti
   assert.equal(validate(1), false);
   assert.doesNotThrow(() => require("eslint"));
   assert.doesNotThrow(() => require("mssql"));
+});
+
+for (const arrayHeaders of [false, true]) {
+  test(`Axios redirect dependency strips credentials across origins (${arrayHeaders ? "array" : "object"} headers)`, { timeout: 10000 }, async t => {
+    // Resolve through the real consumer, not a potentially unused root copy.
+    const axiosRequire = createRequire(require.resolve("axios"));
+    const redirects = axiosRequire("follow-redirects");
+    const destination = http.createServer((req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(req.headers));
+    });
+    const origin = http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(302, { Location: `http://127.0.0.1:${destination.address().port}/` });
+      res.end();
+    });
+    t.after(() => Promise.all([origin, destination].map(server =>
+      new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())),
+    )));
+    destination.listen(0, "127.0.0.1");
+    await once(destination, "listening");
+    origin.listen(0, "127.0.0.1");
+    await once(origin, "listening");
+
+    const headers = {
+      Authorization: "Bearer synthetic-test-value",
+      Cookie: "session=synthetic",
+      "Proxy-Authorization": "Basic synthetic",
+      "X-Api^Key": "synthetic-caret",
+      "X-Token|Secret": "synthetic-pipe",
+      "X-Control-Key": "synthetic-control",
+      "X-Public": "preserved",
+    };
+    const received = await new Promise((resolve, reject) => {
+      const request = redirects.http.get({
+        hostname: "127.0.0.1",
+        port: origin.address().port,
+        path: "/",
+        headers: arrayHeaders ? Object.entries(headers).flat() : headers,
+        sensitiveHeaders: ["X-Api^Key", "X-Token|Secret", "X-Control-Key"],
+      }, response => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("error", reject);
+        response.on("data", chunk => { body += chunk; });
+        response.on("end", () => {
+          try { resolve(JSON.parse(body)); } catch (error) { reject(error); }
+        });
+      });
+      request.on("error", reject);
+      request.setTimeout(3000, () => request.destroy(new Error("Redirect request timed out")));
+    });
+    for (const name of Object.keys(headers).filter(name => name !== "X-Public")) {
+      assert.equal(received[name.toLowerCase()], undefined, `${name} must not reach another origin`);
+    }
+    assert.equal(received["x-public"], "preserved");
+  });
+}
+
+test("patched Vite middleware does not generate cross-origin inline module URLs", async () => {
+  const { createServer } = await import("vite");
+  const server = await createServer({
+    configFile: false,
+    root: path.resolve(__dirname, ".."),
+    appType: "custom",
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+  });
+  try {
+    const html = await server.transformIndexHtml(
+      "//attacker.invalid/payload.js?/../../package.json",
+      '<script type="module">document.body.textContent = "safe"</script>',
+    );
+    assert.doesNotMatch(html, /src=["']\/\/attacker\.invalid/);
+    assert.match(html, /<script type="module"/);
+  } finally {
+    await server.close();
+  }
 });

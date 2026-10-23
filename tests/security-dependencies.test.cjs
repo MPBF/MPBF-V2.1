@@ -6,7 +6,8 @@ const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
-const pruned = new Set(["node_modules", ".git", "vendor", ".venv", "venv", "target", "dist", "build", ".next", ".cache"]);
+// .local contains platform-managed skills, excluded from deployment like caches.
+const pruned = new Set(["node_modules", ".git", "vendor", ".venv", "venv", "target", "dist", "build", ".next", ".cache", ".local"]);
 const reported = {
   braces: ["3.0.3"], "proxy-addr": ["2.0.7"], qs: ["6.15.3"],
   "@modelcontextprotocol/sdk": ["1.30.0"], axios: ["1.18.1", "1.19.0"],
@@ -16,7 +17,8 @@ const reported = {
   nodemailer: ["10.0.1"], "postcss-selector-parser": ["6.0.10", "6.1.3", "6.1.4"],
   "source-map-js": ["1.2.1"], "sprintf-js": ["1.0.3", "1.1.3"], xlsx: ["0.20.3"],
   "@xmldom/xmldom": ["0.8.13"], esbuild: ["0.18.20"], handlebars: ["4.7.9"],
-  hono: ["4.12.32"], "js-yaml": ["3.15.0", "4.3.0"], nanoid: ["3.3.16"],
+  hono: ["4.12.32", "4.13.7"], "js-yaml": ["3.15.0", "4.3.0"], nanoid: ["3.3.16"],
+  vite: ["6.4.3"], "follow-redirects": ["1.16.0"],
   uuid: ["8.3.2", "9.0.1"],
 };
 
