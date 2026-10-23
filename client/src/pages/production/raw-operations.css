@@ -113,7 +113,8 @@
 .raw-mix-preview-label { color: var(--theme-raw-operations-raw-ops-banner-error-text); font-size: 11px; font-weight: 800; }
 .raw-mix-summary-card .raw-ops-card-body { display: grid; gap: 13px; }
 .raw-mix-reader-machine { max-width: 420px; }
-.raw-mix-saved-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.raw-mix-machine-fields { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr); align-items: start; gap: 10px; }
+.raw-mix-saved-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0,1fr); gap: 10px; }
 .raw-mix-composition { min-width: 0; border: 1px solid var(--theme-raw-operations-raw-ops-material-chip-border); background: var(--theme-raw-operations-raw-ops-banner-surface); }
 .raw-mix-composition-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border-bottom: 1px solid var(--theme-raw-operations-raw-ops-material-chip-border); color: var(--raw-deep); font-size: 12px; }
 .raw-mix-composition-head b { font: 700 11px "IBM Plex Mono", monospace; white-space: nowrap; }
@@ -151,7 +152,7 @@
   .raw-ops-record-head { flex-direction: column; }
   .raw-ops-record-total { white-space: normal; }
   .raw-ops .raw-btn { min-height: 44px; }
-  .raw-mix-saved-grid { grid-template-columns: minmax(0,1fr); }
+  .raw-mix-saved-grid { grid-auto-columns: minmax(150px,1fr); overflow-x: auto; padding-bottom: 5px; }
   .raw-ops.raw-mix-dialog-backdrop { padding: 9px; align-items: end; }
   .raw-mix-dialog { max-height: 92dvh; }
   .raw-mix-dialog-body { padding: 12px; }
