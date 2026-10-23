@@ -496,6 +496,13 @@ const releaseOnly = process.argv.includes("--production-release-only");
         ["الكمية", "Qty"], ["ملاحظات", "Note"],
       ];
       const verifyColumns = async (context) => {
+        check(`${context}: larger item and size data only`, await evaluate(`(()=>{
+          const row=document.querySelector('.opp-spec-row');
+          return [row.querySelector('.opp-item-cell strong'),row.querySelector('.opp-item-cell small'),row.querySelector('.opp-size-cell'),
+            document.querySelector('.opp-spec-table th:nth-child(2) [lang=ar]'),
+            document.querySelector('.opp-spec-table th:nth-child(3) [lang=en]')]
+            .map(e=>getComputedStyle(e).fontSize);
+        })()`), ["18px", "12px", "16px", "12px", "9px"]);
         check(`${context}: exact bilingual headers`, await evaluate(`[...document.querySelectorAll('.opp-spec-table thead th')].map((th,i)=>i===0?[th.textContent.trim(),'']:[th.querySelector('[lang=ar]')?.textContent.trim(),th.querySelector('[lang=en]')?.textContent.trim()])`), expectedHeaders);
         check(`${context}: Arabic above English with no clipped labels`, await evaluate(`(()=>{
           return [...document.querySelectorAll('.opp-spec-table thead th')].flatMap((th,i)=>{

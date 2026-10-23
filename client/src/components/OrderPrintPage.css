@@ -75,8 +75,9 @@
 .opp-row-number { font-size: 11px; }
 .opp-item-cell { text-align: center !important; }
 .opp-item-cell strong,.opp-item-cell small { display: block; }
-.opp-item-cell strong { margin-bottom: 2px; font-size: 14px; }
-.opp-item-cell small { color: #536660; font-size: 10px; line-height: 1.35; }
+.opp-item-cell strong { margin-bottom: 2px; font-size: 18px; }
+.opp-item-cell small { color: #536660; font-size: 12px; line-height: 1.35; }
+.opp-size-cell { font-size: 16px; }
 .opp-color-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .opp-color-swatch { width: 34px; height: 34px; flex: 0 0 34px; border: 1.5px solid #52645d; border-radius: 50%; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 .opp-color-cell strong { font-size: 12px; }

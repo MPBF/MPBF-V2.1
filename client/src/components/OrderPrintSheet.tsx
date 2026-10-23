@@ -82,7 +82,7 @@ function SpecificationRow({ row, index }: { row: OrderPrintProduction; index: nu
       <strong lang="ar" dir="rtl">{safeText(product?.item?.name_ar)}</strong>
       <small lang="en" dir="ltr">{safeText(validEnglishItemName)}</small>
     </td>
-    <td dir="ltr">{product ? sizeText(product) : "—"}</td>
+    <td className="opp-size-cell" dir="ltr">{product ? sizeText(product) : "—"}</td>
     <td dir="ltr">{roundedWithUnit(product?.cutting_length_cm, "cm")}</td>
     <td dir="ltr">{printNumberText(product?.thickness)}</td>
     <td>{safeText(product?.raw_material)}</td>
