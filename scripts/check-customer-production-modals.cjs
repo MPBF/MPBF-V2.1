@@ -420,7 +420,8 @@ const WebSocket = require("ws");
       const chooseCustomer = async () => {
         await input("#order-customer", "عميل");
         await wait("!!document.querySelector('#order-customer-list [role=option],.order-customer-options [role=option],[role=listbox] [role=option]')");
-        await click('[role=listbox] [role=option]');
+        verify("create customer is the first option", await evaluate("document.querySelector('#order-customer-options [role=option]').id"), "order-customer-create");
+        await click('#order-customer-options [role=option]:not(#order-customer-create)');
         await wait("!document.querySelector('.order-product-mode button:nth-child(2)').disabled");
       };
       const openOrder = async () => {

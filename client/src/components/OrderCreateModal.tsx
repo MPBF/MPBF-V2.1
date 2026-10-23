@@ -166,10 +166,10 @@ function CustomerSearchSelect({ customers, selectedId, onSelect, disabled, onCre
       event.preventDefault();
       setOpen(true);
       setActiveIndex((index) => (index + visibleMatches.length) % (visibleMatches.length + 1));
-    } else if (event.key === "Enter" && open && visibleMatches[activeIndex]) {
+    } else if (event.key === "Enter" && open && activeIndex > 0 && visibleMatches[activeIndex - 1]) {
       event.preventDefault();
-      choose(visibleMatches[activeIndex]);
-    } else if (event.key === "Enter" && open && activeIndex === visibleMatches.length) {
+      choose(visibleMatches[activeIndex - 1]);
+    } else if (event.key === "Enter" && open && activeIndex === 0) {
       event.preventDefault();
       setOpen(false);
       onCreate();
@@ -191,7 +191,7 @@ function CustomerSearchSelect({ customers, selectedId, onSelect, disabled, onCre
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls="order-customer-options"
-          aria-activedescendant={open ? visibleMatches[activeIndex] ? `order-customer-option-${visibleMatches[activeIndex].id}` : "order-customer-create" : undefined}
+          aria-activedescendant={open ? activeIndex === 0 ? "order-customer-create" : visibleMatches[activeIndex - 1] ? `order-customer-option-${visibleMatches[activeIndex - 1].id}` : undefined : undefined}
           aria-label={translate("ابحث عن العميل بالاسم أو الرقم")}
           value={query}
           onFocus={() => { if (!disabled) setOpen(true); }}
@@ -218,26 +218,26 @@ function CustomerSearchSelect({ customers, selectedId, onSelect, disabled, onCre
       </div>
       {open && !disabled && (
         <div className="order-customer-options" id="order-customer-options" role="listbox" aria-label={translate("نتائج العملاء")}>
+          <button id="order-customer-create" className={`order-customer-option${activeIndex === 0 ? " is-active" : ""}`} type="button" role="option" aria-selected={false}
+            onMouseEnter={() => setActiveIndex(0)} onMouseDown={(event) => event.preventDefault()}
+            onClick={() => { setOpen(false); onCreate(); }}>
+            <Plus size={16} aria-hidden="true" /><span>{translate("إضافة عميل جديد")}</span>
+          </button>
           {visibleMatches.length ? visibleMatches.map((customer, index) => (
             <button
               id={`order-customer-option-${customer.id}`}
-              className={`order-customer-option${index === activeIndex ? " is-active" : ""}`}
+              className={`order-customer-option${index + 1 === activeIndex ? " is-active" : ""}`}
               key={customer.id ?? index}
               type="button"
               role="option"
               aria-selected={String(customer.id) === selectedId}
-              onMouseEnter={() => setActiveIndex(index)}
+              onMouseEnter={() => setActiveIndex(index + 1)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => choose(customer)}
             >
               <span>{customerLabel(customer)}</span><small>#{customer.id}</small>
             </button>
           )) : <div className="order-customer-empty" role="status">{translate("لا توجد نتائج مطابقة.")}</div>}
-          <button id="order-customer-create" className={`order-customer-option${activeIndex === visibleMatches.length ? " is-active" : ""}`} type="button" role="option" aria-selected={false}
-            onMouseEnter={() => setActiveIndex(visibleMatches.length)} onMouseDown={(event) => event.preventDefault()}
-            onClick={() => { setOpen(false); onCreate(); }}>
-            <Plus size={16} aria-hidden="true" /><span>{translate("إضافة عميل")}</span>
-          </button>
         </div>
       )}
     </div>
