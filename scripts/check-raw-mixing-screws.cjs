@@ -114,7 +114,21 @@ const literal=JSON.stringify;
         check(`${lang} ${width}: weighted combined, not average or layer ratio`,(await combined()).includes("36.67%")&&(await combined()).includes("63.33%"));
         check(`${lang} ${width}: bilingual names without codes`,await evaluate("document.querySelector('.raw-ops').innerText.includes('High density resin')&&document.querySelector('.raw-ops').innerText.includes('خام عالي الكثافة')&&!document.querySelector('.raw-ops').innerText.includes('CODE-HIDDEN')"));
         check(`${lang} ${width}: missing name indicator`,await evaluate(`document.querySelector('.raw-ops').innerText.includes(${literal(lang==="ar"?"اسم غير متاح":"Name unavailable")})`));
-        check(`${lang} ${width}: legacy screw unidentified`,await evaluate(`document.querySelector('.raw-ops-record').innerText.includes(${literal(lang==="ar"?"لولب غير محدد":"Unidentified screw")})`));
+        check(`${lang} ${width}: history names are English with compact screw`,await evaluate(`(()=>{
+          const records=[...document.querySelectorAll('.raw-ops-record')];
+          return records.every(record=>!/[\\u0600-\\u06ff]/.test(record.querySelector('.raw-ops-record-machine').textContent)&&
+            [...record.querySelectorAll('.raw-ops-material-chip > span')].every(e=>!/[\\u0600-\\u06ff]/.test(e.textContent)))&&
+            records[0].querySelector('.raw-ops-record-machine').textContent.endsWith('-—');
+        })()`));
+        check(`${lang} ${width}: machine and screw share a row`,await evaluate(`(()=>{
+          const machine=document.querySelector('#mix-machine').getBoundingClientRect(),screw=document.querySelector('#mix-screw').getBoundingClientRect();
+          return Math.abs(machine.top-screw.top)<2;
+        })()`));
+        check(`${lang} ${width}: A, B and combined share a row`,await evaluate(`(()=>{
+          const cards=[...document.querySelector('.raw-mix-saved-grid').children];
+          return cards.length===3&&cards.every(card=>Math.abs(card.getBoundingClientRect().top-cards[0].getBoundingClientRect().top)<2);
+        })()`));
+        check(`${lang} ${width}: repetitive deletion explanation removed`,await evaluate("!document.querySelector('[id^=mix-delete-note-]')"));
         await input("#mix-screw","A");await input("#mix-material-0","1");await input("#mix-quantity-0","10");
         check(`${lang} ${width}: draft substitution preserves B`,await evaluate("document.querySelector('.raw-mix-live-preview').innerText.includes('40%')&&document.querySelector('.raw-mix-live-preview').innerText.includes('60%')"));
         check(`${lang} ${width}: draft per-material share`,await evaluate("document.querySelector('.raw-mix-live-preview').innerText.includes('100%')"));

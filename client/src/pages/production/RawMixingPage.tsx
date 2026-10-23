@@ -57,7 +57,7 @@ const messages: Record<string, [string, string]> = {
   storageUnavailable: ["تعذر حفظ طلب الاسترداد في الجلسة؛ لم يتم الإرسال.", "Could not preserve this request in the session; it was not sent."],
   retryPermission: ["لم تعد تملك صلاحية تسجيل الخلط، لذلك لم يُعاد إرسال الطلب.", "You no longer have permission to record mixes, so the request was not retried."],
   unavailable: ["اسم غير متاح", "Name unavailable"], addNote: ["إضافة ملاحظة", "Add note"], hideNote: ["إخفاء الملاحظة", "Hide note"],
-  screw: ["اللولب", "Screw"], chooseScrew: ["اختر اللولب", "Choose screw"], screwA: ["اللولب A", "Screw A"], screwB: ["اللولب B", "Screw B"],
+  screw: ["اللولب", "Screw"], chooseScrew: ["اختر اللولب", "Choose screw"], screwA: ["A", "A"], screwB: ["B", "B"],
   savedComposition: ["التركيبة المحفوظة", "Saved composition"], combined: ["التركيبة المجمعة", "Combined composition"],
   unsavedPreview: ["معاينة غير محفوظة — تستبدل تركيبة اللولب المحدد", "Unsaved preview — substitutes the selected screw mix"],
   noScrewMix: ["لا توجد خلطة محفوظة لهذا اللولب.", "No saved mix for this screw."], noComposition: ["لا توجد تركيبات محفوظة بعد.", "No saved compositions yet."],
@@ -463,7 +463,8 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
   };
   const onSubmit = (event: FormEvent) => { event.preventDefault(); void save(); };
   const getActor = (record: MixingRecord) => localized(record.actor_name_ar, record.actor_name, en, `#${formatWholeNumber(record.created_by)}`);
-  const getMachine = (record: MixingRecord) => localized(record.machine_name_ar, record.machine_name, en, record.machine_id);
+  const getMachine = (record: MixingRecord) => localized(null, record.machine_name, true, record.machine_id);
+  const englishMaterialName = (name: string | null | undefined) => localized(null, name, true, "—");
   const bilingualMaterialName = (ar?: string | null, english?: string | null) => {
     const arabic = (ar ?? "").trim() || tx("unavailable", en);
     const latinName = (english ?? "").trim() || tx("unavailable", en);
@@ -517,20 +518,22 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
         <div className="raw-ops-card-body">
           {writable ? <form onSubmit={onSubmit}>
             <div className="raw-ops-form-grid">
-              <div className="raw-ops-field raw-ops-wide">
+              <div className="raw-ops-wide raw-mix-machine-fields">
+              <div className="raw-ops-field">
                 <label htmlFor="mix-machine">{tx("machine", en)}</label>
                 <select id="mix-machine" required value={machine} disabled={locked} onChange={event => changeMachine(event.target.value)}>
                   <option value="">{tx("chooseMachine", en)}</option>
-                {machines.map(item => <option key={item.id} value={item.id}>{localized(item.name_ar, item.name, en, tx("unavailable", en))}</option>)}
+                {machines.map(item => <option key={item.id} value={item.id}>{localized(null, item.name, true, item.id)}</option>)}
                 </select>
                 {!machines.length && <span className="raw-ops-helper">{tx("noMachines", en)}</span>}
               </div>
-              {machine && <div className="raw-ops-field raw-ops-wide">
+              {machine && <div className="raw-ops-field">
                 <label htmlFor="mix-screw">{tx("screw", en)}</label>
                 {isDualScrew(selectedMachine) ? <select id="mix-screw" required value={screw} disabled={locked} onChange={event => changeScrew(event.target.value as Screw | "")}>
                   <option value="">{tx("chooseScrew", en)}</option><option value="A">{tx("screwA", en)}</option><option value="B">{tx("screwB", en)}</option>
                 </select> : <div className="raw-mix-single-screw" aria-label={tx("screwA", en)}>{tx("screwA", en)}</div>}
               </div>}
+              </div>
               <div className="raw-ops-wide raw-ops-items">
                 {rows.map((row, index) => <div className="raw-ops-item" key={index}>
                   <div className="raw-ops-field">
@@ -564,7 +567,6 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
               <button className="raw-btn outline" type="button" onClick={addRow} disabled={locked || rows.length >= 100}><Plus />{tx("addLine", en)}</button>
               <button className="raw-btn outline" type="button" aria-expanded={notesVisible} aria-controls="mix-notes-region" onClick={() => setNotesVisible(value => !value)} disabled={locked}><Plus />{tx(notesVisible ? "hideNote" : "addNote", en)}</button>
               <button className="raw-btn" type="submit" disabled={busy || locked || !machines.length || !state?.materials.some(material => material.is_active)}><Plus />{busy ? tx("loading", en) : tx("save", en)}</button>
-              <span className="raw-ops-helper">{tx("notVoucher", en)}</span>
             </div>
           </form> : <div className="raw-ops-helper">{tx("readonly", en)}</div>}
         </div>
@@ -576,7 +578,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
             <label htmlFor="mix-read-machine">{tx("machine", en)}</label>
             <select id="mix-read-machine" value={machine} onChange={event => changeMachine(event.target.value)}>
               <option value="">{tx("chooseMachine", en)}</option>
-              {machines.map(item => <option key={item.id} value={item.id}>{localized(item.name_ar, item.name, en, tx("unavailable", en))}</option>)}
+              {machines.map(item => <option key={item.id} value={item.id}>{localized(null, item.name, true, item.id)}</option>)}
             </select>
           </div>}
           {!machine ? <div className="raw-ops-empty"><strong>{tx("chooseMachine", en)}</strong></div> :
@@ -584,8 +586,8 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
               <div className="raw-mix-saved-grid">
                 {latestA ? renderComposition(tx("screwA", en), latestA.items) : <div className="raw-mix-missing"><strong>{tx("screwA", en)}</strong><span>{tx("noScrewMix", en)}</span></div>}
                 {isDualScrew(selectedMachine) && (latestB ? renderComposition(tx("screwB", en), latestB.items) : <div className="raw-mix-missing"><strong>{tx("screwB", en)}</strong><span>{tx("noScrewMix", en)}</span></div>)}
-              </div>
               {renderComposition(tx("combined", en), savedCombinedLines, Boolean(isDualScrew(selectedMachine) && (!latestA || !latestB)))}
+              </div>
             </>}
         </div>
       </section>}
@@ -596,18 +598,17 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
           {loading && !state ? <LoadingRows label={tx("loading", en)} /> : state?.records.length ? <>
             {state.records.map(record => <article className="raw-ops-record" key={record.id}>
               <div className="raw-ops-record-head">
-                <div><div className="raw-ops-record-machine">{getMachine(record)} · {((record as MixingRecord & { screw?: Screw | null }).screw === "A" ? tx("screwA", en) : (record as MixingRecord & { screw?: Screw | null }).screw === "B" ? tx("screwB", en) : tx("legacyScrew", en))}</div><div className="raw-ops-record-meta"><span>{tx("actor", en)}: {getActor(record)}</span><time dateTime={record.created_at}>{tx("date", en)}: {dateTime(record.created_at, en)}</time><span className="raw-ops-number">{formatMixNumber(record.id)}</span></div></div>
+                <div><div className="raw-ops-record-machine" dir="ltr">{getMachine(record)}-{record.screw === "A" || record.screw === "B" ? record.screw : "—"}</div><div className="raw-ops-record-meta"><span>{tx("actor", en)}: {getActor(record)}</span><time dateTime={record.created_at}>{tx("date", en)}: {dateTime(record.created_at, en)}</time><span className="raw-ops-number">{formatMixNumber(record.id)}</span></div></div>
                 <div className="raw-ops-record-total">{tx("total", en)}: {formatNumber(record.total_kg)} kg</div>
               </div>
-              <div className="raw-ops-record-lines">{record.items.map((item, index) => <div className="raw-ops-material-chip" key={`${item.material_id}-${index}`}><span>{bilingualMaterialName(item.name_ar, item.name)}</span><b className="raw-ops-number">{formatNumber(item.quantity_kg)} kg</b></div>)}</div>
+              <div className="raw-ops-record-lines">{record.items.map((item, index) => <div className="raw-ops-material-chip" key={`${item.material_id}-${index}`}><span lang="en" dir="ltr">{englishMaterialName(item.name)}</span><b className="raw-ops-number">{formatNumber(item.quantity_kg)} kg</b></div>)}</div>
               {record.notes && <p className="raw-ops-record-notes">{tx("comments", en)}: {record.notes}</p>}
               {manager && <div className="raw-mix-admin-actions">
                 <div className="raw-mix-admin-buttons">
                   <button className="raw-btn quiet" type="button" onClick={() => openAdminDialog(record, "edit")} disabled={adminBusy || Boolean(adminPending)}><Pencil />{tx("editMix", en)}</button>
-                  <button className="raw-btn quiet" type="button" onClick={() => openAdminDialog(record, "delete")} disabled={adminBusy || Boolean(adminPending) || record.can_edit_contents !== true} aria-describedby={record.can_edit_contents !== true ? `mix-delete-note-${record.id}` : undefined}><Trash2 />{tx("deleteMix", en)}</button>
+                  <button className="raw-btn quiet" type="button" onClick={() => openAdminDialog(record, "delete")} disabled={adminBusy || Boolean(adminPending) || record.can_edit_contents !== true}><Trash2 />{tx("deleteMix", en)}</button>
                   <MixRevisionHistory user={user} en={en} mixId={record.id} refreshToken={revisionRefresh} />
                 </div>
-                {record.can_edit_contents !== true && <span className="raw-ops-helper" id={`mix-delete-note-${record.id}`}>{tx("consumedDelete", en)}</span>}
               </div>}
             </article>)}
             {state.next_before ? <div className="raw-ops-form-actions"><button className="raw-btn outline" onClick={() => void load(state.next_before ?? undefined)} disabled={olderLoading}><ChevronDown />{olderLoading ? tx("loading", en) : tx("more", en)}</button></div> : <p className="raw-ops-helper">{tx("noMore", en)}</p>}
@@ -653,7 +654,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
                 }}>
                   <option value="">{tx("chooseMachine", en)}</option>
                   {adminMachine && !state?.machines.some(item => item.id === adminMachine && item.status === "active") && <option value={adminMachine} disabled>{getMachine(adminRecord)} — {tx("unavailable", en)}</option>}
-                  {(state?.machines ?? []).filter(item => item.status === "active").map(item => <option key={item.id} value={item.id}>{localized(item.name_ar, item.name, en, tx("unavailable", en))}</option>)}
+                  {(state?.machines ?? []).filter(item => item.status === "active").map(item => <option key={item.id} value={item.id}>{localized(null, item.name, true, item.id)}</option>)}
                 </select>
                 {(!state?.machines.some(item => item.id === adminMachine && item.status === "active")) && <span className="raw-ops-helper">{tx("unavailableMachine", en)}</span>}
               </div>
