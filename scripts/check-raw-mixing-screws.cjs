@@ -109,6 +109,21 @@ const literal=JSON.stringify;
         await navigate();
         check(`${lang} ${width}: notes opt-in`,await evaluate("!document.querySelector('#mix-notes')"));
         check(`${lang} ${width}: correct text direction`,await evaluate("getComputedStyle(document.querySelector('.raw-ops')).direction"),lang==="ar"?"rtl":"ltr");
+        check(`${lang} ${width}: production chrome and navigation parity`,await evaluate(`(()=>{
+          const header=document.querySelector('.raw-mix-heading'),refresh=header?.querySelector('.prod-header-refresh');
+          const nav=document.querySelector('.raw-mix-nav'),links=[...nav.querySelectorAll('a')];
+          return header?.classList.contains('prod-heading')&&header.querySelector('.prod-eyebrow')&&header.querySelector('h2')&&
+            refresh?.classList.contains('prod-btn')&&nav.classList.contains('prod-view-nav')&&
+            links.length>0&&links.every(link=>link.classList.contains('prod-btn')&&parseFloat(getComputedStyle(link).minHeight)>=44)&&
+            nav.querySelector('[aria-current="page"]')?.textContent.trim()===${literal(lang==="ar"?"خلط مواد الخام":"Raw material mixing")};
+        })()`));
+        if(width===390)check(`${lang} ${width}: three primary actions stay on one phone row`,await evaluate(`(()=>{
+          const buttons=[...document.querySelectorAll('.raw-mix-primary-actions > .raw-btn')];
+          const boxes=buttons.map(button=>button.getBoundingClientRect());
+          return buttons.length===3&&boxes.every(box=>box.width>0&&Math.abs(box.top-boxes[0].top)<2)&&
+            getComputedStyle(document.querySelector('.raw-mix-primary-actions')).display==="grid"&&
+            getComputedStyle(document.querySelector('.raw-mix-primary-actions')).gridTemplateColumns.split(" ").length===3;
+        })()`));
         await input("#mix-machine","F2");
         check(`${lang} ${width}: ABA explicit screw`,await evaluate("document.querySelector('#mix-screw').value"),"");
         check(`${lang} ${width}: weighted combined, not average or layer ratio`,(await combined()).includes("36.67%")&&(await combined()).includes("63.33%"));
