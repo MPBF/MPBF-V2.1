@@ -465,16 +465,11 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
   const getActor = (record: MixingRecord) => localized(record.actor_name_ar, record.actor_name, en, `#${formatWholeNumber(record.created_by)}`);
   const getMachine = (record: MixingRecord) => localized(null, record.machine_name, true, record.machine_id);
   const englishMaterialName = (name: string | null | undefined) => localized(null, name, true, "—");
-  const bilingualMaterialName = (ar?: string | null, english?: string | null) => {
-    const arabic = (ar ?? "").trim() || tx("unavailable", en);
-    const latinName = (english ?? "").trim() || tx("unavailable", en);
-    return `${arabic} / ${latinName}`;
-  };
   const latestFor = (targetScrew: Screw) => (state?.latest_mixes ?? [])
     .filter(record => record.machine_id === machine && record.screw === targetScrew)
     .sort((left, right) => right.id - left.id)[0];
   const latestA = latestFor("A"), latestB = isDualScrew(selectedMachine) ? latestFor("B") : undefined;
-  const composition = (lines: CompositionLine[]) => mixingComposition(lines, bilingualMaterialName);
+  const composition = (lines: CompositionLine[]) => mixingComposition(lines, (_ar, english) => englishMaterialName(english));
   const savedCombinedLines = [...(latestA?.items ?? []), ...(latestB?.items ?? [])] as CompositionLine[];
   const draftValid = Boolean(selectedMachine?.status === "active" && screw && (isDualScrew(selectedMachine) ? screw === "A" || screw === "B" : screw === "A") && selectedRows.length && selectedRows.length <= 100 &&
     selectedRows.every(row => row.material && row.material.is_active && quantityValue(row.quantity)) &&
@@ -540,7 +535,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
                     <label htmlFor={`mix-material-${index}`}>{tx("material", en)}</label>
                     <select id={`mix-material-${index}`} required value={row.materialId} disabled={locked} onChange={event => updateRow(index, { materialId: event.target.value })}>
                       <option value="">{tx("chooseMaterial", en)}</option>
-                      {(state?.materials ?? []).filter(material => material.is_active && (!rows.some((other, otherIndex) => otherIndex !== index && other.materialId === String(material.id)) || row.materialId === String(material.id))).map(material => <option key={material.id} value={material.id}>{bilingualMaterialName(material.name_ar, material.name)}</option>)}
+                      {(state?.materials ?? []).filter(material => material.is_active && (!rows.some((other, otherIndex) => otherIndex !== index && other.materialId === String(material.id)) || row.materialId === String(material.id))).map(material => <option key={material.id} value={material.id}>{englishMaterialName(material.name)}</option>)}
                     </select>
                   </div>
                   <div className="raw-ops-field">
@@ -673,8 +668,8 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
                     <div className="raw-ops-field"><label htmlFor={`mix-edit-material-${index}`}>{tx("material", en)}</label>
                       <select id={`mix-edit-material-${index}`} value={row.materialId} disabled={adminBusy || Boolean(adminPending) || adminConflict} onChange={event => { setAdminRows(old => old.map((item, rowIndex) => rowIndex === index ? { ...item, materialId: event.target.value } : item)); setAdminError(""); }}>
                         <option value="">{tx("chooseMaterial", en)}</option>
-                        {row.materialId && (!material || !material.is_active) && <option value={row.materialId} disabled>{prior ? bilingualMaterialName(prior.name_ar, prior.name) : `${tx("legacyMaterial", en)} (${row.materialId})`}</option>}
-                        {(state?.materials ?? []).filter(item => item.is_active && (!adminRows.some((other, otherIndex) => otherIndex !== index && other.materialId === String(item.id)) || row.materialId === String(item.id))).map(item => <option key={item.id} value={String(item.id)}>{bilingualMaterialName(item.name_ar, item.name)}</option>)}
+                        {row.materialId && (!material || !material.is_active) && <option value={row.materialId} disabled>{prior ? englishMaterialName(prior.name) : `#${row.materialId}`}</option>}
+                        {(state?.materials ?? []).filter(item => item.is_active && (!adminRows.some((other, otherIndex) => otherIndex !== index && other.materialId === String(item.id)) || row.materialId === String(item.id))).map(item => <option key={item.id} value={String(item.id)}>{englishMaterialName(item.name)}</option>)}
                       </select>
                       {row.materialId && (!material || !material.is_active) && <span className="raw-ops-helper">{tx("unavailablePrevious", en)}</span>}
                     </div>

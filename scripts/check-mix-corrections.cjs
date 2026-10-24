@@ -127,6 +127,7 @@ const os = require("node:os"), path = require("node:path"), WebSocket = require(
       const writesBeforeAudit=writes.length;
       await evaluate("document.querySelector('.mix-revisions-global .mix-revisions-trigger').click()");
       await wait("document.querySelectorAll('.mix-revisions-global .mix-revision-entry').length===2");
+      check(`${context} revision material names English only`,await evaluate("[...document.querySelectorAll('.mix-revision-material > span,.mix-revision-stock-row > span:first-child')].every(e=>!/[\\u0600-\\u06ff]/.test(e.textContent))"));
       check(`${context} audit has correct direction`,await evaluate("document.querySelector('.mix-revisions-global').dir"),language==="ar"?"rtl":"ltr");
       check(`${context} saved before/after kg`,await evaluate("(()=>{const c=document.querySelector('.mix-revision-entry');return c.querySelectorAll('.mix-revision-material b')[0].textContent==='10.25 kg'&&c.querySelectorAll('.mix-revision-material b')[1].textContent==='15.3 kg'})()"));
       check(`${context} historical signed balance`,await evaluate("document.querySelector('.mix-revision-stock').textContent.includes('-5.05')&&document.querySelector('.mix-revision-stock').textContent.includes('-15.3')"));
@@ -153,6 +154,7 @@ const os = require("node:os"), path = require("node:path"), WebSocket = require(
       await evaluate("document.querySelector('.raw-mix-edit-toggle input').click()");
       await wait("!!document.querySelector('#mix-edit-quantity-0')");
       check(`${context} no free material entry`,await evaluate("document.querySelector('#mix-edit-material-0').tagName"),"SELECT");
+      check(`${context} editor materials English only`,await evaluate("![...document.querySelectorAll('[id^=mix-edit-material-] option[value]:not([value=\"\"])')].some(e=>/[\\u0600-\\u06ff]/.test(e.textContent))"));
       check(`${context} dialog fits`,await evaluate("(()=>{const r=document.querySelector('[role=dialog]').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1})()"));
       check(`${context} modal stays opaque above navigation`,await evaluate("(()=>{const dialog=document.querySelector('[role=dialog]'),overlay=dialog.parentElement,s=getComputedStyle(overlay),r=dialog.getBoundingClientRect();return s.opacity==='1'&&s.transform==='none'&&dialog.contains(document.elementFromPoint(r.left+25,r.bottom-20))})()"));
       await evaluate("document.querySelector('[role=dialog]').scrollTop=0");

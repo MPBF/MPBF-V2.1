@@ -75,8 +75,8 @@ const screwLabel = (value: string | null, en: boolean) => {
 };
 const machineLabel = (snapshot: MixRevisionSnapshot, en: boolean) =>
   safeName(snapshot.machine_name_ar, snapshot.machine_name, en, snapshot.machine_id || text("unavailable", en));
-const materialLabel = (item: MixRevisionSnapshot["items"][number], en: boolean) =>
-  safeName(item.name_ar, item.name, en, `#${item.material_id}`);
+const materialLabel = (item: Pick<MixRevisionSnapshot["items"][number], "name" | "material_id">) =>
+  safeName(null, item.name, true, `#${item.material_id}`);
 const actorLabel = (revision: MixRevision, en: boolean) =>
   safeName(revision.actor_name_ar, revision.actor_name, en, `#${revision.created_by}`);
 
@@ -90,7 +90,7 @@ function Snapshot({ snapshot, en, label, cancelled = false }: { snapshot: MixRev
     </dl>
     <div className="mix-revision-materials">
       {snapshot.items.map((item, index) => <div className="mix-revision-material" key={`${item.material_id}-${index}`}>
-        <span>{materialLabel(item, en)}</span>
+        <span lang="en" dir="ltr">{materialLabel(item)}</span>
         <b className="mix-revision-number">{formatNumber(item.quantity_kg)} kg</b>
       </div>)}
       {!snapshot.items.length && <p className="mix-revision-muted">{cancelled ? text("noMaterialsAfterCancellation", en) : "—"}</p>}
@@ -134,7 +134,7 @@ function RevisionCard({ revision, en }: { revision: MixRevision; en: boolean }) 
           const negative = Number.isFinite(delta) && delta < 0;
           const amount = formatNumber(item.quantity_kg);
           return <div className="mix-revision-stock-row" key={`${item.material_id}-${index}`}>
-            <span>{safeName(item.name_ar, item.name, en, `#${item.material_id}`)} <small>({item.code || `#${item.material_id}`})</small></span>
+            <span lang="en" dir="ltr">{materialLabel(item)} <small>({item.code || `#${item.material_id}`})</small></span>
             <span><b className={`mix-revision-number ${positive ? "delta-in" : negative ? "delta-out" : ""}`}>
               {positive ? "+" : ""}{amount} kg
             </b><small> {text(positive ? "stockIn" : "stockOut", en)}</small></span>

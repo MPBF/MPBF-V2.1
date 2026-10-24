@@ -112,8 +112,8 @@ const literal=JSON.stringify;
         await input("#mix-machine","F2");
         check(`${lang} ${width}: ABA explicit screw`,await evaluate("document.querySelector('#mix-screw').value"),"");
         check(`${lang} ${width}: weighted combined, not average or layer ratio`,(await combined()).includes("36.67%")&&(await combined()).includes("63.33%"));
-        check(`${lang} ${width}: bilingual names without codes`,await evaluate("document.querySelector('.raw-ops').innerText.includes('High density resin')&&document.querySelector('.raw-ops').innerText.includes('خام عالي الكثافة')&&!document.querySelector('.raw-ops').innerText.includes('CODE-HIDDEN')"));
-        check(`${lang} ${width}: missing name indicator`,await evaluate(`document.querySelector('.raw-ops').innerText.includes(${literal(lang==="ar"?"اسم غير متاح":"Name unavailable")})`));
+        check(`${lang} ${width}: English-only materials everywhere without codes`,await evaluate("document.querySelector('.raw-ops').innerText.includes('High density resin')&&!document.querySelector('.raw-ops').textContent.includes('خام عالي الكثافة')&&!document.querySelector('.raw-ops').textContent.includes('خام منخفض الكثافة')&&!document.querySelector('.raw-ops').innerText.includes('CODE-HIDDEN')"));
+        check(`${lang} ${width}: missing English name indicator`,await evaluate("document.querySelector('#mix-material-0 option[value=\"3\"]').textContent"), "—");
         check(`${lang} ${width}: history names are English with compact screw`,await evaluate(`(()=>{
           const records=[...document.querySelectorAll('.raw-ops-record')];
           return records.every(record=>!/[\\u0600-\\u06ff]/.test(record.querySelector('.raw-ops-record-machine').textContent)&&
