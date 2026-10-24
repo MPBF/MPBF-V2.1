@@ -1,9 +1,11 @@
 import { localizedName, translate, translateError } from "../i18n";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { AlertCircle, Boxes, Check, ClipboardList, LoaderCircle, Plus, Trash2, X } from "lucide-react";
+import "../styles/form-primitives.css";
 import "./OrderCreateModal.css";
 import CustomerProductSelect from "./CustomerProductSelect";
 import CustomerProductModal from "./CustomerProductModal";
+import CustomerModal from "./CustomerModal";
 import { deriveCustomerProductFields, type ProductInput } from "../../../shared/customer-product-fields";
 import { validateCustomerProductForm } from "./customer-product-form";
 
@@ -128,11 +130,12 @@ function Alert({ children, info = false }: { children: ReactNode; info?: boolean
   return <div className={`order-create-alert${info ? " info" : ""}`} role={info ? "status" : "alert"}><AlertCircle size={17} aria-hidden="true" /><div>{children}</div></div>;
 }
 
-function CustomerSearchSelect({ customers, selectedId, onSelect, disabled }: {
+function CustomerSearchSelect({ customers, selectedId, onSelect, disabled, onCreate }: {
   customers: Row[];
   selectedId: string;
   onSelect: (id: string) => void;
   disabled: boolean;
+  onCreate: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -158,14 +161,18 @@ function CustomerSearchSelect({ customers, selectedId, onSelect, disabled }: {
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setOpen(true);
-      setActiveIndex((index) => visibleMatches.length ? (index + 1) % visibleMatches.length : 0);
+      setActiveIndex((index) => (index + 1) % (visibleMatches.length + 1));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setOpen(true);
-      setActiveIndex((index) => visibleMatches.length ? (index - 1 + visibleMatches.length) % visibleMatches.length : 0);
-    } else if (event.key === "Enter" && open && visibleMatches[activeIndex]) {
+      setActiveIndex((index) => (index + visibleMatches.length) % (visibleMatches.length + 1));
+    } else if (event.key === "Enter" && open && activeIndex > 0 && visibleMatches[activeIndex - 1]) {
       event.preventDefault();
-      choose(visibleMatches[activeIndex]);
+      choose(visibleMatches[activeIndex - 1]);
+    } else if (event.key === "Enter" && open && activeIndex === 0) {
+      event.preventDefault();
+      setOpen(false);
+      onCreate();
     } else if (event.key === "Escape" && open) {
       event.preventDefault();
       event.stopPropagation();
@@ -184,7 +191,7 @@ function CustomerSearchSelect({ customers, selectedId, onSelect, disabled }: {
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls="order-customer-options"
-          aria-activedescendant={open && visibleMatches[activeIndex] ? `order-customer-option-${visibleMatches[activeIndex].id}` : undefined}
+          aria-activedescendant={open ? activeIndex === 0 ? "order-customer-create" : visibleMatches[activeIndex - 1] ? `order-customer-option-${visibleMatches[activeIndex - 1].id}` : undefined : undefined}
           aria-label={translate("ابحث عن العميل بالاسم أو الرقم")}
           value={query}
           onFocus={() => { if (!disabled) setOpen(true); }}
@@ -211,15 +218,20 @@ function CustomerSearchSelect({ customers, selectedId, onSelect, disabled }: {
       </div>
       {open && !disabled && (
         <div className="order-customer-options" id="order-customer-options" role="listbox" aria-label={translate("نتائج العملاء")}>
+          <button id="order-customer-create" className={`order-customer-option${activeIndex === 0 ? " is-active" : ""}`} type="button" role="option" aria-selected={false}
+            onMouseEnter={() => setActiveIndex(0)} onMouseDown={(event) => event.preventDefault()}
+            onClick={() => { setOpen(false); onCreate(); }}>
+            <Plus size={16} aria-hidden="true" /><span>{translate("إضافة عميل جديد")}</span>
+          </button>
           {visibleMatches.length ? visibleMatches.map((customer, index) => (
             <button
               id={`order-customer-option-${customer.id}`}
-              className={`order-customer-option${index === activeIndex ? " is-active" : ""}`}
+              className={`order-customer-option${index + 1 === activeIndex ? " is-active" : ""}`}
               key={customer.id ?? index}
               type="button"
               role="option"
               aria-selected={String(customer.id) === selectedId}
-              onMouseEnter={() => setActiveIndex(index)}
+              onMouseEnter={() => setActiveIndex(index + 1)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => choose(customer)}
             >
@@ -257,17 +269,18 @@ export default function OrderCreateModal({ editId, onClose, onSaved }: { editId?
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [productEditorKey, setProductEditorKey] = useState<number | null>(null);
+  const [customerEditorOpen, setCustomerEditorOpen] = useState(false);
   const orderPanelRef = useRef<HTMLElement>(null);
   const productReturnFocus = useRef<HTMLElement | null>(null);
   const activeProductLine = lines.find((line) => line.key === productEditorKey);
 
   useEffect(() => {
-    orderPanelRef.current?.toggleAttribute("inert", productEditorKey !== null);
-    if (productEditorKey === null) {
+    orderPanelRef.current?.toggleAttribute("inert", productEditorKey !== null || customerEditorOpen);
+    if (productEditorKey === null && !customerEditorOpen) {
       productReturnFocus.current?.focus();
       productReturnFocus.current = null;
     }
-  }, [productEditorKey]);
+  }, [productEditorKey, customerEditorOpen]);
 
   useEffect(() => {
     if (editId) return;
@@ -369,11 +382,11 @@ export default function OrderCreateModal({ editId, onClose, onSaved }: { editId?
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && productEditorKey === null && !savingRef.current) onClose();
+      if (event.key === "Escape" && productEditorKey === null && !customerEditorOpen && !savingRef.current) onClose();
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose, productEditorKey]);
+  }, [onClose, productEditorKey, customerEditorOpen]);
 
   const updateLine = (key: number, patch: Partial<OrderLine>) => {
     setLines((current) => current.map((line) => line.key === key ? { ...line, ...patch } : line));
@@ -473,9 +486,9 @@ export default function OrderCreateModal({ editId, onClose, onSaved }: { editId?
 
   const baseOptionErrors = [customers.error, categories.error].filter(Boolean);
   return (
-    <div className="order-create-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !saving && productEditorKey === null && onClose()}>
-      <section ref={orderPanelRef} className="order-create-modal" role="dialog" aria-modal={productEditorKey === null} aria-hidden={productEditorKey !== null ? true : undefined} aria-labelledby="order-create-title">
-        <header className="order-create-head bg-[#183f3a] text-[#fbfcf8]">
+    <div className="order-create-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !saving && productEditorKey === null && !customerEditorOpen && onClose()}>
+      <section ref={orderPanelRef} className="order-create-modal" role="dialog" aria-modal={productEditorKey === null && !customerEditorOpen} aria-hidden={productEditorKey !== null || customerEditorOpen ? true : undefined} aria-labelledby="order-create-title">
+        <header className="order-create-head bg-[var(--theme-order-create-header-surface)] text-[var(--theme-order-create-header-text)]">
           <div className="order-create-heading">
             <span className="order-create-mark" aria-hidden="true"><ClipboardList size={21} /></span>
             <div>
@@ -531,7 +544,10 @@ export default function OrderCreateModal({ editId, onClose, onSaved }: { editId?
                 <label htmlFor="order-customer">{translate("العميل")}{" "}<span aria-hidden="true">*</span></label>
                 {customers.loading ? <div className="order-create-skeleton" aria-label={translate("جارٍ تحميل العملاء")} aria-busy="true"><i /><i /></div> :
                   editId ? <div className="order-create-field-static">{customerLabel(customers.values.find((customer) => String(customer.id) === String(selectedCustomer)) || {}) || "—"}</div> :
-                  <CustomerSearchSelect customers={customers.values} selectedId={String(selectedCustomer)} onSelect={changeCustomer} disabled={saving || Boolean(customers.error)} />}
+                  <CustomerSearchSelect customers={customers.values} selectedId={String(selectedCustomer)} onSelect={changeCustomer} disabled={saving || Boolean(customers.error)} onCreate={() => {
+                    productReturnFocus.current = document.getElementById("order-customer");
+                    setCustomerEditorOpen(true);
+                  }} />}
               </div>
             </div>
           </section>
@@ -625,14 +641,22 @@ export default function OrderCreateModal({ editId, onClose, onSaved }: { editId?
           </footer>
         </form>
       </section>
+      {customerEditorOpen && <CustomerModal row={{}} onClose={() => setCustomerEditorOpen(false)} onSaved={(saved) => {
+        setCustomers((current) => ({ ...current, values: [...current.values.filter((customer) => String(customer.id) !== String(saved.id)), saved] }));
+        changeCustomer(String(saved.id));
+        setCustomerEditorOpen(false);
+      }} />}
       {activeProductLine && selectedCustomer && <CustomerProductModal
         key={activeProductLine.key}
         row={activeProductLine.newProduct || {}}
         fixedCustomerId={selectedCustomer}
         onClose={() => setProductEditorKey(null)}
         onSaved={() => {}}
-        onDraftSaved={(product) => {
-          updateLine(activeProductLine.key, { mode: "new", customerProductId: "", newProduct: product });
+        onAddedToOrder={(product) => {
+          setCustomerProducts((current) => [
+            ...current.filter((existing) => String(existing.id) !== String(product.id)), product,
+          ]);
+          updateLine(activeProductLine.key, { mode: "existing", customerProductId: String(product.id), newProduct: undefined });
           setProductEditorKey(null);
         }}
       />}

@@ -1,3 +1,5 @@
+import type { ProductionRoleBinding } from "./production-role";
+
 export type ProductionStage = "film" | "printing" | "cutting";
 export type ProductionStateScope = "management" | ProductionStage | "hall" | "warehouse" | "roll";
 export const productionPermissions = [
@@ -12,7 +14,9 @@ export const productionStageReadPermissions = {
 } as const;
 export type ProductionUser = {
   id: number; permissions: string[];
+  display_name?: string | null; display_name_ar?: string | null; username?: string | null;
   role_name?: string | null; role_name_ar?: string | null;
+  production_role_binding?: ProductionRoleBinding;
 };
 export const hasProductionPermission = (user: ProductionUser, ...keys: string[]) =>
   user.permissions.includes("admin") || keys.some(key => user.permissions.includes(key));
@@ -20,6 +24,7 @@ export type ProductSnapshot = {
   id: number; item_id: string | null; name: string | null; name_ar: string | null;
   customer_name: string | null; customer_name_ar: string | null;
   width: string | null; left_facing: string | null; right_facing: string | null;
+  thickness?: string | null;
   universal_thickness: string | null; cutting_length_cm: number | null; raw_material: string | null;
   printing_cylinder: string | null; punching: string | null; notes: string | null;
   front_print_colors: string[] | null; back_print_colors: string[] | null;
@@ -88,11 +93,15 @@ export type ProductionQueue = { id: number; production_order_id: number; stage: 
 export type StorageLocation = { id: number; name: string; name_ar: string; is_active: boolean };
 export type ReceiptItem = {
   id: number; production_order_id: number; customer_product_id: number; item_id: string | null;
-  location_id: number; quantity_kg: string; packaging: PackagingInput | null;
+  location_id: number; quantity_kg: string;
+  line_number?: number | null;
   production_order_number?: string; location_name?: string; location_name_ar?: string;
+  customer_name?: string | null; customer_name_ar?: string | null;
+  product_name?: string | null; product_name_ar?: string | null;
 };
 export type ProductionReceipt = {
   id: number; voucher_number: string; created_at: string; created_by: number | null; notes: string | null;
+  receiver_name?: string | null; receiver_name_ar?: string | null;
   items: ReceiptItem[];
 };
 export type InventoryRecord = {
@@ -100,6 +109,20 @@ export type InventoryRecord = {
   location_id: number; quantity_kg: string; production_order_number: string; batch_number: string | null;
   product: ProductSnapshot; location_name: string; location_name_ar: string;
   production_order_status?: string;
+};
+export type DeliveryStock = InventoryRecord & {
+  customer_id: string; order_number: string; received_kg: string; delivered_kg: string;
+  production_complete: boolean;
+};
+export type DeliveryInput = {
+  request_id: string; notes?: string;
+  items: { inventory_id: number; quantity_kg: string }[];
+};
+export type FinishedDelivery = {
+  id: number; voucher_number: string; customer_id: string; customer_name: string;
+  customer_name_ar: string | null; created_at: string; notes: string | null;
+  items: { id: number; inventory_id: number; production_order_id: number;
+    production_order_number: string; item_id: string; product: ProductSnapshot; quantity_kg: string }[];
 };
 export type InventoryMovement = {
   id: number; receipt_id: number; receipt_item_id: number; quantity_kg: string; created_at: string;
@@ -124,10 +147,9 @@ export type ProductionHistoryFilter = {
 export type ProductionHistoryPage<K extends ProductionHistoryKind> = {
   records: ProductionHistoryRecords[K][]; next: number | null;
 };
-export type PackagingInput = { roll_weight_grams: string; rolls_per_unit: number; units: number };
 export type ReceiptInput = {
   request_id: string; notes?: string;
-  items: { production_order_id: number; location_id: number; quantity_kg: string; packaging?: PackagingInput }[];
+  items: { production_order_id: number; location_id?: number; quantity_kg: string }[];
 };
 export type FilmInput = {
   request_id: string; machine_id: string; weight_kg: string;
@@ -157,15 +179,3 @@ export const stageAfterFilm = (printed: boolean, rollProduct: boolean, inlinePri
 export const stageAfterPrinting = (rollProduct: boolean) => rollProduct ? "done" : "printing";
 export const eligibleForCutting = (roll: Pick<ProductionRollRecord, "stage" | "is_printed" | "is_roll_product" | "printed_at">) =>
   !roll.is_roll_product && roll.stage !== "done" && (!roll.is_printed || !!roll.printed_at);
-export function packagingMatches(quantityKg: string, input: PackagingInput) {
-  if (!/^\d{1,8}(?:\.\d{1,4})?$/.test(input.roll_weight_grams) ||
-      !Number.isSafeInteger(input.rolls_per_unit) || input.rolls_per_unit <= 0 ||
-      !Number.isSafeInteger(input.units) || input.units <= 0) return false;
-  const [whole, fraction = ""] = input.roll_weight_grams.split(".");
-  const gramTenThousandths = BigInt(whole) * 10000n + BigInt(fraction.padEnd(4, "0"));
-  if (gramTenThousandths <= 0n) return false;
-  const expected = gramTenThousandths * BigInt(input.rolls_per_unit) * BigInt(input.units);
-  const actual = kgHundredths(quantityKg) * 100000n;
-  const difference = expected > actual ? expected - actual : actual - expected;
-  return difference * 100n <= expected * 2n + 10000000n;
-}

@@ -1,17 +1,20 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import type { ProductionHistoryKind, ProductionHistoryFilter, ProductionHistoryRecords, StorageLocation } from "../../../../shared/production";
+import { kgHundredths } from "../../../../shared/production";
 import { productionApi } from "../../lib/production-api";
+import { printReceipt } from "../../lib/receipt-print";
 import { FilmDurationSummary } from "./FilmDurationSummary";
+import { formatNumber } from "../../lib/format-number";
 
 type Record = ProductionHistoryRecords[ProductionHistoryKind];
 type Props = {
   kind: ProductionHistoryKind; language: string; title: string; orderId?: number;
-  locations?: StorageLocation[]; refresh?: unknown;
+  locations?: StorageLocation[]; refresh?: unknown; defaultOpen?: boolean; presentation?: "default" | "cards";
 };
-export function ProductionHistory({ kind, language, title, orderId, locations = [], refresh }: Props) {
+export function ProductionHistory({ kind, language, title, orderId, locations = [], refresh, defaultOpen = false, presentation = "default" }: Props) {
   const en = language === "en", label = (ar: string, english: string) => en ? english : ar;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [draft, setDraft] = useState({ search: "", status: "", from: "", to: "", location: "" });
   const [filter, setFilter] = useState<ProductionHistoryFilter>({});
   const [cursors, setCursors] = useState<(number | undefined)[]>([undefined]);
@@ -40,7 +43,25 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
     active: "قيد التنفيذ", completed: "مكتمل", cancelled: "ملغي", archived: "مؤرشف",
   }[status] ?? status);
   const n = (value: unknown, digits = 2) => new Intl.NumberFormat(en ? "en-US" : "ar-SA-u-nu-latn", { maximumFractionDigits: digits }).format(Number(value ?? 0));
+  const receiptTotal = (items: ProductionHistoryRecords["receipts"]["items"]) => {
+    const cents = items.reduce((sum, item) => sum + kgHundredths(String(item.quantity_kg)), 0n);
+    return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
+  };
   const local = (ar?: string | null, english?: string | null) => (en ? (english && !/[\u0600-\u06ff]/.test(english) ? english : "") : ar || english) || "—";
+  const receiptItemName = (item: ProductionHistoryRecords["receipts"]["items"][number], kind: "customer" | "product") => {
+    const enriched = item as typeof item & {
+      customer_name?: string | null; customer_name_ar?: string | null;
+      product_name?: string | null; product_name_ar?: string | null;
+    };
+    return kind === "customer"
+      ? local(enriched.customer_name_ar, enriched.customer_name)
+      : local(enriched.product_name_ar, enriched.product_name);
+  };
+  const receiptReceiver = (receipt: ProductionHistoryRecords["receipts"]) => {
+    const enriched = receipt as typeof receipt & { receiver_name?: string | null; receiver_name_ar?: string | null };
+    const name = en ? (enriched.receiver_name && !/[\u0600-\u06ff]/.test(enriched.receiver_name) ? enriched.receiver_name : "") : enriched.receiver_name_ar?.trim() || enriched.receiver_name?.trim() || "";
+    return name || (receipt.created_by === null ? "—" : `#${receipt.created_by}`);
+  };
   const date = (value?: string | null) => value ? new Date(value).toLocaleString(en ? "en-GB" : "ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh" }) : "—";
   const render = (record: Record) => {
     if (kind === "orders") {
@@ -67,26 +88,46 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
     }
     if (kind === "receipts") {
       const receipt = record as ProductionHistoryRecords["receipts"];
-      return <details className="prod-voucher" key={receipt.id}><summary><strong className="prod-number">{receipt.voucher_number}</strong> · {date(receipt.created_at)} · {n(receipt.items.length)} {label("بنود", "lines")}</summary>
+      if (presentation === "cards") return <article className="warehouse-receipt-history-card" key={receipt.id}>
+        <header><div><strong>{receipt.voucher_number}</strong><time dateTime={receipt.created_at}>{date(receipt.created_at)}</time></div><bdi>{receiptTotal(receipt.items)} kg</bdi></header>
+        <button type="button" className="prod-btn secondary" data-print-receipt={receipt.id} onClick={()=>printReceipt(receipt,language)}>{label("طباعة A4", "Print A4")}</button>
+        <p className="warehouse-receipt-history-receiver">{label("المستلم", "Receiver")}: {receiptReceiver(receipt)}</p>
         {receipt.notes && <p>{receipt.notes}</p>}
-        {receipt.items.map(item => <div className="prod-measure" key={item.id}>
-          <span>{item.production_order_number} · #{item.customer_product_id} · {item.item_id} · {local(item.location_name_ar, item.location_name)}</span>
-          <strong>{n(item.quantity_kg)} kg</strong>
-          {item.packaging && <small>{n(item.packaging.roll_weight_grams, 4)} g × {n(item.packaging.rolls_per_unit)} × {n(item.packaging.units)}</small>}
+        <div className="warehouse-receipt-items">{receipt.items.map((item, index) => <div className="warehouse-receipt-history-line" key={item.id}>
+          <span>{String(item.line_number ?? index + 1).padStart(2, "0")}</span>
+          <div><strong>{item.production_order_number ?? `#${item.production_order_id}`}</strong>
+            <small data-receipt-history-customer>{label("العميل", "Customer")}: {receiptItemName(item, "customer")}</small>
+            <small data-receipt-history-item>{label("الصنف", "Item")}: {receiptItemName(item, "product")}</small>
+            <small>{item.item_id ?? "—"} · {local(item.location_name_ar, item.location_name)}</small>
+          </div><bdi>{String(item.quantity_kg)} kg</bdi>
+        </div>)}</div>
+      </article>;
+      return <details className="prod-voucher" key={receipt.id}><summary><strong className="prod-number">{receipt.voucher_number}</strong> · {date(receipt.created_at)} · {n(receipt.items.length)} {label("بنود", "lines")}</summary>
+        <button type="button" className="prod-btn secondary" data-print-receipt={receipt.id} onClick={()=>printReceipt(receipt,language)}>{label("طباعة A4", "Print A4")}</button>
+        <p>{label("المستلم", "Receiver")}: {receiptReceiver(receipt)}</p>
+        {receipt.notes && <p>{receipt.notes}</p>}
+         {receipt.items.map((item, index) => <div className="prod-measure" key={item.id}>
+           <span>{String(item.line_number ?? index + 1).padStart(2, "0")} · {item.production_order_number} · {label("العميل", "Customer")}: {receiptItemName(item, "customer")} · {label("الصنف", "Item")}: {receiptItemName(item, "product")} · {item.item_id ?? "—"} · {local(item.location_name_ar, item.location_name)}</span>
+           <strong>{String(item.quantity_kg)} kg</strong>
         </div>)}</details>;
     }
     if (kind === "inventory") {
       const balance = record as ProductionHistoryRecords["inventory"];
+      if (presentation === "cards") return <article className="warehouse-inventory-card" key={balance.id}>
+        <header><div><strong className="warehouse-order-number">{balance.production_order_number}</strong><small>{local(balance.location_name_ar, balance.location_name)}</small></div><bdi>{formatNumber(balance.quantity_kg)} kg</bdi></header>
+        <div className="warehouse-order-product"><strong>{local(balance.product.name_ar, balance.product.name)}</strong><span>{local(balance.product.customer_name_ar, balance.product.customer_name)}</span></div>
+      </article>;
       return <div className="prod-record" key={balance.id}><strong>{local(balance.product.name_ar, balance.product.name)}</strong>
         <p>{local(balance.product.customer_name_ar, balance.product.customer_name)} · {balance.production_order_number} · {balance.batch_number ?? "—"}</p>
-        <p>{local(balance.location_name_ar, balance.location_name)} · {n(balance.quantity_kg)} kg · {statusName(balance.production_order_status ?? "")}</p></div>;
+        <p>{local(balance.location_name_ar, balance.location_name)} · {formatNumber(balance.quantity_kg)} kg · {statusName(balance.production_order_status ?? "")}</p>
+      </div>;
     }
     const movement = record as ProductionHistoryRecords["movements"];
     const location = locations.find(value => value.id === movement.location_id);
     return <div className="prod-record" key={movement.id}><strong>{movement.voucher_number} · {movement.production_order_number}</strong>
       <p>#{movement.receipt_item_id} · {local(location?.name_ar, location?.name)} · {n(movement.quantity_kg)} kg · {date(movement.created_at)}</p></div>;
   };
-  return <details className="prod-card prod-history" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+  return <details className={`prod-card prod-history${presentation === "cards" ? " warehouse-paged-cards" : ""}`} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
     <summary className="prod-card-head"><h3>{title}</h3></summary>
     {open && <div className="prod-card-body">
       <form className="prod-form-grid" onSubmit={search}>
@@ -99,7 +140,7 @@ export function ProductionHistory({ kind, language, title, orderId, locations = 
       </form>
       {loading && <p role="status">{label("جارٍ التحميل…", "Loading…")}</p>}
       {error && <div className="prod-error" role="alert">{error}<button className="prod-btn secondary" onClick={() => setRetry(value => value + 1)}>{label("إعادة المحاولة", "Retry")}</button></div>}
-      {page && <><div className="prod-list" style={{ marginTop: 14 }}>{page.records.map(render)}{!page.records.length && <p>{label("لا توجد نتائج", "No results")}</p>}</div>
+      {page && <><div className={`prod-list${presentation === "cards" ? kind === "inventory" ? " warehouse-inventory-grid" : kind === "receipts" ? " warehouse-receipt-ledger" : "" : ""}`} style={{ marginTop: 14 }}>{page.records.map(render)}{!page.records.length && <p>{label("لا توجد نتائج", "No results")}</p>}</div>
         <div className="prod-inline" style={{ marginTop: 14 }}>
           <button className="prod-btn secondary" disabled={cursors.length === 1} onClick={() => setCursors(value => value.slice(0, -1))}>{label("السابق", "Previous")}</button>
           <span>{label("صفحة", "Page")} {n(cursors.length)}</span>

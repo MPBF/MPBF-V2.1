@@ -1,0 +1,494 @@
+import { Printer, Plus, Trash2, X } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type MutableRefObject,
+} from "react";
+import { createPortal } from "react-dom";
+
+import type { ProductionOrderRecord, ProductionReceipt } from "../../../../shared/production";
+import { normalizeReceiptQuantity, type ReceiptDraft } from "../../../../shared/receipt-draft";
+import { useReceiptBranding } from "../../lib/receipt-branding";
+import { ReceiptFactoryHeader } from "./ReceiptFactoryHeader";
+import { ReceiptVoucherPreview } from "./ReceiptVoucherPreview";
+import { receiptVoucherCopy } from "./receipt-voucher-copy";
+import "./receipt-voucher.css";
+
+export type { ReceiptDraft } from "../../../../shared/receipt-draft";
+
+type Props = {
+  language: string;
+  eligible: ProductionOrderRecord[];
+  drafts: ReceiptDraft[];
+  notes: string;
+  saving: boolean;
+  locked?: boolean;
+  error: string;
+  savedReceipt: ProductionReceipt | null;
+  openerRef: MutableRefObject<HTMLButtonElement | null>;
+  onDraftChange: (index: number, key: keyof ReceiptDraft, value: string) => void;
+  onAddLine: () => void;
+  onRemoveLine: (index: number) => void;
+  onNotesChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onRetry?: () => void;
+  onClose: () => void;
+  onPrint?: (receipt: ProductionReceipt) => void;
+  customerLabel: (order: ProductionOrderRecord) => string;
+  number: (value: string | number | null | undefined, language: string, digits?: number) => string;
+  currentReceiverLabel?: string;
+};
+
+const parseCents = (weight: string | number | null | undefined): bigint => {
+  if (weight === null || weight === undefined) return 0n;
+  const raw = String(weight).trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) return 0n;
+  const [whole, fraction = ""] = raw.split(".");
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
+};
+
+const formatCents = (cents: bigint): string => {
+  const isNegative = cents < 0n;
+  const abs = isNegative ? -cents : cents;
+  const whole = abs / 100n;
+  const fraction = String(abs % 100n).padStart(2, "0");
+  return `${isNegative ? "-" : ""}${whole}.${fraction}`;
+};
+
+export function ReceiptVoucherModal(props: Props) {
+  const {
+    language, eligible, drafts, notes, saving, locked = false, error, savedReceipt, openerRef,
+    onDraftChange, onAddLine, onRemoveLine, onNotesChange, onSubmit, onRetry, onClose,
+    onPrint, customerLabel, number,
+  } = props;
+
+  const t = receiptVoucherCopy(language);
+  const { branding, loading: brandingLoading, error: brandingError } = useReceiptBranding();
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const previewRef = useRef<HTMLElement | null>(null);
+  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const previewOpenRef = useRef(false);
+  const wasPreviewOpen = useRef(false);
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  previewOpenRef.current = previewOpen;
+  const editable = !saving && !locked;
+  const currentReceiverLabel = props.currentReceiverLabel?.trim() || `#${(savedReceipt as (ProductionReceipt & { created_by?: number | null }) | null)?.created_by ?? "—"}`;
+  const receiverLabel = savedReceipt
+    ? (() => {
+        const saved = savedReceipt as ProductionReceipt & { receiver_name?: string | null; receiver_name_ar?: string | null };
+        const ar = saved.receiver_name_ar?.trim() ?? "";
+        const en = saved.receiver_name?.trim() ?? "";
+        const id = saved.created_by === null ? "—" : `#${saved.created_by}`;
+        return language === "en" ? (en && !/[\u0600-\u06ff]/.test(en) ? en : id) : (ar || en || id);
+      })()
+    : currentReceiverLabel;
+
+  // قفل الـ Scroll فقط عند الفتح والإنهاء
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
+  // إدارة Focus والـ Keyboard Trap
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const previous = openerRef.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+
+    const getFocusable = (root: ParentNode) =>
+      [...root.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )].filter((el) => el.offsetParent !== null);
+
+    (getFocusable(dialog)[0] ?? dialog).focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (previewOpenRef.current) {
+          setPreviewOpen(false);
+        } else {
+          onClose();
+        }
+        return;
+      }
+
+      if (event.key === "Tab") {
+        const activeDialog = (previewOpenRef.current ? previewRef.current : dialog) ?? dialog;
+        const items = getFocusable(activeDialog);
+        if (!items.length) {
+          event.preventDefault();
+          activeDialog.focus();
+          return;
+        }
+
+        const isFirst = document.activeElement === items[0];
+        const isLast = document.activeElement === items[items.length - 1];
+
+        if (event.shiftKey && isFirst) {
+          event.preventDefault();
+          items[items.length - 1]?.focus();
+        } else if (!event.shiftKey && isLast) {
+          event.preventDefault();
+          items[0]?.focus();
+        } else if (!activeDialog.contains(document.activeElement)) {
+          event.preventDefault();
+          (event.shiftKey ? items[items.length - 1] : items[0])?.focus();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [onClose, openerRef]);
+
+  useEffect(() => {
+    if (previewOpen) {
+      previewRef.current?.focus();
+    } else if (wasPreviewOpen.current) {
+      previewTriggerRef.current?.focus();
+    }
+    wasPreviewOpen.current = previewOpen;
+  }, [previewOpen]);
+
+  const total = useMemo(() => {
+    const isEmptyDraft = drafts.every((row) => !row.orderId.trim() && !row.quantity.trim());
+    if (isEmptyDraft && savedReceipt) {
+      return formatCents(savedReceipt.items.reduce((sum, item) => sum + parseCents(item.quantity_kg), 0n));
+    }
+    let centsTotal = 0n;
+    for (const row of drafts) {
+      try { centsTotal += parseCents(normalizeReceiptQuantity(row.quantity)); }
+      catch { return "—"; }
+    }
+    return formatCents(centsTotal);
+  }, [drafts, savedReceipt]);
+
+  const previewTotal = useMemo(() => {
+    if (!drafts.length) return null;
+    let cents = 0n;
+    for (const row of drafts) {
+      try { cents += parseCents(normalizeReceiptQuantity(row.quantity)); }
+      catch { return null; }
+    }
+    return formatCents(cents);
+  }, [drafts]);
+
+  // تنسيق التواريخ
+  const draftDateTime = useMemo(() => {
+    return t.dateAssignedOnSave;
+  }, [t.dateAssignedOnSave]);
+
+  const dateTime = useMemo(() => {
+    if (!savedReceipt?.created_at) return t.dateAssignedOnSave;
+    return new Intl.DateTimeFormat(
+      language === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB",
+      { dateStyle: "medium", timeZone: "Asia/Riyadh" }
+    ).format(new Date(savedReceipt.created_at));
+  }, [savedReceipt?.created_at, language, t.dateAssignedOnSave]);
+
+  return createPortal(
+    <div
+      className="production receipt-voucher-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="receipt-voucher-dialog"
+        role="dialog"
+        data-receipt-voucher
+        aria-modal="true"
+        aria-labelledby="receipt-voucher-title"
+        dir={language === "ar" ? "rtl" : "ltr"}
+        tabIndex={-1}
+      >
+          <ReceiptFactoryHeader branding={branding} loading={brandingLoading} error={brandingError} language={language} copy={t} />
+        <header className="receipt-voucher-header">
+          <div>
+            <span className="receipt-voucher-kicker">PRODUCTION / STOCK</span>
+            <h2 id="receipt-voucher-title">{t.title}</h2>
+            <p>{t.subtitle}</p>
+          </div>
+          <div className="receipt-voucher-header-actions">
+            <button
+              className="receipt-voucher-print"
+              type="button"
+              aria-label={t.print}
+              title={t.print}
+              disabled={!savedReceipt || !onPrint}
+              onClick={() => savedReceipt && onPrint?.(savedReceipt)}
+            >
+              <Printer />
+              <span>{t.print}</span>
+            </button>
+            <button
+              className="receipt-voucher-close"
+              type="button"
+              aria-label={t.close}
+              onClick={onClose}
+            >
+              <X />
+            </button>
+          </div>
+        </header>
+
+        <section
+          className={`receipt-voucher-saved${savedReceipt ? "" : " is-pending"}`}
+          role={savedReceipt ? "status" : undefined}
+          aria-live={savedReceipt ? "polite" : undefined}
+          data-receipt-saved={
+            savedReceipt
+              ? JSON.stringify({
+                  voucher_number: savedReceipt.voucher_number,
+                  created_at: savedReceipt.created_at,
+                })
+              : undefined
+          }
+        >
+          <div className="receipt-voucher-metadata-grid">
+            <div className="receipt-voucher-meta-item" data-receipt-meta="number">
+              {savedReceipt && <strong>{t.saved}</strong>}
+              <small>{t.voucher}</small>
+              {savedReceipt ? (
+                <bdi data-receipt-voucher-number>{savedReceipt.voucher_number}</bdi>
+              ) : (
+                <span className="receipt-voucher-pending-number">{t.assignedOnSave}</span>
+              )}
+            </div>
+            <div className="receipt-voucher-meta-item" data-receipt-meta="date">
+              <small>{t.date}</small>
+              <bdi data-receipt-created-at={savedReceipt?.created_at}>{dateTime}</bdi>
+            </div>
+            <div className="receipt-voucher-meta-item" data-receipt-meta="source">
+              <small>{t.source}</small>
+              <bdi>{t.sourceName}</bdi>
+            </div>
+            <div className="receipt-voucher-meta-item" data-receipt-meta="destination">
+              <small>{t.destination}</small>
+              <bdi>{t.destName}</bdi>
+            </div>
+          </div>
+        </section>
+
+        <div className="receipt-voucher-receiver" data-receipt-receiver>
+          <small>{t.receiver}</small>
+          <strong>{receiverLabel}</strong>
+          {!savedReceipt && <em>{t.plannedReceiver}</em>}
+        </div>
+
+        <form onSubmit={onSubmit}>
+          <div className="receipt-voucher-table-wrap" role="region" tabIndex={0} aria-label={t.title} data-receipt-lines-scroll>
+            <table className="receipt-voucher-table" aria-label={t.title}>
+              <thead>
+                <tr>
+                  <th scope="col">{t.line}</th>
+                  <th scope="col">{t.order}</th>
+                  <th scope="col">{t.customer}</th>
+                  <th scope="col">{t.item}</th>
+                  <th scope="col">{t.availableColumn}</th>
+                  <th scope="col">{t.quantity}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drafts.map((row, index) => {
+                  const order = eligible.find((item) => String(item.id) === row.orderId);
+                  const rowKey = (row as { id?: string | number }).id ?? index;
+
+                  const handleFieldChange =
+                    (field: keyof ReceiptDraft) =>
+                    (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+                      onDraftChange(index, field, e.target.value);
+
+                  return (
+                    <tr className="receipt-voucher-line" key={rowKey}>
+                      <td data-label={t.line}>
+                        <div className="receipt-voucher-table-line">
+                          {String(index + 1).padStart(2, "0")}
+                          {drafts.length > 1 && (
+                            <button
+                              className="receipt-voucher-remove"
+                              type="button"
+                              aria-label={`${t.remove} ${index + 1}`}
+                              disabled={!editable}
+                              onClick={() => onRemoveLine(index)}
+                            >
+                              <Trash2 />
+                              <span>{t.remove}</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+
+                      <td data-label={t.order}>
+                        <div className="prod-field receipt-voucher-order-select">
+                          <select
+                            id={`receipt-order-${index}`}
+                            data-receipt-order={index}
+                            value={row.orderId}
+                            required
+                            disabled={!editable}
+                            aria-label={t.order}
+                            onChange={handleFieldChange("orderId")}
+                          >
+                            <option value="">{t.choose}</option>
+                            {eligible.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.production_order_number}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </td>
+
+                      <td className="receipt-voucher-name-cell" data-label={t.customer} data-receipt-customer={index}>
+                        <span className="receipt-voucher-name-value">{order ? customerLabel(order) : "—"}</span>
+                      </td>
+
+                      <td className="receipt-voucher-name-cell" data-label={t.item} data-receipt-item={index}>
+                        <span className="receipt-voucher-name-value">
+                          {order
+                            ? (language === "en"
+                                ? (order.product?.name && !/[\u0600-\u06ff]/.test(order.product.name) ? order.product.name : "—")
+                                : order.product?.name_ar?.trim() || order.product?.name?.trim() || "—")
+                            : "—"}
+                        </span>
+                      </td>
+
+                      <td data-label={t.availableColumn}>
+                        <bdi className="receipt-voucher-available">
+                          {order ? number(order.remaining_kg, language, 2) : "—"} kg
+                        </bdi>
+                      </td>
+
+                      <td data-label={t.quantity}>
+                        <input
+                          className="receipt-voucher-requested"
+                          id={`receipt-quantity-${index}`}
+                          data-receipt-quantity={index}
+                          type="text"
+                          inputMode="decimal"
+                          value={row.quantity}
+                          required
+                          disabled={!editable}
+                          aria-label={t.quantity}
+                          onChange={handleFieldChange("quantity")}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <button
+            className="prod-btn secondary receipt-voucher-add"
+            type="button"
+            disabled={!editable || drafts.length >= 100 || !eligible.length}
+            onClick={onAddLine}
+          >
+            <Plus />
+            {t.addLine}
+          </button>
+
+          <div className="prod-field receipt-voucher-notes">
+            <label htmlFor="receipt-notes">{t.notes}</label>
+            <textarea
+              id="receipt-notes"
+              rows={2}
+              value={notes}
+              maxLength={2000}
+              disabled={!editable}
+              onChange={(e) => onNotesChange(e.target.value)}
+            />
+          </div>
+
+          <div className="receipt-voucher-total" data-receipt-total={total}>
+            <span>{t.total}</span>
+            <strong>
+              <bdi data-receipt-total-value>
+                {total === "—" ? "—" : `${total} kg`}
+              </bdi>
+            </strong>
+          </div>
+
+          {error && (
+            <div className="prod-error receipt-voucher-error" role="alert">
+              <span>{error}</span>
+              {!saving && onRetry && (
+                <button className="prod-btn quiet" type="button" onClick={onRetry}>
+                  {t.retry}
+                </button>
+              )}
+            </div>
+          )}
+
+          <footer className="receipt-voucher-footer">
+            <button
+              className="prod-btn secondary"
+              type="button"
+              ref={previewTriggerRef}
+              data-receipt-preview-trigger
+              onClick={() => setPreviewOpen(true)}
+            >
+              {t.preview}
+            </button>
+            <button
+              className="prod-btn"
+              data-receipt-submit
+              type="submit"
+              disabled={saving || locked || !eligible.length}
+              aria-busy={saving}
+            >
+              {t.save}
+            </button>
+            <button
+              className="prod-btn quiet"
+              type="button"
+              disabled={saving}
+              onClick={onClose}
+            >
+              {t.closeBtn}
+            </button>
+          </footer>
+        </form>
+
+        {previewOpen && (
+          <ReceiptVoucherPreview
+            language={language}
+            copy={t}
+            eligible={eligible}
+            drafts={drafts}
+            savedReceipt={savedReceipt}
+            dateTime={dateTime}
+            draftDateTime={draftDateTime}
+            notes={notes}
+            total={previewTotal}
+            branding={branding}
+            brandingLoading={brandingLoading}
+            brandingError={brandingError}
+            currentReceiverLabel={currentReceiverLabel}
+            previewRef={previewRef}
+            onClose={() => setPreviewOpen(false)}
+            number={number}
+          />
+        )}
+      </section>
+    </div>,
+    document.body
+  );
+}

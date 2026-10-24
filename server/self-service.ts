@@ -14,6 +14,8 @@ import { z } from "zod";
 
 import { requireAuth, requirePermission } from "./auth";
 import { db } from "./db";
+import { requestInput, reviewInput } from "./self-service-inputs";
+import { monthlyAttendanceStatuses, riyadhCalendarDay } from "./self-attendance-history";
 import {
   attendanceSessionSummary,
   canRecordAttendance,
@@ -57,15 +59,6 @@ const messageInput = z.object({
   recipient_id: z.number().int().positive(),
   body: z.string().trim().min(1, "محتوى الرسالة مطلوب").max(4000, "الرسالة طويلة جدًا"),
   reply_to_id: z.number().int().positive().optional(),
-}).strict();
-const requestInput = z.object({
-  type: z.enum(["leave", "permission", "other"]),
-  title: z.string().trim().min(1, "عنوان الطلب مطلوب").max(200),
-  details: z.string().trim().min(1, "تفاصيل الطلب مطلوبة").max(10000),
-}).strict();
-const reviewInput = z.object({
-  status: z.enum(["approved", "rejected"]),
-  response: z.string().trim().max(4000).default(""),
 }).strict();
 const violationInput = z.object({
   user_id: z.number().int().positive(),
@@ -135,10 +128,11 @@ router.get("/attendance", handle(async (req, res) => {
   const serverNow = new Date();
   const shiftDateStart = month + "-01";
   const nextMonth = monthForOffset(month, 1);
-  const [events, sessionRows, assignmentRows] = await Promise.all([
+  const [events, sessionRows, assignmentRows, historicalAssignments, approvedLeaves, profiles] = await Promise.all([
     db.select({
       id: attendance_events.id,
       session_id: attendance_events.session_id,
+      shift_date: attendance_sessions.shift_date,
       action: attendance_events.action,
       occurred_at: attendance_events.occurred_at,
       latitude: attendance_events.latitude,
@@ -187,6 +181,35 @@ router.get("/attendance", handle(async (req, res) => {
         eq(shift_definitions.is_active, true),
       ))
       .limit(1),
+    db.select({
+      assignedAt: user_shift_assignments.assigned_at,
+      unassignedAt: user_shift_assignments.unassigned_at,
+      shift: shift_definitions,
+    }).from(user_shift_assignments)
+      .innerJoin(shift_definitions, eq(user_shift_assignments.shift_id, shift_definitions.id))
+      .where(and(
+        eq(user_shift_assignments.user_id, userId),
+        sql`${user_shift_assignments.assigned_at} < ${end}`,
+        or(isNull(user_shift_assignments.unassigned_at), sql`${user_shift_assignments.unassigned_at} >= ${start}`),
+        or(eq(shift_definitions.is_active, true), sql`${user_shift_assignments.unassigned_at} IS NOT NULL`),
+      )),
+    db.select({ start: administrative_requests.leave_start_date, end: administrative_requests.leave_end_date })
+      .from(administrative_requests).where(and(
+        eq(administrative_requests.user_id, userId),
+        eq(administrative_requests.type, "leave"),
+        eq(administrative_requests.status, "approved"),
+        or(
+          isNull(administrative_requests.leave_start_date),
+          isNull(administrative_requests.leave_end_date),
+          and(sql`${administrative_requests.leave_start_date} < ${nextMonth}`, sql`${administrative_requests.leave_end_date} >= ${shiftDateStart}`),
+        ),
+      )),
+    db.select({
+      serviceStartDate: users.service_start_date,
+      createdAt: users.created_at,
+      included: users.include_in_attendance,
+      systemUser: users.is_system_user,
+    }).from(users).where(eq(users.id, userId)).limit(1),
   ]);
   const assignedShift = assignmentRows[0] ? shiftDefinition(assignmentRows[0].shift) : null;
   const shiftWindow = assignedShift ? currentShiftWindow(assignedShift, serverNow) : null;
@@ -207,7 +230,20 @@ router.get("/attendance", handle(async (req, res) => {
   const withinShiftWindow = Boolean(shiftWindow);
   const daysPresent = completedSessionDaysInMonth(sessionRows, month);
   const unresolvedIncompleteSession = sessionRows.find((row) => isPriorIncompleteSession(row, serverNow));
+  const profile = profiles[0];
+  const dayHistory = monthlyAttendanceStatuses({
+    month, now: serverNow,
+    assignments: historicalAssignments.map((row) => ({ ...row, shift: shiftDefinition(row.shift) })),
+    recordedDays: [
+      ...events.map((event) => event.shift_date ?? riyadhCalendarDay(event.occurred_at)),
+      ...sessionRows.map((row) => row.shift_date),
+    ],
+    approvedLeaves,
+    serviceStartDate: profile?.serviceStartDate ?? (profile?.createdAt ? riyadhCalendarDay(profile.createdAt) : null),
+    included: Boolean(profile?.included && !profile?.systemUser),
+  });
   res.json({
+    ...dayHistory,
     events: events.map((event) => ({
       ...event,
       latitude: Number(event.latitude),
@@ -473,6 +509,8 @@ router.get("/requests", handle(async (req, res) => {
     type: administrative_requests.type,
     title: administrative_requests.title,
     details: administrative_requests.details,
+    leave_start_date: administrative_requests.leave_start_date,
+    leave_end_date: administrative_requests.leave_end_date,
     status: administrative_requests.status,
     response: administrative_requests.response,
     created_at: administrative_requests.created_at,
@@ -495,6 +533,8 @@ router.post("/requests", handle(async (req, res) => {
     type: administrative_requests.type,
     title: administrative_requests.title,
     details: administrative_requests.details,
+    leave_start_date: administrative_requests.leave_start_date,
+    leave_end_date: administrative_requests.leave_end_date,
     status: administrative_requests.status,
     response: administrative_requests.response,
     created_at: administrative_requests.created_at,
@@ -539,7 +579,7 @@ router.post("/violations/:id/ack", handle(async (req, res) => {
   res.json({ success: true });
 }));
 
-router.get("/admin/requests", admin, handle(async (_req, res) => {
+router.get("/admin/requests", admin, handle(async (req, res) => {
   const rows = await db.select({
     id: administrative_requests.id,
     user_id: administrative_requests.user_id,
@@ -547,6 +587,8 @@ router.get("/admin/requests", admin, handle(async (_req, res) => {
     type: administrative_requests.type,
     title: administrative_requests.title,
     details: administrative_requests.details,
+    leave_start_date: administrative_requests.leave_start_date,
+    leave_end_date: administrative_requests.leave_end_date,
     status: administrative_requests.status,
     response: administrative_requests.response,
     created_at: administrative_requests.created_at,
@@ -554,6 +596,11 @@ router.get("/admin/requests", admin, handle(async (_req, res) => {
   })
     .from(administrative_requests)
     .innerJoin(users, eq(administrative_requests.user_id, users.id))
+    .where(req.query.missing_leave_dates === "1" ? and(
+      eq(administrative_requests.type, "leave"),
+      eq(administrative_requests.status, "approved"),
+      or(isNull(administrative_requests.leave_start_date), isNull(administrative_requests.leave_end_date)),
+    ) : undefined)
     .orderBy(desc(administrative_requests.created_at), desc(administrative_requests.id))
     .limit(500);
   res.json(rows);
@@ -562,21 +609,31 @@ router.get("/admin/requests", admin, handle(async (_req, res) => {
 router.patch("/admin/requests/:id", admin, handle(async (req, res) => {
   const id = idParam.parse(req.params.id);
   const input = reviewInput.parse(req.body);
-  const [updated] = await db.update(administrative_requests)
-    .set({
-      status: input.status,
-      response: input.response || null,
-      responded_at: new Date(),
-    })
-    .where(eq(administrative_requests.id, id))
-    .returning({
+  const updated = await db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(administrative_requests)
+      .where(eq(administrative_requests.id, id)).limit(1).for("update");
+    if (!existing) throw httpError("الطلب غير موجود", 404);
+    const datesProvided = input.leave_start_date !== undefined;
+    if (datesProvided && existing.type !== "leave") throw httpError("تواريخ الإجازة متاحة لطلبات الإجازة فقط", 400);
+    const start = input.leave_start_date ?? existing.leave_start_date;
+    const end = input.leave_end_date ?? existing.leave_end_date;
+    if (input.status === "approved" && existing.type === "leave" && (!start || !end || start > end)) {
+      throw httpError("تاريخ بداية ونهاية الإجازة مطلوبان", 400);
+    }
+    const [row] = await tx.update(administrative_requests).set({
+      ...(input.status ? { status: input.status, response: input.response || null, responded_at: new Date() } : {}),
+      ...(datesProvided ? { leave_start_date: start, leave_end_date: end } : {}),
+    }).where(eq(administrative_requests.id, id)).returning({
       id: administrative_requests.id,
       user_id: administrative_requests.user_id,
       status: administrative_requests.status,
       response: administrative_requests.response,
       responded_at: administrative_requests.responded_at,
+      leave_start_date: administrative_requests.leave_start_date,
+      leave_end_date: administrative_requests.leave_end_date,
     });
-  if (!updated) throw httpError("الطلب غير موجود", 404);
+    return row;
+  });
   res.json(updated);
 }));
 

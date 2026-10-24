@@ -6,6 +6,24 @@ import {
 } from "../client/src/components/customer-product-form";
 
 describe("customer product form state and payload", () => {
+  it("defaults new products to kilo, 1000 displayed grams stored as 1 kg, and packing 20", () => {
+    const form = initializeCustomerProductForm({ customer_id: "C1" });
+    expect(form).toMatchObject({ cutting_unit: "كيلو", unit_weight_kg: "1", unit_quantity: "20" });
+    const payload = buildCustomerProductPayload(form);
+    expect(payload).toMatchObject({ cutting_unit: "كيلو", unit_weight_kg: "1", unit_quantity: 20 });
+  });
+  it("does not apply new packaging defaults to blank historical products", () => {
+    const form = initializeCustomerProductForm({
+      id: 17, customer_id: "C1", cutting_unit: null, unit_weight_kg: null, unit_quantity: null,
+    });
+    expect(form).toMatchObject({ cutting_unit: "", unit_weight_kg: "", unit_quantity: "" });
+  });
+  it("preserves supplied packaging values and deliberate blank selections in new drafts", () => {
+    expect(initializeCustomerProductForm({ cutting_unit: "باكت", unit_weight_kg: "0.25", unit_quantity: 5 }))
+      .toMatchObject({ cutting_unit: "باكت", unit_weight_kg: "0.25", unit_quantity: 5 });
+    expect(initializeCustomerProductForm({ cutting_unit: "", unit_weight_kg: "", unit_quantity: "" }))
+      .toMatchObject({ cutting_unit: "", unit_weight_kg: "", unit_quantity: "" });
+  });
   const row = {
     id: 17, customer_id: "C1", category_id: "CAT01", item_id: "ITM01",
     width: "30", left_facing: "9", right_facing: "9", thickness: "10",
@@ -42,8 +60,8 @@ describe("customer product form state and payload", () => {
     expect(payload).toMatchObject({
       customer_id: "C1", category_id: null, item_id: null, width: null,
       left_facing: null, right_facing: null, thickness: null, density: "0.95",
-      cutting_length_cm: null, master_batch_id: null, unit_quantity: null,
-      unit_weight_kg: null, cliche_front_design: "", cliche_back_design: "",
+      cutting_length_cm: null, master_batch_id: null, unit_quantity: 20,
+      unit_weight_kg: "1", cutting_unit: "كيلو", cliche_front_design: "", cliche_back_design: "",
       front_print_colors: [], back_print_colors: [], status: "active",
     });
   });

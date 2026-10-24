@@ -48,9 +48,13 @@ export async function verifyRollActors(pool: ConnectionPool,
   assert.equal("received_actor" in detail, false);
   assert.equal("received_by" in detail, false);
   const history = await read.history(creator, "rolls", { order_id: 920001 });
-  assert.equal("created_actor" in history.records[0], false, "history remains a thin roll record");
+  // Shared roll reads expose the existing creator identity, not receiver
+  // metadata. Verify that contract rather than the retired actor-free shape.
+  assert.equal(history.records[0].created_actor?.id, creator.id);
+  assert.equal("received_actor" in history.records[0], false);
   const labels = await read.labelRolls(creator, [roll.id]);
-  assert.equal("created_actor" in labels[0], false, "labels unchanged");
+  assert.equal(labels[0].created_actor?.id, creator.id);
+  assert.equal("received_actor" in labels[0], false);
   assert.deepEqual(await query("SELECT * FROM factory_rolls WHERE id=$1", [roll.id]), snapshot,
     "identity reads do not rewrite timestamps, actor IDs or stages");
   await plan(920002, 920001);

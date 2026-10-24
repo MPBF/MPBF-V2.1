@@ -5,7 +5,7 @@ import type { ProductSnapshot } from "../shared/production";
 
 const product: ProductSnapshot = {
   id: 1, item_id: "BAG", name: "Bag", name_ar: "كيس", customer_name: "Customer", customer_name_ar: "عميل",
-  width: "28", left_facing: "7", right_facing: "7", universal_thickness: "35", cutting_length_cm: 40,
+  width: "28", left_facing: "7", right_facing: "7", thickness: "14", universal_thickness: "35", cutting_length_cm: 40,
   raw_material: "HDPE", printing_cylinder: null, punching: null, notes: null,
   front_print_colors: ["Red"], back_print_colors: ["Black"],
   master_batch: { id: "BLUE", name: "Blue", name_ar: "أزرق", color_hex: "#2463EB" },
@@ -15,11 +15,17 @@ const specs = (changes: Partial<ProductSnapshot> = {}, language = "en") =>
   filmOperationSpecs({ ...product, ...changes }, language, format, language === "en" ? "Unrecorded" : "غير مسجل");
 
 describe("film operation specs", () => {
-  it("displays saved size, physical film thickness and material", () => {
+  it.each([null, undefined, "", "0", "-2", "invalid"])("does not expose universal thickness when raw thickness is %s", thickness => {
+    expect(specs({ thickness, universal_thickness: "999" }).thickness).toBe("Unrecorded");
+  });
+  it("accepts numeric raw thickness from older JSON responses", () => {
+    expect(filmOperationSpecs({ ...product, thickness: 14 } as unknown as ProductSnapshot, "en", format, "Unrecorded").thickness).toBe("14");
+  });
+  it("displays saved size, raw thickness and material without exposing universal microns", () => {
     const value = specs({ size_caption: " 28 + 7 + 7 cm " });
     expect(value.size).toBe("28 + 7 + 7 cm");
     expect(value.material).toBe("HDPE");
-    expect(value.thickness).toBe("35 µm");
+    expect(value.thickness).toBe("14");
   });
   it("displays master-batch film color, not printing ink colors", () => {
     expect(specs().batchName).toBe("Blue");
@@ -33,7 +39,7 @@ describe("film operation specs", () => {
     expect(specs({size_caption:"العرض 28 cm · الكسرة 7 / 7 cm"}, "ar").size).toBe("28 cm · 7 / 7 cm");
   });
   it("does not invent dimensions or thickness from invalid numeric text", () => {
-    const value = specs({ width: "broken", left_facing: null, right_facing: "0", universal_thickness: "" });
+    const value = specs({ width: "broken", left_facing: null, right_facing: "0", thickness: "" });
     expect(value.size).toBe("Unrecorded");
     expect(value.thickness).toBe("Unrecorded");
   });
@@ -74,11 +80,11 @@ describe("film operation specs", () => {
   });
 
   it("rounds numeric specs and decimal captions without mutating saved specs", () => {
-    const saved = { ...product, size_caption: "28.5 + 7.25 + 7.25 cm", universal_thickness: "35.6" };
+    const saved = { ...product, size_caption: "28.5 + 7.25 + 7.25 cm", thickness: "35.6", universal_thickness: "99" };
     const before = structuredClone(saved);
     const value = filmOperationSpecs(saved, "en", formatWholeNumber, "Unrecorded");
     expect(value.size).toBe("29 + 7 + 7 cm");
-    expect(value.thickness).toBe("36 µm");
+    expect(value.thickness).toBe("36");
     expect(saved).toEqual(before);
     expect(filmOperationSpecs({ ...saved, size_caption: "٢٨٫٥ + ٧٫٢٥ سم" }, "ar",
       formatWholeNumber, "غير مسجل").size).toBe("29 + 7 سم");

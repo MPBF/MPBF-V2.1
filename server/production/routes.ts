@@ -4,10 +4,14 @@ import QRCode from "qrcode";
 import { requireAuth } from "../auth";
 import { pool } from "../db";
 import { kgHundredths } from "../../shared/production";
-import { ProductionError, type ConnectionPool } from "./core";
+import { permission, ProductionError, type ConnectionPool } from "./core";
 import { ProductionExecutionService } from "./execution";
 import { ProductionWarehouseService } from "./warehouse";
+import { FinishedDeliveryService } from "./delivery";
 import { ProductionReadService } from "./read";
+import { RawMixingService } from "./mixing";
+import { mixRevisionHistory } from "./mix-revision-history";
+import { ProductionMonitoringService, monitoringPermission } from "./monitoring";
 
 const request = z.object({ request_id: z.string().uuid() }).strict();
 const id = z.coerce.number().int().positive().max(2147483647);
@@ -44,7 +48,92 @@ const router = Router();
 router.use(requireAuth);
 const execution = new ProductionExecutionService(connectionPool);
 const warehouse = new ProductionWarehouseService(connectionPool);
+const delivery = new FinishedDeliveryService(connectionPool);
 const read = new ProductionReadService(connectionPool);
+const mixing = new RawMixingService(connectionPool);
+const monitoring = new ProductionMonitoringService(connectionPool);
+router.get("/receipt-branding", handler(async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await read.receiptBranding(req.user!));
+}));
+router.use("/monitoring", handler(async (req, res, next) => {
+  monitoringPermission(req.user!);
+  res.setHeader("Cache-Control","private, no-store");
+  next();
+}));
+const monitoringCursor = safeText(12000).optional();
+const monitoringFilters = z.object({
+  cursor: monitoringCursor, limit: z.coerce.number().int().min(1).max(100).optional(),
+  machine_id: machine.optional(), stage: z.enum(["film","printing","cutting"]).optional(),
+  from: z.string().date().optional(), to: z.string().date().optional(), search: safeText(120).optional(),
+}).strict().refine(f=>!f.from||!f.to||f.from<=f.to);
+router.get("/monitoring/log",handler(async(req,res)=>{res.json(await monitoring.log(req.user!,monitoringFilters.parse(req.query)));}));
+router.get("/monitoring/summary",handler(async(req,res)=>{z.object({}).strict().parse(req.query);res.json(await monitoring.summary(req.user!));}));
+router.get("/monitoring/mixes",handler(async(req,res)=>{
+  const filters=z.object({cursor:monitoringCursor,limit:z.coerce.number().int().min(1).max(100).optional(),machine_id:machine.optional()}).strict().parse(req.query);
+  res.json(await monitoring.mixes(req.user!,filters));
+}));
+router.get("/monitoring/mixes/:id",handler(async(req,res)=>{
+  const {cursor}=z.object({cursor:monitoringCursor}).strict().parse(req.query);
+  res.json(await monitoring.mix(req.user!,id.parse(req.params.id),cursor));
+}));
+router.get("/monitoring/rolls/:id",handler(async(req,res)=>{
+  const {cursor}=z.object({cursor:monitoringCursor}).strict().parse(req.query);
+  res.json(await monitoring.roll(req.user!,id.parse(req.params.id),cursor));
+}));
+router.get("/mixing/revisions", handler(async (req, res) => {
+  // Check access before parsing filters or touching storage.
+  permission(req.user!, "manage_mixing");
+  const { mix_id, before } = z.object({
+    mix_id: id.optional(),
+    before: z.string().regex(/^[1-9]\d{0,9}:[1-9]\d{0,9}$/).optional(),
+  }).strict().parse(req.query);
+  const cursor = before?.split(":").map(value => id.parse(value)) as [number, number] | undefined;
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await mixRevisionHistory(connectionPool, req.user!, mix_id, cursor));
+}));
+router.get("/mixing", handler(async (req, res) => {
+  const { before } = z.object({ before: id.optional() }).strict().parse(req.query);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await mixing.state(req.user!, before));
+}));
+router.post("/mixing", handler(async (req, res) => {
+  const input = request.extend({
+    machine_id: machine, screw: z.enum(["A","B"]).optional(), notes: safeText(2000).optional(),
+    items: z.array(z.object({ material_id: id, quantity_kg: weight }).strict()).min(1).max(100)
+      .refine(items => new Set(items.map(i => i.material_id)).size === items.length),
+  }).parse(req.body);
+  res.json(await mixing.record(req.user!, input));
+}));
+const mixRevision = z.number().int().min(0).max(2147483646);
+router.patch("/mixing/:id", handler(async (req, res) => {
+  const input = request.extend({
+    expected_revision: mixRevision, notes: safeText(2000).optional(),
+    contents: z.object({
+      machine_id: machine, screw: z.enum(["A","B"]).optional(),
+      items: z.array(z.object({material_id:id,quantity_kg:weight}).strict()).min(1).max(100)
+        .refine(items => new Set(items.map(i => i.material_id)).size===items.length),
+    }).strict().optional(),
+  }).refine(value => value.notes !== undefined || value.contents !== undefined).parse(req.body);
+  res.json(await mixing.update(req.user!, id.parse(req.params.id), input));
+}));
+router.delete("/mixing/:id", handler(async (req, res) => {
+  const input = request.extend({ expected_revision: mixRevision }).parse(req.body);
+  res.json(await mixing.delete(req.user!, id.parse(req.params.id), input));
+}));
+router.post("/raw-materials", handler(async (_req, res) => {
+  // Retire the old free-form definition endpoint rather than silently accepting
+  // stale editors. Catalogue definitions belong to the existing Items module.
+  res.status(410).json({ message:"اختر المواد من الأصناف المعرّفة مسبقًا؛ الإدخال الحر غير متاح", message_en:"Select predefined catalogue items. Free-form material creation is no longer available." });
+}));
+router.post("/raw-materials/movements", handler(async (req, res) => {
+  const input = request.extend({
+    kind: z.enum(["receipt","issue"]), notes:safeText(2000).optional(),
+    items:z.array(z.object({material_id:id,quantity_kg:weight}).strict()).min(1).max(100)
+      .refine(items => new Set(items.map(i => i.material_id)).size===items.length),
+  }).parse(req.body);
+  res.json(await mixing.movement(req.user!, input));
+}));
 router.get("/state", handler(async (req, res) => {
   const scope = z.enum(["management", "film", "printing", "cutting", "hall", "warehouse", "roll"]).default("management").parse(req.query.scope);
   res.setHeader("Cache-Control", "private, no-store");
@@ -105,11 +194,28 @@ router.post("/queues/reorder", handler(async (req, res) => { res.json(await exec
   first_id: id, second_id: id, first_position: z.number().int().positive(), second_position: z.number().int().positive(),
 }).parse(req.body))); }));
 router.post("/receipts", handler(async (req, res) => {
-  const packaging = z.object({ roll_weight_grams: z.string().regex(/^\d{1,8}(?:\.\d{1,4})?$/), rolls_per_unit: z.number().int().min(1).max(1000000), units: z.number().int().min(1).max(1000000) }).strict();
   const input = request.extend({ notes: safeText(2000).optional(), items: z.array(z.object({
-    production_order_id: id, location_id: id, quantity_kg: weight, packaging: packaging.optional(),
-  }).strict()).min(1).max(100) }).parse(req.body);
+    production_order_id: id, location_id: id.optional(), quantity_kg: weight,
+  }).strict()).min(1).max(100) }).strict().parse(req.body);
   res.json(await warehouse.receive(req.user!, input));
+}));
+const deliveryFilters = z.object({
+  before: id.optional(), limit: z.coerce.number().int().min(1).max(100).optional(),
+  search: safeText(120).optional(),
+}).strict();
+router.get("/delivery-stock", handler(async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await delivery.stock(req.user!, deliveryFilters.parse(req.query)));
+}));
+router.get("/deliveries", handler(async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await delivery.history(req.user!, deliveryFilters.parse(req.query)));
+}));
+router.post("/deliveries", handler(async (req, res) => {
+  const input = request.extend({ notes: safeText(2000).optional(), items: z.array(z.object({
+    inventory_id: id, quantity_kg: weight,
+  }).strict()).min(1).max(100) }).strict().parse(req.body);
+  res.json(await delivery.deliver(req.user!, input));
 }));
 const locationName = safeText(100).refine(value => value.length > 0);
 const location = request.extend({ name: locationName, name_ar: locationName, is_active: z.boolean().optional() });

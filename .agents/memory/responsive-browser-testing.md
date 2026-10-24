@@ -21,6 +21,15 @@ Run app screenshot capture separately from local Chromium fixture checks in this
 
 **How to apply:** serialize these browser operations rather than treating their shared browser resources as independent.
 
+Treat missing controls after navigation as a possible render failure before
+adding waits or changing permission fixtures.
+
+**Why:** a shared API interceptor's generic empty-array response can violate a
+newly mounted module's object-response contract and remove the entire screen.
+Longer selector waits cannot repair that.
+**How to apply:** inspect runtime exceptions and fulfill each mounted module's
+actual response shape, including empty data, before diagnosing selector timing.
+
 Prefer a temporary read-only host of the production build for exhaustive
 multi-route operator-board browser fixture checks when the proxied development
 host intermittently times out on navigation. Keep every API request intercepted.
@@ -77,3 +86,55 @@ Check removed URL filters by parsing search parameters, not matching the entire 
 **Why:** Wouter can leave a trailing `?` after the last parameter is removed; an exact URL wait then times out even though the filter was correctly cleared.
 
 **How to apply:** assert the pathname and absence of the relevant search parameter in browser navigation checks.
+
+Do not assume the browser returned by Playwright's executable-path helper is installed in this workspace.
+
+**Why:** the supplied Playwright runtime reported cache paths for both full Chromium and headless shell, but neither executable existed; the installed system Chromium worked.
+
+**How to apply:** verify the executable exists before launching. Prefer the existing system Chromium when the Playwright cache is absent; do not reinstall project dependencies just to obtain a browser.
+
+Use a small subpixel tolerance for animated control geometry while checking
+the intended minimum size through computed CSS.
+
+**Why:** exact `getBoundingClientRect().height >= 44` checks were unstable:
+the condition could pass a wait and fail immediately afterward without a
+layout change. Waiting alone did not resolve the false failures.
+
+**How to apply:** require the intended computed minimum height and allow a
+small tolerance (such as half a pixel) in rendered bounds. Continue checking
+that controls are enabled and contained; do not relax functional assertions.
+
+Use coordinate hit testing and browser pointer events for overlay regressions,
+not DOM `.click()` alone. Probe the underlying navigation's screen area too.
+
+**Why:** programmatic activation bypasses occlusion, so an obscured save button
+can appear functional in a test. Comparing z-index numbers alone also ignores
+ancestor stacking contexts.
+
+**How to apply:** scroll controls into view, wait for finite entrance animations,
+and check that `elementFromPoint` belongs to the intended control before sending
+pointer events. Choose visible openers before testing focus restoration; a
+selector list returns the first element in document order, not selector priority.
+
+Separate modal focus checks for cancel/Escape from successful saves and
+responsive layout changes.
+
+**Why:** list refreshes can detach the saved opener, and a phone-to-desktop
+breakpoint can hide it even when the modal itself remains usable. Passing
+cancel checks alone does not establish focus recovery through those transitions.
+
+**How to apply:** verify the visible logical opener after each transition.
+Keep physical rotation dimensions consistent with the chosen phone, and test
+breakpoint-crossing focus separately rather than treating it as ordinary
+low-height keyboard coverage.
+
+Distinguish native browser confirmations from application dialogs in isolated
+headless tests. Never replace `window.confirm` just to exercise nested dialogs.
+
+**Why:** Native confirmations live outside the page DOM. CDP can observe and
+accept/dismiss them, but protocol dismissal does not prove that a physical
+Escape key works in the operating system's browser prompt.
+
+**How to apply:** trigger the real prompt with pointer events, verify its type
+and message, dismiss/accept through the browser protocol, and test application
+Escape separately with keyboard input. State this boundary in test reports.

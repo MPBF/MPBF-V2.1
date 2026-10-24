@@ -1,0 +1,362 @@
+.production.planning-page {
+  --planning-ink: var(--ink, var(--theme-planning-production-planning-page-planning-ink));
+  --planning-muted: var(--muted, var(--theme-planning-production-planning-page-planning-muted));
+  --planning-line: var(--line, var(--theme-planning-production-planning-page-planning-line));
+  --planning-surface: var(--panel, var(--theme-planning-production-planning-page-planning-surface));
+  --planning-paper: var(--paper, var(--theme-planning-production-planning-page-planning-paper));
+  --planning-accent: var(--teal-deep, var(--theme-planning-production-planning-page-planning-accent));
+  --planning-highlight: var(--orange, var(--theme-planning-production-planning-page-planning-highlight));
+  --prod-ink: var(--planning-ink);
+  --prod-muted: var(--planning-muted);
+  --prod-line: var(--planning-line);
+  --prod-surface: var(--planning-surface);
+  --prod-paper: var(--planning-paper);
+  --prod-deep: var(--planning-accent);
+  --prod-accent: var(--planning-highlight);
+  --raw-ink: var(--planning-ink);
+  --raw-muted: var(--planning-muted);
+  --raw-line: var(--planning-line);
+  --raw-card: var(--planning-surface);
+  --raw-paper: var(--planning-paper);
+  --raw-deep: var(--planning-accent);
+  --raw-copper: var(--planning-highlight);
+  color: var(--planning-ink);
+  max-width: 1600px;
+  padding: 24px clamp(14px, 3vw, 38px) 54px;
+}
+
+.planning-page .planning-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 2px 0 16px;
+}
+
+.planning-page .planning-heading { min-width: 0; }
+.planning-page .planning-kicker {
+  color: var(--planning-accent);
+  font: 700 10px "IBM Plex Mono", monospace;
+  letter-spacing: 1.4px;
+}
+.planning-page .planning-header h1 {
+  margin: 6px 0 5px;
+  color: var(--planning-ink);
+  font-size: clamp(25px, 3vw, 34px);
+  font-weight: 800;
+  letter-spacing: -.8px;
+  line-height: 1.12;
+}
+.planning-page .planning-header p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--planning-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.planning-page .planning-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: none;
+}
+.production.planning-page .planning-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 132px;
+  padding: 8px 12px;
+  border: 1px solid var(--planning-line);
+  border-radius: 5px;
+  color: var(--planning-muted);
+  background: var(--planning-surface);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform .16s ease, background .16s ease;
+}
+.planning-page .planning-refresh svg { width: 16px; height: 16px; }
+.planning-page .planning-refresh:hover:not(:disabled) { transform: translateY(-1px); background: var(--planning-paper); }
+.planning-page .planning-refresh:disabled { opacity: .55; cursor: not-allowed; }
+.planning-page .planning-mark {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--planning-muted);
+  font: 600 9px "IBM Plex Mono", monospace;
+  letter-spacing: .9px;
+}
+.planning-page .planning-mark i {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--planning-line);
+  background: color-mix(in srgb, var(--planning-accent) 12%, var(--planning-surface));
+  transform: rotate(45deg);
+}
+
+.planning-page .planning-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--planning-line);
+}
+.planning-page .planning-nav a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 15px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  color: var(--planning-muted);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  transition: background .16s ease, color .16s ease;
+}
+.planning-page .planning-nav a:hover { color: var(--planning-accent); background: var(--planning-paper); }
+.planning-page .planning-nav a[aria-current="page"] {
+  border-color: var(--planning-line);
+  color: var(--planning-accent);
+  background: var(--planning-surface);
+}
+.planning-page .planning-nav a[aria-current="page"]::after {
+  position: absolute;
+  inset-inline: 8px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--planning-highlight);
+  content: "";
+}
+
+.planning-page .prod-card,
+.planning-page .prod-order,
+.planning-page .prod-roll,
+.planning-page .prod-record,
+.planning-page .raw-ops-card,
+.planning-page .pm-event,
+.planning-page .pm-mix {
+  border-color: var(--planning-line);
+  background: var(--planning-surface);
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--planning-ink) 5%, transparent);
+}
+.planning-page .prod-card-head,
+.planning-page .raw-ops-card-head { padding: 16px 18px; border-color: var(--planning-line); }
+.planning-page .prod-card-body,
+.planning-page .raw-ops-card-body { padding: 18px; }
+.planning-page .prod-order,
+.planning-page .prod-roll,
+.planning-page .prod-record,
+.planning-page .pm-event { padding: 15px 16px; }
+.planning-page .prod-order,
+.planning-page .prod-roll,
+.planning-page .prod-record,
+.planning-page .prod-measure,
+.planning-page .pm-event,
+.planning-page .pm-detail { border-color: var(--planning-line); }
+.planning-page .prod-measure,
+.planning-page .prod-table td,
+.planning-page .pm-event-meta,
+.planning-page .pm-orders,
+.planning-page .pm-facts { color: var(--planning-ink); }
+.planning-page .prod-table th { background: var(--planning-paper); color: var(--planning-muted); }
+.planning-page .prod-table td { border-color: var(--planning-line); }
+.planning-page .prod-table tr:hover td { background: var(--planning-paper); }
+.planning-page .prod-field input,
+.planning-page .prod-field select,
+.planning-page .prod-field textarea,
+.planning-page .raw-ops-field input,
+.planning-page .raw-ops-field select,
+.planning-page .raw-ops-field textarea {
+  min-height: 44px;
+  border: 1px solid var(--planning-line);
+  border-radius: 5px;
+  color: var(--planning-ink);
+  background: var(--planning-surface);
+}
+.planning-page .prod-field input:focus,
+.planning-page .prod-field select:focus,
+.planning-page .prod-field textarea:focus,
+.planning-page .raw-ops-field input:focus,
+.planning-page .raw-ops-field select:focus,
+.planning-page .raw-ops-field textarea:focus { outline: 2px solid color-mix(in srgb, var(--planning-highlight) 35%, transparent); }
+.planning-page .prod-btn,
+.planning-page .raw-btn { min-height: 44px; border-radius: 5px; }
+.planning-page .prod-btn.quiet,
+.planning-page .raw-btn.quiet { border-color: var(--planning-line); color: var(--planning-muted); background: transparent; }
+.planning-page .prod-btn.secondary,
+.planning-page .raw-btn.outline { border-color: var(--planning-line); color: var(--planning-accent); background: var(--planning-paper); }
+.planning-page .prod-error,
+.planning-page .raw-ops-banner.error { border-radius: 5px; }
+.planning-page :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--planning-highlight);
+  outline-offset: 2px;
+}
+
+/* Management order cards only: compact planning records without changing operator or warehouse layouts. */
+.planning-page .prod-list.prod-management-list {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+.planning-page .prod-management-order {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+}
+.planning-page .prod-management-order > * { min-width: 0; }
+.planning-page .prod-management-order .prod-order-main {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.planning-page .prod-management-order .prod-order-main h3 {
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+.planning-page .prod-management-order .prod-order-meta {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.planning-page .prod-management-order .prod-chips {
+  gap: 4px;
+  margin-top: 6px !important;
+}
+.planning-page .prod-management-order .prod-chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.planning-page .prod-management-duration summary {
+  min-height: 44px;
+  padding: 9px 0;
+  color: var(--planning-muted);
+  cursor: pointer;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.planning-page .prod-management-order .prod-film-duration {
+  margin-top: 7px;
+  padding-top: 7px;
+}
+.planning-page .prod-management-order .prod-film-duration h4 { margin-bottom: 5px; }
+.planning-page .prod-management-order .prod-film-duration-list { gap: 5px; }
+.planning-page .prod-management-order .prod-film-duration-item {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 7px 8px;
+}
+.planning-page .prod-management-order .prod-film-duration-times {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.planning-page .prod-management-order .prod-film-duration-item span,
+.planning-page .prod-management-order .prod-film-duration-times span { margin-bottom: 2px; }
+.planning-page .prod-management-order .prod-film-duration-value p { overflow-wrap: anywhere; }
+.planning-page .prod-management-metrics {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 9px;
+  min-width: 0;
+}
+.planning-page .prod-management-metrics .prod-measure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 6px;
+  min-width: 0;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--planning-line);
+}
+.planning-page .prod-management-metrics .prod-measure span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.planning-page .prod-management-metrics .prod-measure strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: end;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.planning-page .prod-management-metrics .prod-measure small {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+.planning-page .prod-management-order .prod-callout {
+  grid-column: 1 / -1 !important;
+  min-width: 0;
+  padding: 8px 9px;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.planning-page .prod-management-unstarted > .prod-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-width: 112px;
+  min-height: 44px;
+}
+.planning-page .prod-management-order .prod-history {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.planning-page .prod-management-order .prod-history summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 700px) {
+  .planning-page .prod-list.prod-management-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1100px) {
+  .planning-page .prod-list.prod-management-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .production.planning-page { padding: 18px 13px 40px; }
+  .planning-page .planning-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    margin: 2px 0 12px;
+  }
+  .planning-page .planning-heading { flex: 1 1 220px; }
+  .planning-page .planning-header h1 { margin: 3px 0 5px; font-size: clamp(22px, 5.7vw, 26px); }
+  .planning-page .planning-header p { font-size: 12px; }
+  .planning-page .planning-header-actions { justify-content: flex-start; }
+  .planning-page .planning-mark { display: none; }
+  .planning-page .planning-nav { overflow-x: auto; gap: 2px; margin-bottom: 13px; scrollbar-width: thin; }
+  .planning-page .planning-nav a { min-height: 45px; padding-inline: 12px; white-space: nowrap; }
+  .planning-page .prod-card-head,
+  .planning-page .prod-card-body,
+  .planning-page .raw-ops-card-head,
+  .planning-page .raw-ops-card-body { padding: 13px; }
+  .planning-page .prod-management-order { padding: 11px; gap: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planning-page *, .planning-page *::before, .planning-page *::after { transition-duration: .01ms !important; }
+}

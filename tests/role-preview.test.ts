@@ -2,11 +2,14 @@ import express from "express";
 import session from "express-session";
 import { beforeAll, beforeEach, afterAll, describe, expect, it, jest } from "@jest/globals";
 import { db } from "../server/db";
-import { roles, users } from "../shared/schema";
+import { roles, users, system_settings } from "../shared/schema";
+import { availableProductionViews } from "../client/src/lib/production-navigation";
+import { availablePlanningViews } from "../client/src/lib/planning-navigation";
 import { populateUser, enforcePasswordChange, requirePermission, withRolePreview } from "../server/auth";
+import { warehouseKeeperPermissions, isWarehouseOnlyAccount } from "../shared/warehouse-access";
 import rolePreviewRouter from "../server/role-preview";
 
-jest.mock("../server/db", () => ({ db: { select: jest.fn(), update: jest.fn() } }));
+jest.mock("../server/db", () => ({ db: { select: jest.fn(), update: jest.fn(), insert: jest.fn(), transaction: jest.fn() } }));
 jest.mock("drizzle-orm", () => ({
   ...jest.requireActual<Record<string, unknown>>("drizzle-orm"),
   eq: (column: unknown, value: unknown) => ({ column, value }),
@@ -18,6 +21,7 @@ describe("session-scoped administrator role testing", () => {
   let roleRecords: Map<number, { id: number; name: string; name_ar: string | null; permissions: string[] }>;
   let account: { id: number; username: string; status: string; role_id: number; must_change_password: boolean; section_id: string; preferred_language: "ar" };
   let mutations: { id: number; role_id: number | null; operation: string }[];
+  let settings: Map<string, { setting_value: string }>;
 
   beforeAll(async () => {
     const app = express();
@@ -51,6 +55,7 @@ describe("session-scoped administrator role testing", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mutations = [];
+    settings = new Map();
     account = { id: 7, username: "fixture-admin", status: "active", role_id: 10, must_change_password: false,
       section_id: "SECTION-ORIGINAL", preferred_language: "ar" };
     roleRecords = new Map([
@@ -63,12 +68,14 @@ describe("session-scoped administrator role testing", () => {
     ]);
     jest.mocked(db.select).mockImplementation((selection?: unknown) => ({
       from: (table: unknown) => {
-        let id: number | undefined;
+        let id: any;
         const query = {
           leftJoin: () => query,
           where: (predicate: { value: number }) => { id = predicate.value; return query; },
+          for: () => query,
           limit: async () => table === users
             ? [{ user: { ...account }, role: roleRecords.get(account.role_id) }]
+            : table === system_settings ? (settings.has(id) ? [settings.get(id)] : [])
             : table === roles && id !== undefined && roleRecords.has(id) ? [{ ...roleRecords.get(id)! }] : [],
           orderBy: async () => [...roleRecords.values()].map(role => selection
             ? { id: role.id, name: role.name, name_ar: role.name_ar } : { ...role }),
@@ -76,6 +83,14 @@ describe("session-scoped administrator role testing", () => {
         return query;
       },
     }) as never);
+    jest.mocked(db.insert).mockImplementation(() => ({
+      values: (body: { setting_key: string; setting_value: string }) => ({
+        onConflictDoNothing: async () => {
+          if (!settings.has(body.setting_key)) settings.set(body.setting_key, { setting_value: body.setting_value });
+        },
+      }),
+    }) as never);
+    jest.mocked(db.transaction).mockImplementation(async (callback: any) => callback(db));
   });
   const request = (route: string, cookie = "", method = "GET", body?: unknown) =>
     fetch(`${origin}${route.startsWith("/fixture-") ? route : `/api${route}`}`, {
@@ -89,6 +104,30 @@ describe("session-scoped administrator role testing", () => {
   };
   const me = async (cookie: string) => (await (await request("/me", cookie)).json()).user;
   const choose = (cookie: string, id: number) => request("/me/role-preview", cookie, "POST", { role_id: id });
+
+  it.each([false, true])("enforces warehouse grants for a real account or administrator preview=%s", async preview => {
+    const permissions = warehouseKeeperPermissions(["view_production", "view_reports", "manage_warehouse"]);
+    roleRecords.set(8, { id: 8, name: "Warehouse Keeper", name_ar: "أمين المستودع", permissions });
+    account.role_id = preview ? 10 : 8;
+    const cookie = await login();
+    if (preview) expect((await choose(cookie, 8)).status).toBe(200);
+    const effective = await me(cookie);
+    expect(effective.permissions).toEqual(permissions);
+    expect(isWarehouseOnlyAccount(effective)).toBe(true);
+    for (const route of ["/admin", "/orders", "/film"]) {
+      expect((await request(route, cookie)).status).toBe(403);
+      expect((await request(route, cookie, "POST", {})).status).toBe(403);
+    }
+    expect(mutations).toEqual([]);
+    if (preview) {
+      expect((await request("/me/role-preview/roles", cookie)).status).toBe(200);
+      expect((await request("/me/role-preview", cookie, "DELETE")).status).toBe(200);
+      expect((await request("/admin", cookie)).status).toBe(200);
+    } else {
+      expect((await request("/me/role-preview/roles", cookie)).status).toBe(403);
+    }
+    expect(db.update).not.toHaveBeenCalled();
+  });
 
   it("offers role switching only to a genuine database-backed admin, without writing the account", async () => {
     const cookie = await login();
@@ -172,6 +211,23 @@ describe("session-scoped administrator role testing", () => {
     expect((await request("/film", cookie, "POST")).status).toBe(403);
     expect((await request("/orders", cookie, "POST")).status).toBe(200);
     expect((await me(cookie)).permissions).toEqual(["manage_orders"]);
+  });
+  it("uses the selected persistent binding after renaming and permission revocation, never the original admin", async () => {
+    roleRecords.get(20)!.name = "Extruder Operator";
+    roleRecords.get(20)!.permissions = ["view_production", "view_film_dashboard"];
+    const cookie = await login();
+    expect((await choose(cookie, 20)).status).toBe(200);
+    expect((await me(cookie)).production_role_binding).toEqual({ mode: "operator", stages: ["film"] });
+    roleRecords.get(20)!.name = "Evening team";
+    roleRecords.get(20)!.name_ar = "فريق المساء";
+    const selected = await me(cookie);
+    expect(availableProductionViews(selected).map(view => view.view)).toEqual(["film"]);
+    expect(selected.permissions).not.toContain("operate_film");
+    roleRecords.get(20)!.permissions = ["view_production"];
+    expect(availableProductionViews(await me(cookie))).toEqual([]);
+    await request("/me/role-preview", cookie, "DELETE");
+    expect((await me(cookie)).production_role_binding).toEqual({ mode: "general", stages: [] });
+    expect(availablePlanningViews(await me(cookie)).map(view => view.view)).toContain("management");
   });
   it("fails closed when the preview role is deleted, but keeps the original admin's return available", async () => {
     const cookie = await login();

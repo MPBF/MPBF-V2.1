@@ -14,7 +14,7 @@ const source = {
     password_hash: "PRIVATE-HASH", phone: "PRIVATE-PERSON-CONTACT" },
   sales_representative: null,
   production_orders: [{ id: 9, quantity_kg: "100.00", final_quantity_kg: "110.00", batch_number: "PRIVATE-BATCH",
-    product: { width: "28", raw_material: "HDPE", notes: "Printed product notes", customer_id: "PRIVATE-CUSTOMER-ID",
+    product: { width: "28", thickness: "14", universal_thickness: "35", raw_material: "HDPE", notes: "Printed product notes", customer_id: "PRIVATE-CUSTOMER-ID",
       bag_weight_grams: "PRIVATE-UNPRINTED", item: { name: "Bag", name_ar: "كيس", id: "PRIVATE-ITEM-ID" },
       color: { id: "PT02", name: "Transparent", name_ar: "شفاف", color_hex: "#fff", brand: "PRIVATE-SUPPLIER" } } }],
   totals: { requested_kg: "100.00", planned_kg: "110.00", by_status: { pending: 1 } },
@@ -48,6 +48,8 @@ describe("public print capabilities and projection", () => {
     const text = JSON.stringify(projected);
     expect(text).not.toContain("PRIVATE-");
     expect(text).not.toContain("share_token");
+    expect(projected.production_orders[0].product).toMatchObject({ thickness: "14" });
+    expect(text).not.toContain("universal_thickness");
     expect(projected.customer?.phone).toBe("0500000000");
     expect(projected.customer?.code).toBe("PRINTED-CODE");
     expect(projected.order?.previous_status).toBe("waiting");

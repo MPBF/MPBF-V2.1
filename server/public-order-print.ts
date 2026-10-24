@@ -39,7 +39,7 @@ export function publicPrintProjection(source: unknown, path: string) {
         ...pick(value, ["id", "quantity_kg", "final_quantity_kg"]),
         product: record(product) ? {
           ...pick(product, ["size_caption", "width", "left_facing", "right_facing", "cutting_length_cm",
-            "universal_thickness", "raw_material", "printing_cylinder", "punching", "is_printed",
+            "thickness", "raw_material", "printing_cylinder", "punching", "is_printed",
             "front_print_colors", "back_print_colors", "notes", "cliche_front_design", "cliche_back_design"]),
           item: pick(product.item, ["name", "name_ar"]),
           color: pick(product.color, ["id", "name", "name_ar", "color_hex"]),

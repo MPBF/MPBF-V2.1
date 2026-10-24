@@ -1,0 +1,584 @@
+/* Warehouse-only card language shared by the hall, finished stock and raw stock. */
+.production .warehouse-hall-section,
+.production .warehouse-finished-view {
+  margin: 20px 0;
+  min-width: 0;
+}
+.production .warehouse-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 11px;
+  color: var(--theme-warehouse-cards-production-warehouse-section-heading-text);
+  font-size: 12px;
+}
+.production .warehouse-section-heading h3 {
+  margin: 4px 0 0;
+  color: var(--theme-warehouse-cards-production-warehouse-section-heading-h3-text);
+  font-size: 18px;
+  letter-spacing: -.35px;
+}
+.production .warehouse-section-kicker {
+  color: var(--theme-warehouse-cards-production-warehouse-section-kicker-text);
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 1.2px;
+}
+.production .warehouse-hall-grid,
+.raw-ops .warehouse-card-grid {
+  display: grid;
+  align-items: stretch;
+  gap: 11px;
+  min-width: 0;
+}
+.production .warehouse-hall-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.raw-ops .warehouse-card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 285px), 1fr));
+}
+.production .warehouse-hall-grid > * {
+  min-width: 0;
+}
+.production .warehouse-hall-grid .warehouse-order-card {
+  min-width: 0;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+.production .warehouse-hall-grid .warehouse-order-card header {
+  align-items: center;
+  gap: 5px;
+}
+.production .warehouse-hall-grid .warehouse-order-card header > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.production .warehouse-hall-grid .warehouse-order-card header small {
+  margin-top: 2px;
+  font-size: 9px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.production .warehouse-hall-grid .warehouse-order-state {
+  flex: 0 1 42%;
+  min-width: 0;
+  max-width: 42%;
+  min-height: 22px;
+  padding: 3px 5px;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.production .warehouse-hall-grid .warehouse-order-state small {
+  display: none;
+}
+.production .warehouse-hall-grid .warehouse-order-number {
+  font-size: 11px;
+}
+.production .warehouse-hall-grid .warehouse-order-product {
+  min-height: 0;
+  margin: 6px 0 2px;
+  gap: 2px;
+}
+.production .warehouse-hall-grid .warehouse-order-product strong {
+  font-size: 11px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.production .warehouse-hall-grid .warehouse-order-product span {
+  font-size: 9px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.production .warehouse-hall-grid .warehouse-order-select {
+  min-height: 44px;
+  margin: 0;
+  gap: 6px;
+  font-size: 9px;
+  line-height: 1.4;
+}
+.production .warehouse-hall-grid .warehouse-order-select input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.production .warehouse-hall-grid .warehouse-order-metrics {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding-top: 5px;
+}
+.production .warehouse-hall-grid .warehouse-order-metrics > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 1px 6px;
+  padding: 2px 0;
+}
+.production .warehouse-hall-grid .warehouse-order-metrics > .remaining {
+  border-top: 1px solid var(--theme-warehouse-cards-production-warehouse-hall-grid-warehouse-order-metrics-remaining-border);
+  padding-top: 3px;
+}
+.production .warehouse-hall-grid .warehouse-order-metrics span {
+  flex: 1 1 45%;
+  font-size: 8px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.production .warehouse-hall-grid .warehouse-order-metrics strong {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.production .warehouse-hall-grid .warehouse-order-metrics strong small {
+  font-size: 7px;
+}
+.production .warehouse-order-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--theme-warehouse-cards-production-warehouse-order-card-border);
+  border-top: 3px solid var(--theme-warehouse-cards-production-warehouse-order-card-border-2);
+  background: var(--theme-warehouse-cards-production-warehouse-order-card-surface);
+  box-shadow: 0 6px 20px var(--theme-warehouse-cards-production-warehouse-order-card-shadow);
+}
+.production .warehouse-order-card header,
+.raw-ops .warehouse-stock-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.production .warehouse-order-number {
+  display: block;
+  color: var(--theme-warehouse-cards-production-warehouse-order-number-text);
+  font: 750 14px "IBM Plex Mono", monospace;
+  direction: ltr;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.production .warehouse-order-card header small {
+  display: block;
+  margin-top: 4px;
+  color: var(--theme-warehouse-cards-production-warehouse-order-card-header-small-text);
+  font-size: 10px;
+}
+.production .warehouse-order-select { display: inline-flex; align-items: center; gap: 8px; margin: 11px 0 2px; color: var(--theme-warehouse-cards-production-warehouse-order-select-text); font-size: 11px; cursor: pointer; }
+.production .warehouse-order-select input { accent-color: var(--theme-warehouse-cards-production-warehouse-order-select-input-accent-color); width: 16px; height: 16px; }
+.production .warehouse-receipt-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.production .warehouse-inventory-grid,
+.production .warehouse-receipt-ledger { display: grid; gap: 11px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); }
+.production .warehouse-inventory-card,
+.production .warehouse-receipt-history-card { min-width: 0; padding: 15px; border: 1px solid var(--theme-warehouse-cards-production-warehouse-inventory-card-border); border-top: 3px solid var(--theme-warehouse-cards-production-warehouse-inventory-card-border-2); background: var(--theme-warehouse-cards-production-warehouse-order-card-surface); box-shadow: 0 6px 20px var(--theme-warehouse-cards-production-warehouse-inventory-card-shadow); }
+.production .warehouse-inventory-card header,
+.production .warehouse-receipt-history-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.production .warehouse-inventory-card header > div,
+.production .warehouse-receipt-history-card header > div { display: grid; gap: 4px; min-width: 0; }
+.production .warehouse-inventory-card header small,
+.production .warehouse-receipt-history-card time { color: var(--theme-warehouse-cards-production-warehouse-order-card-header-small-text); font-size: 10px; }
+.production .warehouse-inventory-card header > bdi,
+.production .warehouse-receipt-history-card header > bdi { color: var(--theme-warehouse-cards-production-warehouse-inventory-card-header-bdi-text); font: 750 13px "IBM Plex Mono", monospace; white-space: nowrap; }
+.production .warehouse-balance-specs { display: grid; gap: 7px; margin-top: 12px; }
+.production .warehouse-balance-spec,
+.production .warehouse-balance-legacy { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 3px 10px; padding: 9px 10px; border: 1px solid var(--theme-warehouse-cards-production-warehouse-balance-spec-border); background: var(--theme-warehouse-cards-production-warehouse-balance-spec-surface); }
+.production .warehouse-balance-spec strong,
+.production .warehouse-balance-legacy strong { color: var(--theme-warehouse-cards-production-warehouse-balance-spec-strong-text); font-size: 12px; }
+.production .warehouse-balance-spec span,
+.production .warehouse-balance-legacy span { grid-column: 1; color: var(--theme-warehouse-cards-production-warehouse-balance-spec-span-text); font-size: 9px; }
+.production .warehouse-balance-spec bdi { grid-column: 2; grid-row: 1 / span 2; color: var(--theme-warehouse-cards-production-warehouse-balance-spec-bdi-text); font: 650 10px "IBM Plex Mono", monospace; white-space: nowrap; }
+.production .warehouse-balance-legacy { border-color: var(--theme-warehouse-cards-production-warehouse-balance-legacy-border); background: var(--theme-warehouse-cards-production-warehouse-balance-legacy-surface); }
+.production .warehouse-balance-legacy strong { color: var(--theme-warehouse-cards-production-warehouse-balance-legacy-strong-text); }
+.production .warehouse-receipt-history { margin: 22px 0; }
+.production .warehouse-receipt-history-card { border-top-color: var(--theme-warehouse-cards-production-warehouse-receipt-history-card-border); }
+.production .warehouse-receipt-history-card > header strong { color: var(--theme-warehouse-cards-production-warehouse-receipt-history-card-header-strong-text); font: 750 13px "IBM Plex Mono", monospace; }
+.production .warehouse-receipt-history-card > p { color: var(--theme-warehouse-cards-production-warehouse-receipt-history-card-p-text); font-size: 11px; }
+.production .warehouse-receipt-items { display: grid; margin-top: 11px; border-top: 1px solid var(--theme-warehouse-cards-production-warehouse-receipt-items-border); }
+.production .warehouse-receipt-history-line { display: grid; grid-template-columns: 25px minmax(0,1fr) auto; align-items: start; gap: 9px; padding: 10px 0; border-bottom: 1px solid var(--theme-warehouse-cards-production-warehouse-receipt-history-line-border); }
+.production .warehouse-receipt-history-line > span { color: var(--theme-warehouse-cards-production-warehouse-receipt-history-line-span-text); font: 700 10px "IBM Plex Mono", monospace; }
+.production .warehouse-receipt-history-line > div { display: grid; gap: 3px; min-width: 0; }
+.production .warehouse-receipt-history-line > div strong { color: var(--theme-warehouse-cards-production-warehouse-receipt-history-line-div-strong-text); font: 650 11px "IBM Plex Mono", monospace; }
+.production .warehouse-receipt-history-line > div small { color: var(--theme-warehouse-cards-production-warehouse-receipt-history-line-div-small-text); font-size: 9px; overflow-wrap: anywhere; }
+.production .warehouse-receipt-history-line > bdi { color: var(--theme-warehouse-cards-production-warehouse-receipt-history-line-bdi-text); font: 650 10px "IBM Plex Mono", monospace; white-space: nowrap; }
+.production .warehouse-order-state,
+.raw-ops .raw-stock-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid var(--theme-warehouse-cards-production-warehouse-order-state-border);
+  background: var(--theme-warehouse-cards-production-warehouse-order-state-surface);
+  color: var(--theme-warehouse-cards-production-warehouse-order-state-text);
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.production .warehouse-order-state.complete {
+  border-color: var(--theme-warehouse-cards-production-warehouse-order-state-complete-border);
+  background: var(--theme-warehouse-cards-production-warehouse-order-state-complete-surface);
+  color: var(--theme-warehouse-cards-production-warehouse-order-state-complete-text);
+}
+.production .warehouse-order-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.production .warehouse-order-state small {
+  display: block;
+  margin: 0;
+  color: inherit;
+  font-size: 8px;
+  opacity: .75;
+}
+.production .warehouse-order-product {
+  display: grid;
+  gap: 3px;
+  min-height: 53px;
+  margin: 15px 0 12px;
+}
+.production .warehouse-order-product strong {
+  color: var(--theme-warehouse-cards-production-warehouse-order-product-strong-text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.production .warehouse-order-product span {
+  color: var(--theme-warehouse-cards-production-warehouse-order-product-span-text);
+  font-size: 11px;
+}
+.production .warehouse-order-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--theme-warehouse-cards-production-warehouse-order-metrics-border);
+  padding-top: 12px;
+  gap: 7px;
+}
+.production .warehouse-order-metrics div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.production .warehouse-order-metrics span {
+  color: var(--theme-warehouse-cards-production-warehouse-order-metrics-span-text);
+  font-size: 10px;
+  line-height: 1.3;
+}
+.production .warehouse-order-metrics strong {
+  color: var(--theme-warehouse-cards-production-warehouse-order-metrics-strong-text);
+  font: 750 clamp(14px, 2vw, 18px) "IBM Plex Mono", monospace;
+  direction: ltr;
+  text-align: start;
+  white-space: nowrap;
+}
+.production .warehouse-order-metrics strong small {
+  color: var(--theme-warehouse-cards-production-warehouse-order-metrics-strong-small-text);
+  font: 600 9px sans-serif;
+}
+.production .warehouse-order-metrics .remaining strong {
+  color: var(--theme-warehouse-cards-production-warehouse-order-metrics-remaining-strong-text);
+}
+
+.raw-ops .raw-movement-launch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.raw-ops .raw-movement-launch-actions .raw-btn {
+  flex: 1 1 210px;
+  min-height: 52px;
+  font-size: 14px;
+}
+.raw-ops .raw-stock-card {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--theme-warehouse-cards-raw-ops-raw-stock-card-border);
+  border-top: 3px solid var(--theme-warehouse-cards-production-warehouse-order-card-border-2);
+  background: var(--theme-warehouse-cards-production-warehouse-order-card-surface);
+  box-shadow: 0 5px 18px var(--theme-warehouse-cards-raw-ops-raw-stock-card-shadow);
+}
+.raw-ops .raw-stock-card h3 {
+  margin: 13px 0 10px;
+  color: var(--theme-warehouse-cards-raw-ops-raw-stock-card-h3-text);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.raw-ops .raw-stock-card-top > span:first-child {
+  color: var(--theme-warehouse-cards-raw-ops-raw-stock-card-top-span-first-child-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+.raw-ops .raw-stock-status {
+  min-height: 23px;
+  border-color: var(--theme-warehouse-cards-production-warehouse-order-state-complete-border);
+  background: var(--theme-warehouse-cards-raw-ops-raw-stock-status-surface);
+  color: var(--theme-warehouse-cards-production-warehouse-order-state-complete-text);
+}
+.raw-ops .raw-stock-status.inactive {
+  border-color: var(--theme-warehouse-cards-raw-ops-raw-stock-status-inactive-border);
+  background: var(--theme-warehouse-cards-raw-ops-raw-stock-status-inactive-surface);
+  color: var(--theme-warehouse-cards-raw-ops-raw-stock-status-inactive-text);
+}
+.raw-ops .raw-stock-quantity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--theme-warehouse-cards-production-warehouse-order-number-text);
+  font: 750 clamp(24px, 3vw, 32px) "IBM Plex Mono", monospace;
+  direction: ltr;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.raw-ops .raw-stock-quantity span {
+  color: var(--theme-warehouse-cards-production-warehouse-order-card-header-small-text);
+  font: 650 11px sans-serif;
+}
+.raw-ops .raw-stock-quantity.negative {
+  color: var(--theme-warehouse-cards-raw-ops-raw-stock-quantity-negative-text);
+}
+.raw-ops .raw-negative-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 9px 0 0;
+  color: var(--theme-warehouse-cards-raw-ops-raw-negative-note-text);
+}
+.raw-ops .raw-negative-note svg { flex: none; }
+.raw-ops .raw-stock-card-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid var(--theme-warehouse-cards-raw-ops-raw-stock-card-foot-border);
+  color: var(--theme-warehouse-cards-raw-ops-raw-stock-card-foot-text);
+  font-size: 10px;
+}
+.raw-ops .raw-stock-card-foot bdi { color: var(--theme-warehouse-cards-raw-ops-raw-stock-card-foot-bdi-text); }
+.raw-ops .raw-voucher-section { margin-top: 15px; }
+.raw-ops .raw-voucher-list { display: grid; gap: 10px; }
+.raw-ops .raw-voucher-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--theme-warehouse-cards-raw-ops-raw-voucher-card-border);
+  background: var(--theme-warehouse-cards-raw-ops-raw-voucher-card-surface);
+}
+.raw-ops .raw-voucher-card > header,
+.raw-ops .raw-voucher-card > header > div,
+.raw-ops .raw-voucher-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.raw-ops .raw-voucher-card > header > div { justify-content: flex-start; }
+.raw-ops .raw-voucher-card > header strong {
+  color: var(--theme-warehouse-cards-raw-ops-raw-voucher-card-header-strong-text);
+  font: 700 11px "IBM Plex Mono", monospace;
+}
+.raw-ops .raw-voucher-kind {
+  display: inline-flex;
+  padding: 4px 7px;
+  border: 1px solid var(--theme-warehouse-cards-production-warehouse-order-state-complete-border);
+  background: var(--theme-warehouse-cards-raw-ops-raw-stock-status-surface);
+  color: var(--theme-warehouse-cards-production-warehouse-order-state-complete-text);
+  font-size: 10px;
+  font-weight: 750;
+}
+.raw-ops .raw-voucher-kind.issue {
+  border-color: var(--theme-warehouse-cards-raw-ops-raw-voucher-kind-issue-border);
+  background: var(--theme-warehouse-cards-raw-ops-raw-voucher-kind-issue-surface);
+  color: var(--theme-warehouse-cards-raw-ops-raw-voucher-kind-issue-text);
+}
+.raw-ops .raw-voucher-total {
+  color: var(--theme-warehouse-cards-production-warehouse-order-number-text);
+  font: 750 14px "IBM Plex Mono", monospace;
+  direction: ltr;
+}
+.raw-ops .raw-voucher-meta {
+  justify-content: flex-start;
+  margin-top: 9px;
+  color: var(--theme-warehouse-cards-raw-ops-raw-voucher-meta-text);
+  font-size: 10px;
+}
+.raw-ops .raw-voucher-card ul {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  padding: 10px 0 0;
+  margin: 9px 0 0;
+  border-top: 1px solid var(--theme-warehouse-cards-raw-ops-raw-voucher-card-ul-border);
+}
+.raw-ops .raw-voucher-card li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 11px;
+}
+.raw-ops .raw-voucher-card li > span { min-width: 0; overflow-wrap: anywhere; }
+.raw-ops .raw-voucher-card li small { color: var(--theme-warehouse-cards-raw-ops-raw-voucher-card-li-small-text); }
+.raw-ops .raw-voucher-card li bdi {
+  flex: none;
+  color: var(--theme-warehouse-cards-raw-ops-raw-voucher-card-li-bdi-text);
+  font: 700 11px "IBM Plex Mono", monospace;
+  direction: ltr;
+}
+.raw-ops .raw-voucher-notes {
+  margin: 10px 0 0;
+  color: var(--theme-warehouse-cards-raw-ops-raw-voucher-notes-text);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.raw-ops .raw-modal-backdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--theme-warehouse-cards-raw-ops-raw-modal-backdrop-surface);
+}
+.raw-ops .raw-movement-dialog {
+  width: min(100%, 720px);
+  max-height: min(90dvh, 900px);
+  overflow: auto;
+  border: 1px solid var(--theme-warehouse-cards-raw-ops-raw-movement-dialog-border);
+  background: var(--theme-warehouse-cards-raw-ops-raw-movement-dialog-surface);
+  box-shadow: 0 18px 60px var(--theme-warehouse-cards-raw-ops-raw-movement-dialog-shadow);
+}
+.raw-ops .raw-movement-dialog > header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 17px;
+  border-bottom: 1px solid var(--theme-warehouse-cards-raw-ops-raw-movement-dialog-header-border);
+  background: var(--theme-warehouse-cards-raw-ops-raw-movement-dialog-surface);
+}
+.raw-ops .raw-movement-dialog > header h2 { margin: 6px 0 0; font-size: 17px; }
+.raw-ops .raw-movement-dialog form { padding: 16px; }
+.raw-ops .raw-movement-lines { display: grid; gap: 9px; }
+.raw-ops .raw-movement-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, .48fr) 42px;
+  align-items: end;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--theme-warehouse-cards-raw-ops-raw-voucher-card-border);
+  background: var(--theme-warehouse-cards-production-warehouse-order-card-surface);
+}
+.raw-ops .raw-movement-line select,
+.raw-ops .raw-movement-line input { min-height: 48px; font-size: 16px; }
+.raw-ops .raw-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--theme-warehouse-cards-raw-ops-raw-icon-button-border);
+  background: var(--theme-warehouse-cards-production-warehouse-order-card-surface);
+  color: var(--theme-warehouse-cards-raw-ops-raw-icon-button-text);
+  cursor: pointer;
+}
+.raw-ops .raw-icon-button svg { width: 17px; height: 17px; }
+.raw-ops .raw-icon-button:disabled { opacity: .45; cursor: not-allowed; }
+.raw-ops .raw-add-line { margin-top: 10px; }
+.raw-ops .raw-movement-notes { margin-top: 14px; }
+.raw-ops .raw-movement-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--theme-warehouse-cards-raw-ops-raw-movement-dialog-header-border);
+}
+.raw-ops .raw-movement-dialog .raw-ops-banner { margin-top: 12px; }
+.production .warehouse-finished-view .prod-history {
+  border-color: var(--theme-warehouse-cards-raw-ops-raw-icon-button-border);
+  background: var(--theme-warehouse-cards-production-warehouse-order-card-surface);
+}
+.production .warehouse-finished-view .prod-history > summary { cursor: pointer; }
+.production .warehouse-finished-view .prod-history .prod-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+  gap: 10px;
+}
+.production .warehouse-finished-view .prod-history .prod-record {
+  min-width: 0;
+  margin: 0;
+  border-top: 3px solid var(--theme-warehouse-cards-production-warehouse-finished-view-prod-history-prod-record-border);
+  background: var(--theme-warehouse-cards-production-warehouse-finished-view-prod-history-prod-record-surface);
+}
+
+@media (max-width: 767px) {
+  .production .warehouse-hall-section { margin: 16px 0; }
+  .production .warehouse-section-heading { align-items: flex-start; }
+  .production .warehouse-receipt-actions { justify-content: flex-start; }
+  .production .warehouse-receipt-actions > button { flex: 1 1 150px; }
+  .raw-ops .raw-movement-dialog { max-height: 94dvh; }
+  .raw-ops .raw-movement-dialog form { padding: 12px; }
+  .raw-ops .raw-movement-line { grid-template-columns: minmax(0, 1fr) 42px; gap: 8px; }
+  .raw-ops .raw-movement-line .raw-ops-field:first-child { grid-column: 1 / -1; }
+  .raw-ops .raw-movement-line .raw-ops-field:nth-child(2) { grid-column: 1; }
+  .raw-ops .raw-remove-line { grid-column: 2; grid-row: 2; }
+
+  .production.warehouse-context .prod-view-nav,
+  .raw-ops .raw-ops-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+  }
+  .production.warehouse-context .prod-view-nav > a,
+  .raw-ops .raw-ops-nav > a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+    padding: 5px 2px;
+    font-size: clamp(10px, 3vw, 12px);
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: normal;
+    text-overflow: clip;
+  }
+  .production.warehouse-context .warehouse-summary {
+    display: none;
+  }
+}
+@media (min-width: 481px) {
+  .production .warehouse-hall-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 768px) {
+  .production .warehouse-hall-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1100px) {
+  .production .warehouse-hall-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+@media (max-width: 767px) {
+  .production .warehouse-inventory-grid,
+  .production .warehouse-receipt-ledger { grid-template-columns: minmax(0,1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .production .warehouse-hall-section *, .raw-ops .raw-movement-dialog * { scroll-behavior: auto; }
+}

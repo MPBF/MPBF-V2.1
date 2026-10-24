@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { customerFormSchema, nextCustomerId } from "../server/customer-form";
+import { DRAWER_LETTERS, DRAWER_NUMBERS, joinDrawerCode, splitDrawerCode } from "../shared/customer-drawer";
 
 describe("customer form contract", () => {
   it("allocates the existing CID format including sequence growth", () => {
@@ -35,5 +36,29 @@ describe("customer form contract", () => {
       .toEqual({ phone: "0501234567" });
     expect(customerFormSchema.partial().safeParse({ name: " " }).success).toBe(false);
     expect(customerFormSchema.safeParse({ name: "Customer", phone: "1".repeat(21) }).success).toBe(false);
+  });
+
+  it("accepts only canonical A-Z and 1-100 drawer codes when explicitly supplied", () => {
+    for (const plate_drawer_code of ["A-1", "C-24", "Z-100", null, undefined])
+      expect(customerFormSchema.safeParse({ name: "Customer", plate_drawer_code }).success).toBe(true);
+    for (const plate_drawer_code of ["C-0", "A-101", "a-24", "AA-24", "C-01", "C-", "-24", "C-1.5", "C 24", ""])
+      expect(customerFormSchema.safeParse({ name: "Customer", plate_drawer_code }).success).toBe(false);
+    // Historical noncanonical codes remain untouched when another field is edited.
+    expect(customerFormSchema.partial().parse({ phone: "0501234567" })).not.toHaveProperty("plate_drawer_code");
+  });
+
+  it("splits and composes drawer selections without coercing invalid legacy values", () => {
+    expect(DRAWER_LETTERS).toHaveLength(26);
+    expect(DRAWER_NUMBERS).toHaveLength(100);
+    expect(DRAWER_NUMBERS[0]).toBe("1");
+    expect(DRAWER_NUMBERS[99]).toBe("100");
+    expect(splitDrawerCode("C-24")).toEqual({ letter: "C", number: "24" });
+    expect(splitDrawerCode("C-240")).toEqual({ letter: "", number: "" });
+    expect(joinDrawerCode("C", "24")).toBe("C-24");
+    expect(joinDrawerCode("Z", "100")).toBe("Z-100");
+    expect(joinDrawerCode("", "")).toBeNull();
+    expect(() => joinDrawerCode("C", "")).toThrow();
+    expect(() => joinDrawerCode("", "24")).toThrow();
+    expect(() => joinDrawerCode("C", "101")).toThrow();
   });
 });

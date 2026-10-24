@@ -121,7 +121,7 @@ export default function OrderPrintPage({ id, branding, publicAccess = false, pub
 
   return <main className="opp-page" dir={document.documentElement.dir}>
     <div className="opp-toolbar">
-      <div className="opp-toolbar-copy"><span>{translate("معاينة مستند الإنتاج")}</span><strong>{translate("ورق A4 · أفقي")}</strong>{!publicAccess && <small style={{ maxWidth: 320, color: "#6a8178", fontSize: 10 }}>{translate("رمز QR الجديد يتطلب إعادة طباعة النسخ السابقة.")}</small>}</div>
+      <div className="opp-toolbar-copy"><span>{translate("معاينة مستند الإنتاج")}</span><strong>{translate("ورق A4 · أفقي")}</strong>{!publicAccess && <small style={{ maxWidth: 320, color: "var(--theme-order-print-page-opp-toolbar-copy-strong-text)", fontSize: 10 }}>{translate("رمز QR الجديد يتطلب إعادة طباعة النسخ السابقة.")}</small>}</div>
       {state.status === "ready" && <button type="button" className="opp-print-action" onClick={handlePrint} disabled={printing}>
         {printing ? <LoaderCircle size={17} className="opp-spin" /> : <Printer size={17} />}
         {printing ? translate("جارٍ تجهيز الطباعة…") : translate("طباعة المستند")}

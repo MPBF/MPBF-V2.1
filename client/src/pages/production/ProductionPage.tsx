@@ -1,26 +1,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, ChevronRight, Factory, Plus, RefreshCw, Settings2, X } from "lucide-react";
 import { Link } from "wouter";
 import FilmOperatorOrders from "./FilmOperatorOrders";
 import RollOperatorOrders from "./RollOperatorOrders";
 import RollLabelControls from "./RollLabelControls";
+import FinishedInventory from "../warehouse/FinishedInventory";
 import "./roll-labels.css";
 import {
   canStartFilmProductionOrder, eligibleForCutting, hasProductionPermission, machineStage,
   type FilmInput, type ProductionMachine, type ProductionOrderRecord, type ProductionRollDetail, type ProductionRollRecord,
-  type ProductionStage, type ProductionState, type ProductionUser, type ReceiptInput, type StorageLocation,
+  type ProductionStage, type ProductionState, type ProductionUser, type ProductionReceipt, type ReceiptInput,
 } from "../../../../shared/production";
-import { productionApi } from "../../lib/production-api";
+import { confirmedProductionRejection, productionApi } from "../../lib/production-api";
 import { availableProductionViews, canOpenProductionView } from "../../lib/production-navigation";
+import { availablePlanningViews, canOpenPlanningView } from "../../lib/planning-navigation";
+import { PlanningHeader, PlanningNavigation } from "./PlanningChrome";
+import { availableWarehouseViews, canOpenWarehouseView, initialWarehousePath } from "../../lib/warehouse-navigation";
 import { productionActorName } from "../../lib/production-actors";
 import { formatWholeNumber } from "../../lib/format-number";
 import "./production.css";
+import "./planning.css";
+import "../warehouse/warehouse-cards.css";
 import { ProductionHistory } from "./ProductionHistory";
 import { FilmDurationSummary } from "./FilmDurationSummary";
+import { ReceiptVoucherModal, type ReceiptDraft } from "../warehouse/ReceiptVoucherModal";
+import { normalizeReceiptQuantity } from "../../../../shared/receipt-draft";
+import { printReceipt } from "../../lib/receipt-print";
 
 export type ProductionView = "management" | "film" | "printing" | "cutting" | "hall" | "warehouse" | "roll";
-export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string };
+export type ProductionPageProps = { user: ProductionUser; view: ProductionView; rollId?: string; moduleContext?: "production" | "warehouse" | "planning" };
 
 const executableOrder = (status: string) => status === "for_production" || status === "in_production";
 const unstartableProductionStatuses = new Set(["completed", "archived", "cancelled"]);
@@ -43,11 +53,17 @@ const idempotencyKey = () => {
 };
 
 const messages: Record<string, [string, string]> = {
+  monitoring: ["مراقبة الإنتاج", "Production monitoring"],
+  planning: ["التخطيط والمراقبة", "Planning and monitoring"],
+  mixing: ["خلط مواد الخام", "Raw material mixing"],
+  raw: ["صالة الخام", "Raw materials hall"],
   title: ["تشغيل الإنتاج", "Production operations"], intro: ["كل رول يسير في مساره؛ والدفعات تصل للمخزون عند استلامها.", "Each roll moves on its own; batches enter stock when received."],
-  management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"], printing: ["تشغيل الطباعة", "Printing operations"], cutting: ["تشغيل القص", "Cutting operations"], hall: ["صالة الإنتاج", "Production hall"], warehouse: ["مخزون المواد التامة", "Finished inventory"], roll: ["سجل الرول", "Roll record"],
+  management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"], printing: ["تشغيل الطباعة", "Printing operations"], cutting: ["تشغيل القص", "Cutting operations"], hall: ["صالة الإنتاج", "Production hall"], warehouse: ["المنتجات التامة", "Finished products"], roll: ["سجل الرول", "Roll record"],
   reload: ["تحديث البيانات", "Refresh data"], retry: ["إعادة المحاولة", "Retry"], failedLoad: ["تعذر تحميل بيانات الإنتاج.", "Production data could not be loaded."], loading: ["جارٍ تحميل بيانات الإنتاج", "Loading production data"], noRows: ["لا توجد سجلات لعرضها الآن", "There are no records to show right now"], unrecorded: ["غير مسجل", "Unrecorded"], ready: ["جاهز", "Ready"], running: ["قيد التشغيل", "In progress"], started: ["بدأ الإنتاج", "Production started"], start: ["بدء الإنتاج", "Start production"], noEligible: ["لا توجد أوامر مؤهلة لهذه المرحلة.", "No orders are eligible for this stage."],
   order: ["أمر الإنتاج", "Production order"], customerOrder: ["طلب العميل", "Customer order"], customerStatus: ["حالة طلب العميل", "Customer order status"], productionStatus: ["حالة أمر الإنتاج", "Production-order status"], stage: ["مرحلة الأمر", "Order stage"], rollStage: ["مرحلة الرول", "Roll stage"], product: ["المنتج", "Product"], planned: ["المخطط النهائي", "Final planned"], produced: ["المنتج فعلياً", "Produced actual"], readyKg: ["الجاهز", "Ready"], received: ["المستلم", "Received"], waste: ["الهدر", "Waste"], remaining: ["المتبقي للاستلام", "Receivable"], rolls: ["الرولات", "Rolls"], created: ["تم الحفظ بنجاح.", "Saved successfully."], saving: ["جارٍ الحفظ…", "Saving…"], readonly: ["عرض فقط — لا تتوفر صلاحية التشغيل.", "Read only — operation permission is not granted."],
+  incomplete: ["غير مكتمل", "Incomplete"], receiptComplete: ["مكتمل", "Complete"], readyOrders: ["الأوامر الجاهزة للاستلام", "Orders ready for receipt"], orderReadyState: ["حالة الاستلام", "Receipt status"],
   startedAt: ["بدأ في", "Started"], closedAt: ["إغلاق الفيلم", "Film closure"], filmClosed: ["الفيلم مغلق", "Film closed"], historical: ["أمر تاريخي بلا سجلات تنفيذ؛ لا تُعرض أوزان فعلية.", "Historical order without execution records; actual weights are not reported."], filmReadyExplanation: ["الخطة معتمدة وجاهزة. يبدأ التنفيذ عند اختيار «بدء الإنتاج».", "The plan is released and ready. Execution begins when an operator selects Start production."],
+  productionIncomplete: ["الإنتاج غير مكتمل", "Production incomplete"], productionComplete: ["الإنتاج مكتمل", "Production complete"],
   addRoll: ["تسجيل رول", "Register roll"], weight: ["وزن الفيلم (كجم)", "Film weight (kg)"], machine: ["ماكينة التشغيل", "Operating machine"], chooseMachine: ["اختر ماكينة", "Choose machine"], changeMachine: ["تغيير الماكينة", "Change machine"], lastRoll: ["آخر رول — إغلاق الفيلم", "This is the final roll — close film"], inline: ["طباعة إنلاين", "Inline printing"], noMachine: ["لا توجد ماكينة نشطة مناسبة.", "No active compatible machine is available."], machineSaved: ["تم حفظ اختيار الماكينة لهذا المشغل.", "Machine choice saved for this operator."],
   printRoll: ["تسجيل الطباعة", "Record printing"], cutRoll: ["إكمال القص", "Complete cutting"], netWeight: ["الوزن الصافي بعد القص (كجم)", "Net weight after cutting (kg)"], completed: ["مكتمل", "Complete"], queue: ["توزيع الطابور", "Queue assignment"], stageSelect: ["المرحلة", "Stage"], position: ["الترتيب", "Position"], assign: ["إضافة للطابور", "Add to queue"], queueList: ["طوابير الماكينات", "Machine queues"], remove: ["إزالة", "Remove"], up: ["أعلى", "Move up"], down: ["أسفل", "Move down"], noQueue: ["لا توجد أوامر موزعة على الطوابير.", "No orders are assigned to queues."],
   eligibleWeight: ["الوزن الجاهز غير المستلم", "Ready, not yet received"], receiveBatch: ["استلام دفعة", "Receive batch"], storage: ["موقع التخزين", "Storage location"], quantity: ["كمية الاستلام (كجم)", "Receipt quantity (kg)"], notes: ["ملاحظات السند", "Voucher notes"], packaging: ["بيانات التعبئة اختيارية", "Optional packaging details"], rollGrams: ["وزن الرول (جرام)", "Roll weight (grams)"], rollsUnit: ["رولات في الوحدة", "Rolls per unit"], units: ["عدد الوحدات", "Units"], addLine: ["إضافة أمر للاستلام", "Add order to receipt"], saveReceipt: ["حفظ سند الاستلام", "Save receipt"], location: ["الموقع", "Location"], saveLocation: ["حفظ الموقع", "Save location"], locationName: ["اسم الموقع", "Location name"], locationAr: ["الاسم بالعربية", "Arabic name"], locationEn: ["الاسم بالإنجليزية", "English name"], active: ["نشط", "Active"], inactive: ["غير نشط", "Inactive"], locations: ["مواقع التخزين", "Storage locations"], balances: ["أرصدة المواد التامة", "Finished-goods balances"], movements: ["حركات المخزون", "Inventory movements"], vouchers: ["سندات الاستلام المحفوظة", "Saved receipt vouchers"], noLocations: ["أضف موقع تخزين قبل حفظ سند.", "Add a storage location before saving a voucher."], unknownRoll: ["الرول غير موجود أو لا تملك صلاحية عرضه.", "The roll does not exist or you do not have permission to view it."],
@@ -65,6 +81,10 @@ const orderProduct = (order: ProductionOrderRecord, language: string) =>
   localized(order.product?.name_ar, order.product?.name, language, localized(order.product?.customer_name_ar, order.product?.customer_name, language, text("unrecorded", language)));
 const customerName = (order: ProductionOrderRecord, language: string) => localized(order.product?.customer_name_ar, order.product?.customer_name, language);
 const machineName = (machine: ProductionMachine | undefined, language: string) => machine ? localized(machine.name_ar, machine.name, language, machine.id) : "—";
+const pickerMachineName = (machine: ProductionMachine, language: string) => {
+  const name = (language === "en" ? machine.name : machine.name_ar || machine.name)?.trim() ?? "";
+  return (language === "en" && /[\u0600-\u06ff]/.test(name) ? "" : name) || text("unrecorded", language);
+};
 
 function useProductionState(allowed: boolean, view: ProductionView) {
   const [snapshot, setSnapshot] = useState<{ view: ProductionView; state: ProductionState } | null>(null);
@@ -82,12 +102,28 @@ function useProductionState(allowed: boolean, view: ProductionView) {
     finally { if (request === generation.current) setLoading(false); }
   }, [allowed, view]);
   useEffect(() => { void load(); return () => { generation.current++; }; }, [load]);
+  useEffect(() => {
+    if (!allowed || (view !== "hall" && view !== "warehouse")) return;
+    const refreshIfVisible = () => { if (document.visibilityState === "visible") void load(); };
+    const timer = window.setInterval(refreshIfVisible, 15000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refreshIfVisible); };
+  }, [allowed, load, view]);
   return { state: allowed && snapshot?.view === view ? snapshot.state : null, loading, error, reload: load };
 }
 
-function Header({ view, language }: { view: ProductionView; language: string }) {
-  return <header className="prod-heading">
-    <div><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{text(view, language)}</h2><p>{view === "management" ? text("intro", language) : text("title", language)}</p></div>
+function Header({ view, language, refreshing, onRefresh, machineSlotRef, children, moduleContext }: { view: ProductionView; language: string; refreshing: boolean; onRefresh: () => void; machineSlotRef: (node: HTMLDivElement | null) => void; children?: ReactNode; moduleContext: "production" | "warehouse" | "planning" }) {
+  const isOperatorView = view === "film" || view === "printing" || view === "cutting";
+  const heading = moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : moduleContext === "planning" ? text("planning", language) : text(view, language);
+  return <header className={`prod-heading${isOperatorView ? " operator-header" : ""}`}>
+    <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / FLOOR CONTROL</div><h2>{heading}</h2><p>{moduleContext === "warehouse" ? (language === "en" ? "Receiving, finished products and movement history." : "الاستلام والمنتجات التامة وحركاتها.") : view === "management" ? text("intro", language) : text("title", language)}</p></div>
+    <div className="prod-heading-controls">
+      <button className="prod-btn quiet prod-header-refresh" data-production-header-refresh
+        aria-label={text("reload", language)} title={text("reload", language)}
+        onClick={onRefresh} disabled={refreshing}><RefreshCw /><span className="prod-header-refresh-label">{text("reload", language)}</span></button>
+      {children}
+      <div className="prod-header-machine-slot" data-production-machine-slot ref={machineSlotRef} />
+    </div>
     <div className="prod-mark"><i aria-hidden="true" /><span>ROLL<br />TRACE / 01</span></div>
   </header>;
 }
@@ -108,26 +144,35 @@ function Metric({ label, value, unit = "kg" }: { label: string; value: string; u
 }
 
 function useWrite(reload: () => Promise<void>, language: string) {
-  const [saving, setSaving] = useState(false), [error, setError] = useState(""), [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false), [error, setError] = useState(""), [success, setSuccess] = useState(""), [uncertain, setUncertain] = useState(false);
+  const [warning, setWarning] = useState("");
   const savedOperation = useRef<{ fingerprint: string; requestId: string; action: (requestId: string) => Promise<unknown>; feedback: string; onSuccess?: () => void } | null>(null);
   const savingRef = useRef(false);
   const run = useCallback(async (operation: NonNullable<typeof savedOperation.current>) => {
     if (savingRef.current) return false;
     savingRef.current = true;
-    setSaving(true); setError(""); setSuccess("");
+    setSaving(true); setError(""); setSuccess(""); setWarning(""); setUncertain(false);
     try {
       if (!operation.requestId) {
         try { operation.requestId = idempotencyKey(); }
         catch { throw new Error(text("secureUnavailable", language)); }
       }
-      await operation.action(operation.requestId);
-      savedOperation.current = null;
+      const result = await operation.action(operation.requestId);
+      const uncovered = (result as {mix_tracking?: {uncovered_kg?: string}} | null)?.mix_tracking?.uncovered_kg;
+      if (uncovered && Number(uncovered)>0) {
+        setWarning(language==="en"
+          ? `Roll saved. ${number(uncovered,language)} kg is not covered by recorded mixes. Production is allowed; review mixing records.`
+          : `تم حفظ الرول. ${number(uncovered,language)} كجم غير مغطاة بخلطات مسجلة. الإنتاج مسموح؛ راجع سجل الخلط.`);
+      }
+      window.dispatchEvent(new Event("production-data-changed"));
       operation.onSuccess?.();
       setSuccess(text(operation.feedback, language));
       await reload();
+      savedOperation.current = null;
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text("errorGeneric", language));
+      setUncertain(!confirmedProductionRejection(cause));
       return false;
     } finally { savingRef.current = false; setSaving(false); }
   }, [language, reload]);
@@ -144,24 +189,26 @@ function useWrite(reload: () => Promise<void>, language: string) {
   const retry = useCallback(async () => {
     const operation = savedOperation.current;
     if (!operation) return false;
-    await reload();
     return run(operation);
-  }, [reload, run]);
-  const fail = (message: string) => { setError(message); setSuccess(""); };
-  return { saving, error, success, perform, retry, fail };
+  }, [run]);
+  const fail = (message: string) => { setError(message); setSuccess(""); setUncertain(false); };
+  return { saving, error, success, warning, perform, retry, fail, uncertain };
 }
 
-function OrderSummary({ order, language, showFilmDuration = true }: { order: ProductionOrderRecord; language: string; showFilmDuration?: boolean }) {
+function OrderSummary({ order, language, showFilmDuration = true, compactDuration = false }: { order: ProductionOrderRecord; language: string; showFilmDuration?: boolean; compactDuration?: boolean }) {
   return <>
     <div className="prod-order-main">
     <h3><span className="prod-number">{order.production_order_number}</span></h3>
     <div className="prod-order-meta">{text("customerOrder", language)} <span className="prod-number">{order.order_number}</span> · {customerName(order, language)} · {orderProduct(order, language)}</div>
     <div className="prod-chips" style={{ marginTop: 8 }}>
-      <span className="prod-chip">{text("customerStatus", language)}: {text(order.order_status,language)}</span>
-      <span className="prod-chip warm">{text("productionStatus", language)}: {text(order.status,language)}</span>
-      {order.stage && <span className="prod-chip muted">{text("stage", language)}: {text(order.stage,language)}</span>}
+      <span className="prod-chip" title={`${text("customerStatus",language)}: ${text(order.order_status,language)}`}>{!compactDuration&&`${text("customerStatus", language)}: `}{text(order.order_status,language)}</span>
+      <span className="prod-chip warm" title={`${text("productionStatus",language)}: ${text(order.status,language)}`}>{!compactDuration&&`${text("productionStatus", language)}: `}{text(order.status,language)}</span>
+      {order.stage && <span className="prod-chip muted" title={`${text("stage",language)}: ${text(order.stage,language)}`}>{!compactDuration&&`${text("stage", language)}: `}{text(order.stage,language)}</span>}
     </div>
-    {showFilmDuration && <FilmDurationSummary durations={order.film_durations} language={language} />}
+    {showFilmDuration && (compactDuration ? <details className="prod-management-duration">
+      <summary>{language==="en"?"Film production duration":"مدة إنتاج الفيلم"}</summary>
+      <FilmDurationSummary durations={order.film_durations} language={language} />
+    </details> : <FilmDurationSummary durations={order.film_durations} language={language} />)}
     </div>
   </>;
 }
@@ -226,21 +273,25 @@ function Management({ state, user, language, reload }: { state: ProductionState;
       <Metric label={text("queue", language)} value={number(state.queues.length, language, 0)} unit={text("queueEntries",language)} />
     </div>
     <div className="prod-section-title"><h3>{text("started", language)} · {text("order", language)}</h3></div>
-    <div className="prod-list">
-      {activeOrders.length ? activeOrders.map(order => <article className="prod-order" key={order.id}>
-        <OrderSummary order={order} language={language} />
-        <OrderActuals order={order} language={language} />
-        <div className="prod-measure"><span>{text("filmClosed", language)}</span><strong>{order.film_closed_at ? text("completed", language) : text("running", language)}</strong><small className="prod-muted">{date(order.film_closed_at, language, true)}</small></div>
+    <div className="prod-list prod-management-list">
+      {activeOrders.length ? activeOrders.map(order => <article className="prod-order prod-management-order prod-management-active" key={order.id}>
+        <OrderSummary order={order} language={language} compactDuration />
+        <div className="prod-management-metrics">
+          <OrderActuals order={order} language={language} />
+          <div className="prod-measure"><span>{text("filmClosed", language)}</span><strong>{order.film_closed_at ? text("completed", language) : text("running", language)}</strong><small className="prod-muted">{date(order.film_closed_at, language, true)}</small></div>
+        </div>
         <ProductionHistory kind="rolls" title={`${text("allRolls",language)} · ${number(order.roll_count??0,language,0)}`} orderId={order.id} language={language} refresh={state}/>
       </article>) : <Empty title={text("noRows", language)} />}
     </div>
     <div className="prod-section-title"><h3>{text("start", language)} · {text("order", language)}</h3></div>
-    <div className="prod-list">
-      {unrecorded.length ? unrecorded.map(order => <article className="prod-order" key={order.id}>
-        <OrderSummary order={order} language={language} />
-        <div className="prod-measure"><span>{text("planned", language)}</span><strong>{number(order.final_quantity_kg, language)} kg</strong></div>
-        <div className="prod-measure"><span>{text("produced", language)}</span><strong>{text("unrecorded", language)}</strong></div>
-        <div className="prod-measure"><span>{text("productionStatus", language)}</span><strong>{text(order.status,language)}</strong></div>
+    <div className="prod-list prod-management-list">
+      {unrecorded.length ? unrecorded.map(order => <article className="prod-order prod-management-order prod-management-unstarted" key={order.id}>
+        <OrderSummary order={order} language={language} compactDuration />
+        <div className="prod-management-metrics">
+          <div className="prod-measure"><span>{text("planned", language)}</span><strong>{number(order.final_quantity_kg, language)} kg</strong></div>
+          <div className="prod-measure"><span>{text("produced", language)}</span><strong>{text("unrecorded", language)}</strong></div>
+          <div className="prod-measure"><span>{text("productionStatus", language)}</span><strong>{text(order.status,language)}</strong></div>
+        </div>
         {canManage && canStartFilmProductionOrder(order) && <button className="prod-btn" disabled={write.saving} onClick={() => start(order)}><Factory />{text("start", language)}</button>}
       </article>) : <Empty title={text("noRows", language)} />}
     </div>
@@ -254,7 +305,7 @@ function Management({ state, user, language, reload }: { state: ProductionState;
         <div className="prod-savebar"><button className="prod-btn" type="submit" disabled={write.saving || !queueMachine}><Plus />{text("assign", language)}</button></div>
       </form> : <div className="prod-muted">{text("readonly", language)}</div>}
       <div className="prod-section-title"><h3>{text("queueList", language)}</h3></div>
-      {state.queues.length ? <div className="prod-table-wrap"><table className="prod-table"><thead><tr><th>{text("stageSelect", language)}</th><th>{text("machine", language)}</th><th>{text("order", language)}</th><th>{text("position", language)}</th><th /></tr></thead><tbody>{[...state.queues].sort((a,b)=>a.stage.localeCompare(b.stage)||a.machine_id.localeCompare(b.machine_id)||a.position-b.position).map((queue,index) => {
+      {state.queues.length ? <div className="prod-table-wrap"><table className="prod-table"><thead><tr><th>{text("stageSelect", language)}</th><th>{text("machine", language)}</th><th>{text("order", language)}</th><th>{text("position", language)}</th><th /></tr></thead><tbody>{[...state.queues].sort((a,b)=>a.stage.localeCompare(b.stage)||a.machine_id.localeCompare(b.machine_id)||a.position-b.position).map((queue) => {
         const siblings = state.queues.filter(item => item.stage === queue.stage && item.machine_id === queue.machine_id).sort((a,b)=>a.position-b.position);
         const order = state.orders.find(item => item.id === queue.production_order_id);
         return <tr key={queue.id}><td>{text(queue.stage,language)}</td><td>{machineName(machineById.get(queue.machine_id),language)}</td><td>{order?.production_order_number ?? queue.production_order_id}</td><td>{queue.position}</td><td><div className="prod-inline">{canManage && <><button className="prod-btn quiet" aria-label={text("up",language)} disabled={write.saving || siblings[0]?.id === queue.id} onClick={() => updatePosition(queue.id,-1)}><ArrowUp /></button><button className="prod-btn quiet" aria-label={text("down",language)} disabled={write.saving || siblings.at(-1)?.id === queue.id} onClick={() => updatePosition(queue.id,1)}><ArrowDown /></button><button className="prod-btn danger" disabled={write.saving} onClick={() => remove(queue.id)}><X />{text("remove",language)}</button></>}</div></td></tr>;
@@ -276,11 +327,20 @@ function MachinePicker({ userId, stage, machines, language, selected, onSelect }
   };
   const chosen = machines.find(machine => machine.id === selected);
   if (!machines.length) return <div className="prod-callout">{text("noMachine",language)}</div>;
-  if (chosen && !changing) return <div className="prod-inline"><span className="prod-chip">{text("machine",language)}: {machineName(chosen,language)} · {chosen.id}</span><button className="prod-btn quiet" onClick={() => setChanging(true)}><Settings2 />{text("changeMachine",language)}</button></div>;
-  return <div className="prod-field"><label htmlFor={`machine-${stage}`}>{text("chooseMachine",language)}</label><select id={`machine-${stage}`} value={selected} onChange={event=>select(event.target.value)}>{machines.map(machine=><option key={machine.id} value={machine.id}>{machineName(machine,language)} · {machine.id}</option>)}</select></div>;
+  if (!changing) {
+    const name = chosen ? pickerMachineName(chosen, language) : text("chooseMachine", language);
+    const accessibleName = chosen ? `${text("changeMachine", language)}: ${name}` : text("chooseMachine", language);
+    return <div className="prod-machine-picker">
+      <button type="button" className="prod-btn quiet prod-machine-change" data-production-machine-change
+        aria-label={accessibleName} title={accessibleName} onClick={() => setChanging(true)}>
+        <Settings2 aria-hidden="true" /><span>{name}</span>
+      </button>
+    </div>;
+  }
+  return <div className="prod-field prod-machine-select"><label htmlFor={`machine-${stage}`}>{text("chooseMachine",language)}</label><select id={`machine-${stage}`} value={selected} onChange={event=>select(event.target.value)}><option value="">{text("chooseMachine",language)}</option>{machines.map(machine=><option key={machine.id} value={machine.id}>{pickerMachineName(machine,language)}</option>)}</select></div>;
 }
 
-function OperatorBoard({ state,user,stage,language,reload }: {state:ProductionState;user:ProductionUser;stage:ProductionStage;language:string;reload:()=>Promise<void>}) {
+function OperatorBoard({ state,user,stage,language,reload,machineSlot }: {state:ProductionState;user:ProductionUser;stage:ProductionStage;language:string;reload:()=>Promise<void>;machineSlot:HTMLDivElement|null}) {
   const permission = stage === "film" ? "operate_film" : stage === "printing" ? "operate_printing" : "operate_cutting";
   const canOperate = hasProductionPermission(user,permission);
   const write=useWrite(reload,language);
@@ -339,7 +399,8 @@ function OperatorBoard({ state,user,stage,language,reload }: {state:ProductionSt
   const machinePicker=<MachinePicker userId={user.id} stage={stage} machines={machines} language={language} selected={selectedMachine} onSelect={setSelectedMachine}/>;
   return <>
     {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
-    <Card title={text("machine",language)}>{machinePicker}</Card>
+    {write.warning && <div className="prod-callout" role="status">{write.warning}</div>}
+    {machineSlot&&createPortal(machinePicker,machineSlot)}
     {!canOperate&&<div className="prod-callout" style={{marginTop:14}}>{text("readonly",language)}</div>}
     {stage==="film" ? <FilmOperatorOrders
       orders={[...orders,...readyFilmOrders].sort((a,b)=>priority(a.id)-priority(b.id)||a.id-b.id)}
@@ -368,85 +429,133 @@ function OperatorBoard({ state,user,stage,language,reload }: {state:ProductionSt
   </>;
 }
 
-type ReceiptDraft = { orderId: string; locationId: string; quantity: string; packaging: boolean; rollWeight: string; rollsPerUnit: string; units: string };
-const emptyDraft = ():ReceiptDraft=>({orderId:"",locationId:"",quantity:"",packaging:false,rollWeight:"",rollsPerUnit:"",units:""});
+const emptyDraft = (orderId=""):ReceiptDraft=>({orderId,quantity:""});
+const kgHundredths=(value:string|number|null|undefined):bigint=>{
+  const raw=latinDigits(String(value??""));
+  if(!/^\d+(?:\.\d{1,2})?$/.test(raw))return 0n;
+  const [whole,fraction=""]=raw.split(".");
+  return BigInt(whole)*100n+BigInt(fraction.padEnd(2,"0"));
+};
 function Hall({state,user,language,reload}:{state:ProductionState;user:ProductionUser;language:string;reload:()=>Promise<void>}) {
   const canReceive=hasProductionPermission(user,"receive_production"), write=useWrite(reload,language);
-  const [drafts,setDrafts]=useState<ReceiptDraft[]>([emptyDraft()]),[notes,setNotes]=useState("");
+  const [drafts,setDrafts]=useState<ReceiptDraft[]>([emptyDraft()]),[notes,setNotes]=useState(""),[selected,setSelected]=useState<number[]>([]);
+  const [receiptOpen,setReceiptOpen]=useState(false),[savedReceipt,setSavedReceipt]=useState<ProductionReceipt|null>(null),[formError,setFormError]=useState("");
+  const receiptOpener=useRef<HTMLButtonElement|null>(null);
+  const closeReceipt=useCallback(()=>setReceiptOpen(false),[]);
   const receiptDraft=useRef("");
   receiptDraft.current=JSON.stringify({drafts,notes});
   const eligible=state.orders.filter(order=>Number(order.remaining_kg)>0);
-  const addLine=()=>setDrafts(rows=>[...rows,emptyDraft()]);
+  const addLine=()=>{setSavedReceipt(null);setDrafts(rows=>rows.length<100?[...rows,emptyDraft()]:rows);};
   const submit=(event:FormEvent)=>{
     event.preventDefault();
-    const items=drafts.filter(row=>row.orderId&&row.locationId&&row.quantity).map(row=>({
-      production_order_id:Number(row.orderId),location_id:Number(row.locationId),quantity_kg:latinDigits(row.quantity),
-      ...(row.packaging?{packaging:{roll_weight_grams:latinDigits(row.rollWeight),rolls_per_unit:Number(row.rollsPerUnit),units:Number(row.units)}}:{})
+    if(drafts.length>100){setFormError(language==="en"?"A voucher can contain at most 100 lines.":"يمكن أن يحتوي السند على 100 سطر كحد أقصى.");return;}
+    const normalized: { orderId: string; quantity: string }[] = [];
+    for (let index = 0; index < drafts.length; index++) {
+      const row = drafts[index];
+      if (!row.orderId) {
+        setFormError(language==="en"?`Choose a production order in line ${index+1}.`:`اختر أمر الإنتاج في السطر ${index+1}.`);
+        return;
+      }
+      try {
+        normalized.push({ orderId: row.orderId, quantity: normalizeReceiptQuantity(row.quantity) });
+      } catch (cause) {
+        const reason = cause as Error & { message_ar?: string; message_en?: string };
+        setFormError(language==="en"?(reason.message_en||"Enter a valid positive quantity in kg."):(reason.message_ar||"أدخل كمية صحيحة وموجبة بالكيلوجرام."));
+        return;
+      }
+    }
+    const totalsByOrder=new Map<string,bigint>();
+    normalized.forEach(row=>totalsByOrder.set(row.orderId,(totalsByOrder.get(row.orderId)??0n)+kgHundredths(row.quantity)));
+    const exceeded=[...totalsByOrder].find(([orderId,total])=>total>kgHundredths(eligible.find(order=>String(order.id)===orderId)?.remaining_kg));
+    if(exceeded){const order=eligible.find(item=>String(item.id)===exceeded[0]);setFormError(language==="en"?`Receipt quantity exceeds the available ${order?.production_order_number??"order"} balance.`:`كمية الاستلام تتجاوز المتاح للأمر ${order?.production_order_number??""}.`);return;}
+    setFormError("");
+    const items=normalized.map(row=>({
+      production_order_id:Number(row.orderId),
+      quantity_kg:row.quantity,
     }));
-    if(!items.length)return;
     const input:ReceiptInput={request_id:"",notes:notes.trim()||undefined,items};
     const submittedDraft=receiptDraft.current;
-    void write.perform({op:"receive",items,notes:input.notes},requestId=>productionApi.receive({...input,request_id:requestId}),"receiptCreated",()=>{
-      if(receiptDraft.current===submittedDraft){setDrafts([emptyDraft()]);setNotes("");}
+    void write.perform({op:"receive",items,notes:input.notes},async requestId=>{
+      const receipt=await productionApi.receive({...input,request_id:requestId}) as ProductionReceipt;
+      setSavedReceipt(receipt);
+      return receipt;
+    },"receiptCreated",()=>{
+      if(receiptDraft.current===submittedDraft){setDrafts([emptyDraft()]);setNotes("");setSelected([]);}
     });
   };
-  const setRow=(index:number,key:keyof ReceiptDraft,value:string|boolean)=>setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value}:row));
-  const locationOptions=state.locations.filter(location=>location.is_active);
+  const setRow=(index:number,key:keyof ReceiptDraft,value:string)=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.map((row,i)=>i===index?{...row,[key]:value}:row));};
+  const readyOrders=eligible.filter(order=>Number(order.ready_kg)>0||Number(order.received_kg)>0);
+  const lockReceipt=write.uncertain;
+  const receiveSelected=()=>{
+    const ids=selected.filter(id=>eligible.some(order=>order.id===id));
+    if(!ids.length){setFormError("");setReceiptOpen(true);return;}
+    const dirty=drafts.some(row=>row.orderId||row.quantity)||Boolean(notes);
+    const draftIds=new Set(drafts.map(row=>Number(row.orderId)).filter(Boolean));
+    if(dirty&&ids.length===draftIds.size&&ids.every(id=>draftIds.has(id))){setReceiptOpen(true);return;}
+    if(dirty&&!window.confirm(language==="en"?"Replace the unsaved receipt draft with the selected orders?":"استبدال مسودة سند الاستلام غير المحفوظة بالأوامر المحددة؟"))return;
+    setDrafts(ids.map(id=>emptyDraft(String(id))));setNotes("");setSavedReceipt(null);setFormError("");setReceiptOpen(true);
+  };
+  const setSelectedOrder=(id:number,checked:boolean)=>setSelected(items=>checked?[...new Set([...items,id])]:items.filter(value=>value!==id));
   return <>
     {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
-    <div className="prod-grid"><Metric label={text("eligibleWeight",language)} value={`${number(eligible.reduce((total,order)=>total+Number(order.remaining_kg),0),language)} kg`}/><Metric label={text("order",language)} value={number(eligible.length,language,0)} unit={text("ordersUnit",language)}/><Metric label={text("locations",language)} value={number(locationOptions.length,language,0)} unit={text("activeLocations",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
-    <Card title={text("receiveBatch",language)}>
-      {canReceive ? <form onSubmit={submit}>
-        {!locationOptions.length&&<div className="prod-callout">{text("noLocations",language)}</div>}
-        {drafts.map((row,index)=>{
-          const order=eligible.find(item=>String(item.id)===row.orderId);
-          return <div className="prod-record" key={index} style={{marginBottom:12}}>
-            <div className="prod-form-grid">
-              <div className="prod-field"><label htmlFor={`receipt-order-${index}`}>{text("order",language)}</label><select id={`receipt-order-${index}`} value={row.orderId} onChange={event=>setRow(index,"orderId",event.target.value)} required><option value="">{text("chooseOrder",language)}</option>{eligible.map(item=><option key={item.id} value={item.id}>{item.production_order_number} · {item.order_number} · {orderProduct(item,language)}</option>)}</select></div>
-              <div className="prod-field"><label htmlFor={`receipt-location-${index}`}>{text("storage",language)}</label><select id={`receipt-location-${index}`} value={row.locationId} onChange={event=>setRow(index,"locationId",event.target.value)} required><option value="">{text("chooseMachine",language)}</option>{locationOptions.map(location=><option key={location.id} value={location.id}>{localized(location.name_ar,location.name,language)}</option>)}</select></div>
-              <div className="prod-field"><label htmlFor={`receipt-quantity-${index}`}>{text("quantity",language)}{order?` · ${text("remaining",language)} ${number(order.remaining_kg,language)} kg`:""}</label><input id={`receipt-quantity-${index}`} type="number" inputMode="decimal" min="0.01" max={order?.remaining_kg} step="0.01" value={row.quantity} onChange={event=>setRow(index,"quantity",event.target.value)} required/></div>
-              <label className="prod-label-inline"><input type="checkbox" checked={row.packaging} onChange={event=>setRow(index,"packaging",event.target.checked)}/>{text("packaging",language)}</label>
+    <div className="prod-grid warehouse-summary"><Metric label={text("eligibleWeight",language)} value={`${number(eligible.reduce((total,order)=>total+Number(order.remaining_kg),0),language)} kg`}/><Metric label={text("order",language)} value={number(eligible.length,language,0)} unit={text("ordersUnit",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
+    <section className="warehouse-hall-section">
+      <div className="warehouse-section-heading"><div><span className="warehouse-section-kicker">CUTTING → RECEIVING</span><h3>{text("readyOrders",language)}</h3></div><span>{number(readyOrders.length,language,0)} {text("ordersUnit",language)}</span></div>
+      {readyOrders.length ? <div className="warehouse-hall-grid">
+        {readyOrders.map(order=>{
+          const complete=Boolean(order.completed_at);
+          return <article className="warehouse-order-card" key={order.id}>
+            <header><div><span className="warehouse-order-number">{order.production_order_number}</span><small>{order.order_number}</small></div><span className={`warehouse-order-state${complete?" complete":""}`} title={`${text("productionStatus",language)}: ${text(complete?"productionComplete":"productionIncomplete",language)}`} aria-label={`${text("productionStatus",language)}: ${text(complete?"productionComplete":"productionIncomplete",language)}`}>{text(complete?"completed":"incomplete",language)}</span></header>
+            <div className="warehouse-order-product"><strong>{orderProduct(order,language)}</strong><span>{customerName(order,language)}</span></div>
+            {canReceive&&<label className="warehouse-order-select"><input type="checkbox" data-hall-select={order.id} checked={selected.includes(order.id)} disabled={write.saving||lockReceipt} onChange={event=>setSelectedOrder(order.id,event.target.checked)}/><span>{language==="en"?"Select for receipt":"تحديد للاستلام"}</span></label>}
+            <div className="warehouse-order-metrics">
+              <div><span>{text("readyKg",language)}</span><strong>{number(order.ready_kg,language)} <small>kg</small></strong></div>
+              <div><span>{text("received",language)}</span><strong>{number(order.received_kg,language)} <small>kg</small></strong></div>
+              <div className="remaining"><span>{text("remaining",language)}</span><strong>{number(order.remaining_kg,language)} <small>kg</small></strong></div>
             </div>
-            {row.packaging&&<div className="prod-form-grid" style={{marginTop:12}}><div className="prod-field"><label htmlFor={`grams-${index}`}>{text("rollGrams",language)}</label><input id={`grams-${index}`} type="number" min="0.0001" step="0.0001" value={row.rollWeight} onChange={event=>setRow(index,"rollWeight",event.target.value)} required/></div><div className="prod-field"><label htmlFor={`per-unit-${index}`}>{text("rollsUnit",language)}</label><input id={`per-unit-${index}`} type="number" min="1" step="1" value={row.rollsPerUnit} onChange={event=>setRow(index,"rollsPerUnit",event.target.value)} required/></div><div className="prod-field"><label htmlFor={`units-${index}`}>{text("units",language)}</label><input id={`units-${index}`} type="number" min="1" step="1" value={row.units} onChange={event=>setRow(index,"units",event.target.value)} required/></div></div>}
-          </div>;
+          </article>;
         })}
-        <div className="prod-inline"><button className="prod-btn secondary" type="button" disabled={write.saving} onClick={addLine}><Plus/>{text("addLine",language)}</button></div>
-        <div className="prod-field" style={{marginTop:14}}><label htmlFor="receipt-notes">{text("notes",language)}</label><textarea id="receipt-notes" value={notes} onChange={event=>setNotes(event.target.value)}/></div>
-        <div className="prod-savebar"><button className="prod-btn" disabled={write.saving||!locationOptions.length}>{text(write.saving?"saving":"saveReceipt",language)}</button></div>
-      </form>:<div className="prod-muted">{text("readonly",language)}</div>}
-      {eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}
+      </div> : <Empty title={text("noEligible",language)}/>}
+    </section>
+     <Card title={text("receiveBatch",language)} action={canReceive?<div className="warehouse-receipt-actions"><button data-receipt-launcher data-hall-receive-selected className="prod-btn" type="button" disabled={write.saving||lockReceipt} onClick={event=>{receiptOpener.current=event.currentTarget;receiveSelected();}}>{language==="en"?"New receipt voucher":"سند استلام مواد تامة"}</button><button className="prod-btn quiet" type="button" disabled={!selected.length||write.saving||lockReceipt} onClick={()=>setSelected([])}>{language==="en"?"Clear selection":"مسح التحديد"}</button></div>:undefined}>
+      {canReceive ? <>{eligible.length===0&&<div className="prod-section-title"><Empty title={text("noEligible",language)}/></div>}</>:<div className="prod-muted">{text("readonly",language)}</div>}
     </Card>
+    {canReceive&&receiptOpen&&<ReceiptVoucherModal
+      onPrint={receipt=>printReceipt(receipt,language)}
+      language={language}
+      eligible={eligible}
+      drafts={drafts}
+      notes={notes}
+      saving={write.saving}
+      locked={lockReceipt}
+      error={formError||write.error}
+      savedReceipt={savedReceipt}
+      openerRef={receiptOpener}
+      onDraftChange={setRow}
+      onAddLine={addLine}
+      onRemoveLine={index=>{setSavedReceipt(null);setFormError("");setDrafts(rows=>rows.filter((_,i)=>i!==index));}}
+      onNotesChange={value=>{setSavedReceipt(null);setFormError("");setNotes(value);}}
+      onSubmit={submit}
+      onRetry={write.error&&!formError?()=>void write.retry():undefined}
+      onClose={closeReceipt}
+      customerLabel={order=>customerName(order,language)}
+      currentReceiverLabel={language === "en"
+        ? ([user.display_name, user.username].find(name => name?.trim() && !/\p{Script=Arabic}/u.test(name)) ?? `#${user.id}`)
+        : user.display_name_ar?.trim() || user.display_name?.trim() || user.username?.trim() || `#${user.id}`}
+      number={number}
+    />}
   </>;
 }
 
 function Warehouse({state,user,language,reload}:{state:ProductionState;user:ProductionUser;language:string;reload:()=>Promise<void>}) {
-  const canWrite=hasProductionPermission(user,"manage_finished_warehouse"),write=useWrite(reload,language);
-  const [editing,setEditing]=useState<number|null>(null),[name,setName]=useState(""),[nameAr,setNameAr]=useState(""),[active,setActive]=useState(true);
-  const locationDraft=useRef("");
-  locationDraft.current=JSON.stringify({editing,name,nameAr,active});
   const locations=state.locations;
-  const saveLocation=(event:FormEvent)=>{
-    event.preventDefault();const payload={name,name_ar:nameAr,is_active:active},submittedDraft=locationDraft.current;
-    void write.perform({op:"location",id:editing,...payload},requestId=>productionApi.location({...payload,request_id:requestId},editing??undefined),"locationCreated",()=>{
-      if(locationDraft.current===submittedDraft){setEditing(null);setName("");setNameAr("");setActive(true);}
-    });
-  };
-  const edit=(location:StorageLocation)=>{setEditing(location.id);setName(location.name);setNameAr(location.name_ar);setActive(location.is_active);};
   return <>
-    {(write.error||write.success)&&(write.error?<ErrorBanner message={write.error} language={language} retry={()=>void write.retry()}/>:<div className="prod-success" role="status">{write.success}</div>)}
-    <div className="prod-grid"><Metric label={text("balances",language)} value={number(state.totals?.inventory??0,language,0)} unit={text("balanceUnits",language)}/><Metric label={text("movements",language)} value={number(state.totals?.movements??0,language,0)} unit={text("movementUnits",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/><Metric label={text("locations",language)} value={number(locations.length,language,0)} unit={text("locations",language)}/></div>
-    <Metric label={language==="en"?"Total inventory weight":"إجمالي وزن المخزون"} value={`${number(state.totals?.inventory_kg??0,language)} kg`}/>
-    <Card title={text("locations",language)}>
-      {canWrite&&<form className="prod-form-grid" onSubmit={saveLocation} style={{marginBottom:14}}>
-        <div className="prod-field"><label htmlFor="location-name">{text("locationEn",language)}</label><input id="location-name" value={name} onChange={event=>setName(event.target.value)} required/></div>
-        <div className="prod-field"><label htmlFor="location-name-ar">{text("locationAr",language)}</label><input id="location-name-ar" value={nameAr} onChange={event=>setNameAr(event.target.value)} required/></div>
-        {editing!==null&&<label className="prod-label-inline"><input type="checkbox" checked={active} onChange={event=>setActive(event.target.checked)}/>{active?text("active",language):text("inactive",language)}</label>}
-        <div className="prod-savebar"><button className="prod-btn" disabled={write.saving}>{text("saveLocation",language)}</button>{editing!==null&&<button className="prod-btn quiet" type="button" onClick={()=>{setEditing(null);setName("");setNameAr("");setActive(true);}}><X/>{text("cancel",language)}</button>}</div>
-      </form>}
-      {locations.length?locations.map(location=><div className="prod-location-row" key={location.id}><div><strong>{localized(location.name_ar,location.name,language)}</strong><small className="prod-muted">{location.name} · {location.name_ar}</small></div><span className={`prod-chip ${location.is_active?"":"muted"}`}>{location.is_active?text("active",language):text("inactive",language)}</span>{canWrite&&<button className="prod-btn secondary" onClick={()=>edit(location)}><Settings2/>{text("edit",language)}</button>}</div>):<Empty title={text("noLocations",language)}/>}
-    </Card>
-    <ProductionHistory kind="inventory" title={text("balances",language)} language={language} locations={locations} refresh={state}/>
-    <ProductionHistory kind="receipts" title={text("vouchers",language)} language={language} locations={locations} refresh={state}/>
+    <div className="warehouse-summary">
+      <div className="prod-grid"><Metric label={text("balances",language)} value={number(state.totals?.inventory??0,language,0)} unit={text("balanceUnits",language)}/><Metric label={text("movements",language)} value={number(state.totals?.movements??0,language,0)} unit={text("movementUnits",language)}/><Metric label={text("vouchers",language)} value={number(state.totals?.receipts??0,language,0)} unit={text("voucherUnits",language)}/></div>
+      <div className="prod-grid"><Metric label={language==="en"?"Total inventory weight":"إجمالي وزن المخزون"} value={`${number(state.totals?.inventory_kg??0,language)} kg`}/></div>
+    </div>
+     <FinishedInventory user={user} language={language} refresh={state} reload={reload}/>
+     <ProductionHistory kind="receipts" title={text("vouchers",language)} language={language} locations={locations} refresh={state} presentation="cards"/>
     <ProductionHistory kind="movements" title={text("movements",language)} language={language} locations={locations} refresh={state}/>
   </>;
 }
@@ -456,10 +565,12 @@ function HallView({state,user,language,reload}:{state:ProductionState;user:Produ
   if(!permission)return <Empty title={text("permission",language)}/>;
   return <Hall state={state} user={user} language={language} reload={reload}/>;
 }
-function RollDetail({rollId,user,language,state}:{rollId:string;user:ProductionUser;language:string;state:ProductionState|null}) {
+function RollDetail({rollId,user,language,state,moduleContext}:{rollId:string;user:ProductionUser;language:string;state:ProductionState|null;moduleContext:"production"|"warehouse"}) {
   const [roll,setRoll]=useState<ProductionRollDetail|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(""),[qr,setQr]=useState(""),[qrUrl,setQrUrl]=useState("");
   const [attempt,setAttempt]=useState(0);
-  const allowed=hasProductionPermission(user,"view_production","manage_production","operate_film","operate_printing","operate_cutting","view_production_hall","receive_production","view_finished_inventory","manage_finished_warehouse");
+  const allowed=moduleContext === "warehouse"
+    ? canOpenWarehouseView(user,"hall") || canOpenWarehouseView(user,"warehouse")
+    : hasProductionPermission(user,"view_production","manage_production","operate_film","operate_printing","operate_cutting","view_production_hall","receive_production","view_finished_inventory","manage_finished_warehouse");
   useEffect(()=>{let alive=true; if(!allowed){setLoading(false);return;}setLoading(true);productionApi.roll(rollId).then(value=>{if(alive){setRoll(value);setError("");}}).catch(cause=>{if(alive)setError(cause instanceof Error?cause.message:text("unknownRoll",language));}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};},[allowed,rollId,language,attempt]);
   useEffect(()=>{let alive=true;setQr("");setQrUrl("");if(!roll)return;void productionApi.qr(roll.id).then(value=>{if(alive){setQr(value.image);setQrUrl(value.url);}}).catch(cause=>{if(alive)setError(cause instanceof Error?cause.message:text("errorGeneric",language));});return()=>{alive=false;};},[roll,language]);
   if(!allowed)return <Empty title={text("permission",language)}/>;
@@ -497,29 +608,41 @@ function RollDetail({rollId,user,language,state}:{rollId:string;user:ProductionU
   </Card><aside className="prod-qr"><strong>{text("qr",language)}</strong>{qr?<img src={qr} alt={text("qr",language)}/>:<div className="prod-skeleton" style={{height:190,marginTop:12}}/>}<small>{qrUrl}</small></aside></div>;
 }
 
-export default function ProductionPage({user,view,rollId}:ProductionPageProps) {
+export default function ProductionPage({user,view,rollId,moduleContext="production"}:ProductionPageProps) {
   const {i18n}=useTranslation();
   const language=i18n.language==="en"?"en":"ar";
-  const allowed = canOpenProductionView(user, view);
-  const visibleViews = availableProductionViews(user);
+  const [machineSlot,setMachineSlot]=useState<HTMLDivElement|null>(null);
+  const allowed = moduleContext === "planning"
+    ? view === "management" && canOpenPlanningView(user, "management")
+    : moduleContext === "warehouse"
+    ? view === "roll"
+      ? canOpenWarehouseView(user,"hall") || canOpenWarehouseView(user,"warehouse")
+      : (view === "hall" || view === "warehouse") && canOpenWarehouseView(user,view)
+    : view !== "management" && canOpenProductionView(user, view);
+  const visibleViews = moduleContext === "planning" ? availablePlanningViews(user) : moduleContext === "warehouse" ? availableWarehouseViews(user) : availableProductionViews(user);
+  const returnPath = moduleContext === "warehouse" ? initialWarehousePath(user) : null;
   const data=useProductionState(allowed,view);
   const state=data.state;
-  return <section className="production production-app">
-    <Header view={view} language={language}/>
-    <nav className="prod-view-nav" aria-label={text("title",language)}>
-      {visibleViews.map(({view: destination,href})=>
-        <Link key={destination} href={href} className={`prod-btn ${view===destination?"":"secondary"}`} aria-current={view===destination?"page":undefined}>{text(destination,language)}</Link>
-      )}
-    </nav>
-    <div className="prod-actions" style={{marginBottom:15}}>
-      <button className="prod-btn quiet" onClick={()=>void data.reload()} disabled={data.loading}><RefreshCw/>{text("reload",language)}</button>
-      {view!=="management"&&canOpenProductionView(user,"management")&&<Link className="prod-btn secondary" href="/production"><ChevronRight/>{text("goManagement",language)}</Link>}
-    </div>
-      {!allowed?<Empty title={text("permission",language)}/>:view==="roll"?<>{data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}<RollDetail rollId={rollId??""} user={user} language={language} state={state}/></>:data.loading&&!state?<Loading language={language}/>:data.error&&!state?<ErrorBanner message={data.error||text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:!state?<ErrorBanner message={text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:
+  return <section className={`production production-app${moduleContext === "planning" ? " planning-page" : ""}${moduleContext === "warehouse" ? " warehouse-context" : ""}`}>
+    {moduleContext === "planning" ? <>
+      <PlanningHeader title={text("planning", language)} description={text("intro", language)} refreshLabel={text("reload", language)} onRefresh={() => void data.reload()} refreshing={data.loading} />
+      <PlanningNavigation label={text("planning", language)} tabs={visibleViews.map(({ view: destination, href }) => ({ href, label: text(destination, language), active: view === destination }))} />
+    </> : <>
+      <Header view={view} language={language} refreshing={data.loading} onRefresh={()=>void data.reload()} machineSlotRef={setMachineSlot} moduleContext={moduleContext}>
+        {moduleContext === "production" && view!=="management"&&canOpenPlanningView(user,"management")&&<Link className="prod-btn secondary" href="/planning"><ChevronRight/>{text("goManagement",language)}</Link>}
+        {moduleContext === "warehouse" && view === "roll" && returnPath && <Link className="prod-btn secondary" href={returnPath}><ChevronRight/>{language==="en"?"Back to warehouse":"العودة إلى المستودع"}</Link>}
+      </Header>
+      <nav className="prod-view-nav" aria-label={moduleContext === "warehouse" ? (language === "en" ? "Warehouse" : "المستودع") : text("title",language)}>
+        {visibleViews.map(({view: destination,href})=>
+          <Link key={destination} href={href} className={`prod-btn ${view===destination?"":"secondary"}`} aria-current={view===destination?"page":undefined}>{text(destination,language)}</Link>
+        )}
+      </nav>
+    </>}
+      {!allowed?<Empty title={text("permission",language)}/>:view==="roll"?<>{data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}<RollDetail rollId={rollId??""} user={user} language={language} state={state} moduleContext={moduleContext === "warehouse" ? "warehouse" : "production"}/></>:data.loading&&!state?<Loading language={language}/>:data.error&&!state?<ErrorBanner message={data.error||text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:!state?<ErrorBanner message={text("failedLoad",language)} retry={()=>void data.reload()} language={language}/>:
       <>
         {data.error&&<ErrorBanner message={data.error} retry={()=>void data.reload()} language={language}/>}
         {view==="management"&&<Management state={state} user={user} language={language} reload={data.reload}/>}
-        {(view==="film"||view==="printing"||view==="cutting")&&<OperatorBoard state={state} user={user} stage={view} language={language} reload={data.reload}/>}
+        {(view==="film"||view==="printing"||view==="cutting")&&<OperatorBoard state={state} user={user} stage={view} language={language} reload={data.reload} machineSlot={machineSlot}/>}
         {view==="hall"&&<HallView state={state} user={user} language={language} reload={data.reload}/>}
         {view==="warehouse"&&<Warehouse state={state} user={user} language={language} reload={data.reload}/>}
         <RollLabelControls refresh={state} language={language} />

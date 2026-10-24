@@ -1,4 +1,5 @@
-import i18n, { intlLocale, translate, translateError } from "../i18n";
+import i18n, { intlLocale, translate } from "../i18n";
+import { hrApi } from "../lib/hr-api";
 import { AlertTriangle, CalendarDays, Check, Download, Edit3, FileDown, Plus, Printer, Search, ShieldAlert, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
@@ -60,17 +61,6 @@ const actionLabels: Record<AttendanceAction, string> = new Proxy(rawActionLabels
     return value ? translate(value) : value;
   },
 });
-
-const hrApi = async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
-  const response = await fetch(`/api/hr${path}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(translateError(body.message || "تعذر تنفيذ الطلب"));
-  return body as T;
-};
 
 const employeeName = (employee: HrEmployee) => (i18n.language === "en" ? employee.display_name || employee.display_name_ar : employee.display_name_ar || employee.display_name) || employee.username || `${translate("مستخدم")} ${employee.id}`;
 const reportArabicName = (employee: HrEmployee) => employee.display_name_ar || "—";
@@ -197,16 +187,25 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const exportExcel = async () => {
     setBusy("excel"); setError("");
     try {
-      const XLSX = await import("xlsx");
+      const { Workbook } = await import("exceljs");
+      const { saveAs } = await import("file-saver");
       const rows = summary.map((row) => ({
         [translate("اسم المستخدم")]: `${reportArabicName(row)}\n${reportEnglishName(row)}`, [translate("القسم")]: sectionName(row), [translate("م ساعات العمل")]: formatMinutes(row.workedMinutes),
         [translate("م أيام العمل")]: row.daysWorked, [translate("م الغياب")]: row.absentDays, [translate("وردية ناقصة")]: row.incompleteDays, [translate("م الاضافي")]: formatMinutes(row.overtimeMinutes),
       }));
-      const workbook = XLSX.utils.book_new();
-      const sheet = XLSX.utils.json_to_sheet(rows);
-      sheet["!cols"] = [{ wch: 28 }, { wch: 22 }, { wch: 20 }, { wch: 18 }, { wch: 16 }, { wch: 22 }];
-      XLSX.utils.book_append_sheet(workbook, sheet, translate("كشف الحضور"));
-      XLSX.writeFile(workbook, `${i18n.language === "en" ? "attendance" : "كشف-الحضور"}-${month}.xlsx`);
+      const workbook = new Workbook();
+      const sheet = workbook.addWorksheet(translate("كشف الحضور"));
+      const headers = [
+        translate("اسم المستخدم"), translate("القسم"), translate("م ساعات العمل"),
+        translate("م أيام العمل"), translate("م الغياب"), translate("وردية ناقصة"), translate("م الاضافي"),
+      ];
+      sheet.addRow(headers);
+      for (const row of rows) sheet.addRow(headers.map((header) => row[header]));
+      sheet.columns.forEach((column, index) => { column.width = [28, 22, 20, 18, 16, 22, 20][index]; });
+      const bytes = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([new Uint8Array(bytes)], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }), `${i18n.language === "en" ? "attendance" : "كشف-الحضور"}-${month}.xlsx`);
     } catch (cause) { setError((cause as Error).message); }
     finally { setBusy(""); }
   };

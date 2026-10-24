@@ -6,7 +6,7 @@
   inset-inline-end: 11px;
   top: 50%;
   transform: translateY(-50%);
-  color: #71827c;
+  color: var(--theme-customer-product-select-order-product-picker-input-svg-text);
   pointer-events: none;
 }
 .order-product-picker-options {
@@ -16,13 +16,13 @@
   overscroll-behavior: contain;
   margin-top: 5px;
   padding: 4px;
-  background: #fff;
-  border: 1px solid #cfddd5;
+  background: var(--theme-customer-product-select-order-product-picker-options-surface);
+  border: 1px solid var(--theme-customer-product-select-order-product-picker-options-border);
   border-radius: 7px;
-  box-shadow: 0 5px 16px rgba(25, 57, 47, .08);
+  box-shadow: 0 5px 16px var(--theme-customer-product-select-order-product-picker-options-shadow);
 }
 .order-product-picker-group + .order-product-picker-group {
-  border-top: 1px solid #e1e7e3;
+  border-top: 1px solid var(--theme-customer-product-select-order-product-picker-group-order-product-picker-group-border);
   margin-top: 6px;
   padding-top: 6px;
 }
@@ -56,6 +56,6 @@
 .order-product-picker-option span { min-width: 0; overflow-wrap: anywhere; }
 .order-product-picker-option svg { flex-shrink: 0; }
 .order-product-picker-option:hover,
-.order-product-picker-option.is-active { background: #edf4ef; border-color: #d3e3d9; }
+.order-product-picker-option.is-active { background: var(--theme-customer-product-select-order-product-picker-option-hover-surface); border-color: var(--theme-customer-product-select-order-product-picker-option-hover-border); }
 .order-product-picker-option[aria-selected="true"] { font-weight: 700; }
-.order-product-picker-empty { padding: 16px 10px; color: #59716a; font-size: 13px; }
+.order-product-picker-empty { padding: 16px 10px; color: var(--theme-customer-product-select-order-product-picker-empty-text); font-size: 13px; }

@@ -3,6 +3,7 @@ import { LoaderCircle, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { productionOrderDetails, productionQuantityLocked, productionQuantityPayload } from "../lib/production-order-form";
+import "../styles/form-primitives.css";
 import "./ProductionOrderModal.css";
 
 type Row = Record<string, any>;

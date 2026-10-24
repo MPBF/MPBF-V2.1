@@ -8,12 +8,13 @@
 - [AI agent vs MCP](ai-agent-vs-mcp.md) — the in-app AI agent and the MCP system are independent; remove/replace one without touching the other.
 - [MCP ChatGPT OAuth discovery](mcp-chatgpt-oauth-discovery.md) — "Client not registered" = incomplete discovery; need WWW-Authenticate on /mcp 401 + RFC 9728 protected-resource + path-suffixed AS meta + lazy client register.
 - [MCP tool metadata](mcp-tool-metadata.md) — ChatGPT-facing MCP tools need `registerTool` config with explicit descriptions and safety annotations; legacy `.tool` is deprecated.
-- [Theme system](theme-system.md) — 3 opt-in themes (light/dark/blue); blue is its own `.theme-blue` root class redefining the same CSS vars, not a dark variant; high-contrast is a separate overlay; pickers in Header/Settings/MobileShell.
+- [Theme defaults and lazy CSS](theme-system.md) — central palettes must respect the login budget; late feature defaults must not override a selected root theme.
 - [Roll creation deadlock](roll-creation-deadlock.md) — roll-create paths must share one transaction + a single lock order (advisory then row); nested cross-connection txns hang undetectably.
 - [Plastic-roll products skip cutting](roll-products-skip-cutting.md) — name-detected roll items bypass cutting (film→[printing]→done→hall); gate order 'done' on filmDone; pinning created_at avoids cut_completed_at CHECK violation.
 - [Film dashboard visibility](film-dashboard-visibility.md) — film-operator order list must filter `production_stage='film'`; film_completed only set by Final Roll button, so quantity-complete orders otherwise linger.
 - [Roll-create stage trust](roll-create-stage-trust.md) — roll-create routes must force stage='film' & strip client transition fields; only server logic advances to printing (inline-printing bypass risk).
-- [Universal thickness film eligibility](universal-thickness-eligibility.md) — film machine min/max_thickness matches order universal_thickness (computed col), never raw thickness.
+- [Original-thickness machine limits](machine-thickness-eligibility.md) — machine min/max thickness refers to original thickness, not universal thickness; the user explicitly corrected the earlier assumption.
+- [Printing cylinder units](printing-cylinder-units.md) — legacy inch-marked cylinder values must work with numeric capability limits; preserve frozen snapshots and reject unknown units.
 - [Production queue estimates](production-queue-estimates.md) — finish estimate uses configured shift hours, per-order size-appropriate capacity (width buckets), and gates finish date on machine status.
 - [Machine type value inconsistency](machine-type-values.md) — machines.type holds mixed values ('Printer'/'Cutter' vs 'printing'/'cutting' vs 'extruder'); any type-keyed logic must normalize/lowercase and accept both variants.
 - [Zod empty-string coercion](zod-empty-string-coercion.md) — optional z.coerce.date()/number() 400 on blank "" form input; preprocess blanks to null/undefined; ".optional().nullable()" doesn't save you.
@@ -23,7 +24,7 @@
 - [Bag weight formula](bag-weight-formula.md) — customer_products weight = flatWidth × length × 2 layers × universal_thickness(µm→cm) × density; use universal (computed/hidden) thickness, never raw thickness.
 - [HR schema drift on existing DBs](hr-ensure-block-tables.md) — a declared HR table may be absent from a live DB; inspect actual columns and apply narrow additive dev migrations, not startup DDL.
 - [Vite @/ alias fragility](vite-at-alias-resolution.md) — `@/` imports can break dev server during Vite dep re-optimization after lockfile churn; use relative imports in client code.
-- [Approved leave/permission → attendance](approved-requests-attendance.md) — leave = attendance rows status "إجازة" (engine-derived, not absent); approved استئذان minutes credit late→early→withdrawn in engine; status is "موافق".
+- [Approved leave and absence](approved-requests-attendance.md) — show absence only after assigned shifts end; exempt dated approved leave, never infer legacy leave dates or change attendance/pay.
 - [Incomplete attendance and pay](wage-computation.md) — treat shifts with no verified checkout as non-payable pending correction; do not assume a payroll engine currently exists.
 - [Number display formatting](number-formatting.md) — displayed numbers group thousands via central helpers (formatNumber / formatNumberAr); never group GPS coords/CSS/payloads/percentages, and never re-parse grouped output.
 - [Attendance engine aggregation](attendance-engine-aggregation.md) — self check-in writes many rows per shift-day; coalesce stamps to one record, MAX cumulative withdrawn, compute break once (never per-row sum).
@@ -32,7 +33,6 @@
 - [WhatsApp 24h window & templates](whatsapp-24h-window-templates.md) — business-initiated sends MUST use approved templates; free-form text outside 24h logs "sent" but never delivers; no text fallback on template failure (kills SMS fallback).
 - [Multer fileFilter error handling](multer-filefilter-errors.md) — multer fileFilter/limit errors fire in middleware before the route try/catch; wrap upload.single in a callback to return a clean 400 instead of crashing.
 - [Worker-thread offload](worker-thread-offload.md) — offload CPU parsing via inline eval Worker (not a separate file); esbuild won't copy a worker file into dist; transfer ArrayBuffer, terminate on timeout.
-- [i18n duplicate translation blocks](i18n-duplicate-keys.md) — ar.json/en.json have duplicate sibling keys (e.g. two warehouse.print blocks); only the LAST wins, edit that one or new keys silently don't resolve.
 - [Literal-colon labels](i18n-literal-colons.md) — single-word colon labels can disappear through namespace parsing; check actual label text in both languages.
 - [gpt-5 temperature constraint](gpt5-temperature.md) — gpt-5 family 400s on any custom temperature (only default 1); gate the param on model, and the agent model lives in a DB row not just code defaults.
 - [OpenAI org header](openai-org-header.md) — new OpenAI clients must pass `organization: null`; SDK auto-sends OPENAI_ORG_ID env → 401 mismatched_organization against the Replit AI proxy key.
@@ -46,7 +46,7 @@
 - [PDF template path traversal](security-fixes.md) — /api/pdf/generate & generatePDFFromTemplate must resolve template paths and reject anything escaping the templates dir (was arbitrary file read for any authed user).
 - [Punching hook/banana detection](punching-hook-detection.md) — overrun % from substring match on punching (hook/علاقي/t-shirt=20%, banana/بنانة=10%, else 5%); new علاقي* variants auto-inherit, no enum.
 - [Dominant color extraction](color-extraction-clustering.md) — extractColors uses LAB weighted k-means + shade-merge → area-share %; ignoreWhite default true (bag substrate), % intentionally may not sum to 100.
-- [Backup restore generated columns](backup-restore-generated-columns.md) — restore needs per-row SAVEPOINTs and must strip GENERATED ALWAYS columns or one bad row aborts the whole transaction.
+- [Encrypted restore safety](backup-restore-generated-columns.md) — full-copy scope includes accounts; require external safety copy and atomic rollback, not legacy partial salvage.
 - [pdfkit Arabic rendering](pdfkit-arabic-rendering.md) — pass raw Unicode + features:["rtla"]; never reshape+bidi first (garbles text); pre-reverse digit runs & mirror brackets.
 - [Route tests under ts-jest](route-tests-jest-cjs.md) — mock routes/shared, notification-manager & storage or jest crashes (multer TDZ) or hangs; x-test-user header auth pattern.
 - [SSE vs gzip compression](sse-compression-buffering.md) — SSE endpoints must be excluded from compression() or browsers never receive events (curl works, misleading); in-app toasts need type "push" not "system".
@@ -68,7 +68,7 @@
 - [Order numbering scope](order-numbering-scope.md) — user approved O/JO numbering for new customer orders only; preserve historical saved and displayed identifiers.
 - [Responsive browser focus testing](responsive-browser-testing.md) — run focus-dependent iframe checks sequentially; concurrent frames steal focus and falsely close dropdowns.
 - [Product calculation provenance](product-calculation-provenance.md) — legacy size/cylinder rules were reconstructed from records, not supplied formulas; retain untouched historical cutting lengths.
-- [Order product drafts](order-product-draft-lifecycle.md) — sharing the customer-product editor must preserve deferred, atomic creation; cancelling an order must not leave new products behind.
+- [Order product lifecycle](order-product-draft-lifecycle.md) — “Add to order” saves products immediately; cancelling orders preserves them, and order retries reference saved IDs.
 - [Order edit transition ownership](order-edit-transition-ownership.md) — status changes belong to independent actions; legacy open editors must still save notes without reverting newer transitions.
 - [File read consistency](file-read-consistency.md) — when file-reader and shell output disagree, verify current source in the shell before citing lines or editing.
 - [Skill/runtime capability drift](runtime-skill-drift.md) — installed skill documentation may describe an unsupported worker kind; use verified runtime capabilities.
@@ -79,6 +79,8 @@
 - [Intl calendar defaults](intl-calendar-defaults.md) — Saudi locale with Latin digits still defaults to Hijri; date tests must account for the intended calendar.
 - [Category overrun scope](category-overrun-scope.md) — user approved category-based planning for new production orders only; preserve saved percentages on existing orders.
 - [Customer profile product order](customer-profile-product-order.md) — user chose alphabetical category names, not codes; this preference is scoped to the customer profile.
+- [Customer history actual output](customer-order-history.md) — final-stage output only; zero before final output, partial completion counts, independent of warehouse movements.
+- [Order workflow scope](order-workflow-scope.md) — management-only read view; stage contributions reflect current corrected rolls, not immutable original event weights.
 - [Language selector preference](language-selector-preference.md) — user chose a compact current-language flag dropdown, not adjacent flag buttons.
 - [Print pagination verification](print-pagination-verification.md) — continuous print-media checks can miss trailing PDF pages; inspect real page contents and render boundary cases.
 - [Factory roll-label printer](roll-label-printer.md) — user approved Zebra 4 × 6 inch portrait labels through browser printing; direct printer integration needs separate approval.
@@ -90,3 +92,24 @@
 - [Permission-scoped lookups](permission-scoped-lookups.md) — selectors need lookups under their owning module's read permission; test minimum-permission roles, not only admins.
 - [Bulk order deletion policy](order-bulk-deletion-policy.md) — user chose all-or-nothing deletion, not partial success.
 - [Static dictionary audits](static-dictionary-audits.md) — reject unsupported mutations explicitly; a static audit must not silently differ from runtime translations.
+- [Warehouse fixture parity](warehouse-fixture-parity.md) — types can pass with blank stock cards; verify empty snapshots, paginated feeds and visible unit-count cards together.
+- [Prospective mix accounting](production-mix-accounting.md) — machine-wide FIFO, shortages allowed without later reconciliation; no second raw deduction or inferred screw/layer dosing.
+- [Order status design](order-status-design.md) — user requires colored order states and approved combining status/actions into two rows to save table width.
+- [Operator roll card sizing](operator-roll-card-sizing.md) — user approved small fixed-width roll cards that wrap, never stretch or squeeze as counts change.
+- [Warehouse hall card sizing](warehouse-hall-card-sizing.md) — six compact desktop cards, fewer on smaller screens; approved for hall-ready orders and finished stock, not raw or receipt cards.
+- [Planning order cards](planning-order-card-sizing.md) — user approved three compact desktop cards, not the warehouse six-card rule; preserve details and actions.
+- [Finished receipt workflow](finished-receipt-workflow.md) — kg-only receiving stays in the hall; finished-stock cards now support separate customer delivery deduction; no retired receipt units.
+- [Decimal JSON boundaries](postgres-json-decimal-boundary.md) — PostgreSQL NUMERIC becomes a JS number inside JSONB; preserve text at nested API boundaries and tolerate older numeric reads.
+- [Transient UI checks](transient-ui-verification.md) — capture loading text while detecting the element; a later browser call may run after it has disappeared.
+- [Database transfer policy](database-data-tool-policy.md) — new rows may be added; existing-row updates need explicit approval after preview, never automatic deletion.
+- [Package firewall lockfiles](package-firewall-lockfiles.md) — parent upgrades can retain blocked transitives; verify compatible patched resolutions with a clean install.
+- [Dependency alternatives](dependency-security-alternatives.md) — use functional fixes over scanner renaming; bounded braces fork, existing ExcelJS, and editor-bundle scope.
+- [Customer drawer format](customer-drawer-format.md) — A–Z plus 1–100 saved as C-24; new selections must not rewrite historical codes on unrelated edits.
+- [Product facing policy](customer-product-facing-policy.md) — each side must be ≤ half the width; category labels omit codes and side arrows retain physical direction.
+- [Mobile primary navigation](mobile-primary-navigation.md) — More keeps all authorized main pages reachable when the phone bottom bar cannot fit them.
+- [Thickness display policy](thickness-display-policy.md) — display original thickness only; universal thickness remains automatically stored for internal calculations.
+- [Login brand presentation](login-brand-presentation.md) — approved centered card; both factory-name languages precede the large logo and welcome text.
+- [Warehouse keeper scope](warehouse-keeper-scope.md) — user dashboard and warehouse only, including direct links and role preview; preserve warehouse work.
+- [Raw-mixing operator presentation](raw-mixing-mobile-actions.md) — three actions share one phone row; film operators keep mix history but not saved composition.
+- [Archive search approval](production-history-search-approval.md) — synthetic local measurements only; separate approval before any index/schema change or published DB change; no search/customer logging.
+- [Shared CSS cascade](shared-css-cascade.md) — identical rules can change behavior when moved; keep reduced-motion overrides after local animation shorthands in lazy components.

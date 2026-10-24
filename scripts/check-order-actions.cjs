@@ -7,7 +7,13 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
-const outputDir = path.join("screenshots", "order-signatures");
+const compactOnly = process.argv.includes("--compact-actions-only");
+const activeOnly = process.argv.includes("--active-filter-only");
+const headerOnly = process.argv.includes("--print-header-only");
+const columnsOnly = process.argv.includes("--print-columns-only") || headerOnly;
+const outputDir = activeOnly ? "/tmp/order-active-filter" : compactOnly ? "/tmp/order-compact-actions" : headerOnly
+  ? path.join("generated-artifacts", "order-print-header") : columnsOnly
+  ? path.join("generated-artifacts", "order-print-columns") : path.join("screenshots", "order-signatures");
 const releaseOnly = process.argv.includes("--production-release-only");
 
 (async () => {
@@ -55,6 +61,12 @@ const releaseOnly = process.argv.includes("--production-release-only");
     const order = { id: 7, order_number: "ORD123", customer_id: "CID010", status: "in_production",
       previous_status: "waiting", notes: "تعليمات الطلب التجريبي", created_by: 42,
       created_at: "2026-10-02T22:30:00.000Z", delivery_date: "2026-10-18", delivery_days: 15 };
+    const activeFixtures = ["waiting", "in_production", "completed", "cancelled", "for_production", "on_hold", "paused", "delivered", "archived"]
+      .map((status, index) => ({
+        ...order, id: 7 + index, order_number: `O-ACT-${index + 1}`, status,
+        display_folder: ["archive", "urgent", "new", "new", "production", "new", "new", "archive", "production"][index],
+        customer_name_ar: "عميل تجريبي", customer_name: "Test customer", production_orders_summary: [],
+      }));
     const product = { id: 11, customer_id: "CID010", category_id: "CAT01", item_id: "ITM01",
       size_caption: "28.4+7.5+7.5X41.49", width: "28.40", left_facing: "7.50", right_facing: "7.50", thickness: "10",
       universal_thickness: "25.40", density: "0.95", bag_weight_grams: "4.85", bags_per_kilo: "206",
@@ -81,8 +93,8 @@ const releaseOnly = process.argv.includes("--production-release-only");
     const detail = () => {
       const lines = noLines ? [] : large ? Array.from({ length: largeRowCount }, (_, i) => ({
         ...first, id: 100 + i, production_order_number: `ORD123-${i + 1}`,
-        product: { ...product, notes: `تعليمات المنتج ${i + 1}: بيانات اختبار لتأكيد تكرار رأس الجدول وعدم قص الصفوف عند الطباعة` },
-      })) : [first, { ...first, id: 10, product: null, customer_product_id: null, production_order_number: "ORD123-02",
+        product: { ...product, is_printed: columnsOnly ? i % 2 === 0 : product.is_printed, notes: `تعليمات المنتج ${i + 1}: بيانات اختبار لتأكيد تكرار رأس الجدول وعدم قص الصفوف عند الطباعة` },
+      })) : [first, { ...first, id: 10, product: columnsOnly ? { ...product, is_printed: false } : null, customer_product_id: null, production_order_number: "ORD123-02",
         quantity_kg: "100.50", final_quantity_kg: "105.53", overrun_percentage: "5", status: "pending", batch_number: null }];
       return { order,
         customer: { id: "CID010", name_ar: "عميل تجريبي", name: "Test Customer", plate_drawer_code: "C-24",
@@ -121,8 +133,43 @@ const releaseOnly = process.argv.includes("--production-release-only");
         status=route==="/public/orders/7/print"&&new URL(request.url).searchParams.get("key")===publicKey?200:404;
         body=status===200?{...detail(),public_print_path:publicPath}:{message:"الطلب غير موجود",message_en:"Order not found."};
       }
-      else if (route === "/orders") body = [{ ...order, customer_name_ar: "عميل تجريبي", production_orders_summary: [] }];
-      else if (route === "/orders/display-folders") body = { counts: { new: 1, production: 0, urgent: 0, archive: 0 }, total: 1 };
+      else if (route === "/orders" && activeOnly) {
+        const params = new URL(request.url).searchParams;
+        const folder = params.get("display_folder");
+        const statusFilter = params.get("status_filter");
+        const states = { active:["waiting","in_production"],new:["waiting"],production:["in_production"],completed:["completed"],cancelled:["cancelled"] };
+        const matching = activeFixtures.filter((row) =>
+          (!folder || (folder === "active" ? ["waiting", "in_production"].includes(row.status) : row.display_folder === folder))
+          && (!statusFilter || statusFilter === "all" || states[statusFilter]?.includes(row.status))
+          && (!params.get("search") || row.order_number.includes(params.get("search"))));
+        const offset = Number(params.get("offset") || 0);
+        body = matching.slice(offset, offset + Number(params.get("limit") || 50));
+      }
+      else if (route === "/orders") body = compactOnly
+        ? ["waiting", "in_production", "completed", "cancelled", "unknown_test"].map((status, index) => ({
+          ...order, id: 7 + index, order_number: `O-TEST-${index + 1}`, status,
+          customer_name_ar: "عميل تجريبي", customer_name: "Test customer",
+          production_orders_summary: Array.from({ length: 5 }, (_, position) => ({
+            id: 900 + position, production_order_number: `O-TEST-${index + 1}-${position + 1}`,
+            item_name_ar: position === 0 ? "صنف تجريبي باسم طويل جدًا للتحقق من اختصار البطاقة دون تمددها" : `صنف ${position + 1}`,
+            item_name: position === 0 ? "Test item with a very long name to verify compact card sizing" : `Item ${position + 1}`,
+            quantity_kg: String(10 + position),
+          })),
+        }))
+        : [{ ...order, customer_name_ar: "عميل تجريبي", production_orders_summary: [] }];
+      else if (route === "/orders/status-counts") {
+        const folder = new URL(request.url).searchParams.get("display_folder");
+        const records = activeOnly ? activeFixtures.filter(row => !folder || row.display_folder === folder) : [order];
+        body = { counts: { all:records.length,
+          active:records.filter(r=>["waiting","in_production"].includes(r.status)).length,
+          new:records.filter(r=>r.status==="waiting").length,
+          production:records.filter(r=>r.status==="in_production").length,
+          completed:records.filter(r=>r.status==="completed").length,
+          cancelled:records.filter(r=>r.status==="cancelled").length } };
+      }
+      else if (route === "/orders/display-folders") body = activeOnly
+        ? { counts: { active: 2, new: 4, production: 2, urgent: 1, archive: 2 }, total: 9 }
+        : { counts: { active: compactOnly ? 2 : 1, new: 1, production: 0, urgent: 0, archive: 0 }, total: 1 };
       else if (route === "/master-batch-colors") body = palette;
       else if (route === "/customer-products") body = paletteProducts();
       else if (route === "/customers") body = [detail().customer];
@@ -177,6 +224,141 @@ const releaseOnly = process.argv.includes("--production-release-only");
       const shot = await send("Page.captureScreenshot", { format: "png" });
       await fs.writeFile(path.join(outputDir, `${name}.png`), Buffer.from(shot.data, "base64"));
     };
+    if (activeOnly) {
+      for (const lang of ["ar", "en"]) {
+        language = lang;
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 1100, deviceScaleFactor: 1, mobile: false });
+          permissions = ["view_orders"];
+          const context = `${lang} ${width}px`;
+          const root = width < 701 ? ".mobile-cards--orders" : ".order-table";
+          const codes = () => evaluate(`[...document.querySelectorAll('${root} .order-number-code')].map(e=>e.textContent)`);
+          await navigate("/orders");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===2`);
+          await wait("document.querySelector('.order-workspace__folders button:first-child .order-workspace__count')?.textContent==='2'");
+          check(`${context}: Active is the first and default filter`,
+            await evaluate("(()=>{const b=document.querySelector('.order-workspace__folders button');return b.getAttribute('aria-current')==='page'&&b.textContent;})()"),
+            lang === "ar" ? "نشط2" : "Active2");
+          check(`${context}: only new and in-production orders, even in archive/urgent folders`, await codes(), ["O-ACT-1", "O-ACT-2"]);
+          check(`${context}: Urgent is removed from filter buttons`,
+            await evaluate(`[...document.querySelectorAll('.order-workspace__folders button')].every(e=>!e.textContent.includes(${JSON.stringify(lang === "ar" ? "عاجل" : "Urgent")}))`));
+          check(`${context}: no horizontal page overflow`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+          await capture(`active-${lang}-${width}`);
+          await evaluate(`(()=>{const e=document.querySelector('.order-workspace__filters input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'O-ACT-2');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===1`);
+          check(`${context}: search stays inside Active`, await codes(), ["O-ACT-2"]);
+          await evaluate(`(()=>{const e=document.querySelector('.order-workspace__filters input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===2`);
+          await click(".order-workspace__folders button:nth-child(2)");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===9`);
+          check(`${context}: All still includes completed/cancelled/other statuses`, (await codes()).length, 9);
+          check(`${context}: All count does not include Active twice`,
+            await evaluate("document.querySelector('.order-workspace__folders button:nth-child(2) .order-workspace__count').textContent"), "9");
+          await click(".order-workspace__folders button:nth-child(3)");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===1`);
+          check(`${context}: New excludes completed orders in New folder`, await codes(), ["O-ACT-1"]);
+          for (const [position, code, label] of [[4,"O-ACT-2",lang==="ar"?"قيد الإنتاج":"In production"],[5,"O-ACT-3",lang==="ar"?"مكتمل":"Completed"],[6,"O-ACT-4",lang==="ar"?"ملغي":"Cancelled"]]) {
+            await click(`.order-workspace__folders button:nth-child(${position})`);
+            await wait(`document.querySelector('.order-workspace__folders button:nth-child(${position})').getAttribute('aria-current')==='page'&&document.querySelectorAll('${root} .order-number-code').length===1&&document.querySelector('${root} .order-number-code').textContent===${JSON.stringify(code)}`);
+            check(`${context}: ${label} matches status`, await codes(), [code]);
+            check(`${context}: ${label} label and counter`, await evaluate(`document.querySelector('.order-workspace__folders button:nth-child(${position})').textContent`),`${label}1`);
+          }
+          await click(".order-workspace__folders button:nth-child(5)");
+          await evaluate("(()=>{const s=document.querySelector('.order-workspace__folder-filter select');s.value='new';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+          await wait(`document.querySelector('.order-workspace__folders button:nth-child(2) .order-workspace__count').textContent==='4'&&document.querySelectorAll('${root} .order-number-code').length===1`);
+          check(`${context}: Completed can be in manual New folder`,await codes(),["O-ACT-3"]);
+          await click(".order-workspace__folders button:nth-child(3)");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===0`);
+          check(`${context}: manual New never implies New status`, await codes(), []);
+          await evaluate("(()=>{const s=document.querySelector('.order-workspace__folder-filter select');s.value='all';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+          await click(".order-workspace__folders button:first-child");
+          await wait(`document.querySelectorAll('${root} .order-number-code').length===2`);
+          check(`${context}: returning to Active resets the list`, await codes(), ["O-ACT-1", "O-ACT-2"]);
+        }
+      }
+      check("active filter never writes data", requests.every((r) => r.method === "GET"));
+      check("active filter has no browser exceptions", errors, []);
+      console.log(`Active order filter passed ${passed} browser checks with isolated fixtures.`);
+      return;
+    }
+    if (compactOnly) {
+      const visibleRoot = (width) => width < 701 ? ".mobile-cards" : ".table-wrap table";
+      for (const lang of ["ar", "en"]) {
+        language = lang;
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 1100, deviceScaleFactor: 1, mobile: false });
+          for (const grants of [["admin"], ["manage_orders"], ["view_orders"]]) {
+            permissions = grants;
+            const admin = grants.includes("admin");
+            const writable = admin || grants.includes("manage_orders");
+            const context = `${lang} ${width}px ${grants[0]}`;
+            await navigate("/orders");
+            await wait("!!document.querySelector('.order-workspace__folders button:nth-child(2)')");
+            await click(".order-workspace__folders button:nth-child(2)");
+            await wait(`document.querySelectorAll('${visibleRoot(width)} .order-actions').length===5`);
+            const root = visibleRoot(width);
+            const scoped = (selector) => JSON.stringify(`${root} ${selector}`);
+            check(`${context}: print/view then edit/delete in two lines`,
+              await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-actions")});return [...e.children].map(line=>[...line.children].map(c=>c.getAttribute('aria-label')));})()`),
+              [lang === "ar" ? ["طباعة الطلب", "عرض الطلب"] : ["Print order", "View order"],
+                [...(writable ? [lang === "ar" ? "تعديل طلب" : "Edit Order"] : []), ...(admin ? [lang === "ar" ? "حذف طلب" : "Delete Order"] : [])]]);
+            check(`${context}: actions stay stacked in two rows`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-actions")})].every(e=>e.children.length===2&&e.children[1].getBoundingClientRect().top>=e.children[0].getBoundingClientRect().bottom)`));
+            check(`${context}: identity stacks number, date and customer`,
+              await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-identity .order-number-stack")});const c=[...e.children];return c.length===3&&c[0].textContent==='O-TEST-1'&&c[1].textContent.trim().length>0&&c[2].textContent===${JSON.stringify(lang === "ar" ? "عميل تجريبي" : "Test customer")}&&c[2].getBoundingClientRect().top>=c[1].getBoundingClientRect().bottom;})()`));
+            check(`${context}: production entries pair into rows and preserve all five orders`,
+              await evaluate(`(()=>{const c=[...document.querySelector(${scoped(".order-production-list")}).children],r=c.map(e=>e.getBoundingClientRect());return c.length===5&&Math.abs(r[0].top-r[1].top)<2&&Math.abs(r[2].top-r[3].top)<2&&r[2].top>r[0].top&&r[4].top>r[2].top&&c.every(e=>e.querySelector('strong')&&e.querySelector('.order-production-quantity')&&e.querySelector('span'));})()`));
+            check(`${context}: text and controls are centered in all order columns`,
+              await evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(root)});return [...root.querySelectorAll('.order-number-stack,.order-status-stack')].every(e=>getComputedStyle(e).justifyItems==='center')&&[...root.querySelectorAll('.order-actions__line,.order-production-details')].every(e=>getComputedStyle(e).justifyContent==='center')&&[...root.querySelectorAll('.order-production-item,th,td')].every(e=>getComputedStyle(e).textAlign==='center');})()`));
+            check(`${context}: production cards are about half the original 72px height`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-production-item")})].every(e=>{const r=e.getBoundingClientRect();return r.height>=30&&r.height<=38&&[...e.children].every(c=>{const b=c.getBoundingClientRect();return b.top>=r.top&&b.bottom<=r.bottom&&b.left>=r.left-1&&b.right<=r.right+1;});})`));
+            check(`${context}: compact cards keep full item names available`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-production-item")})].every(e=>{const item=e.querySelector('span:not(.order-production-quantity)');return item&&item.title.trim().length>0&&item.textContent.trim().length>0&&parseFloat(getComputedStyle(item).fontSize)>=11;})`));
+            check(`${context}: requested colors and neutral unknown status`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-status")})].map(e=>getComputedStyle(e).backgroundColor)`),
+              ["rgb(225, 242, 232)", "rgb(251, 240, 201)", "rgb(248, 228, 215)", "rgb(249, 226, 223)", "rgb(237, 241, 239)"]);
+            check(`${context}: new status label localized`,
+              await evaluate(`document.querySelector(${scoped(".order-status--new")}).textContent`), lang === "ar" ? "جديد" : "New");
+            check(`${context}: status labels remain accessible`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-status")})].every(e=>e.getAttribute('aria-label').includes(e.textContent)&&e.textContent.trim().length>0)`));
+            check(`${context}: existing permitted controls retained`,
+              await evaluate(`(()=>{const e=document.querySelector(${scoped(".order-actions")});return {buttons:e.querySelectorAll('button:has(svg)').length,print:e.querySelectorAll('a[href$="/print"]').length,menus:document.querySelectorAll(${scoped(".order-status-stack details")}).length};})()`),
+              { buttons: admin ? 3 : writable ? 2 : 1, print: 1, menus: writable ? 5 : 0 });
+            check(`${context}: status is outside actions and above change-status control`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-status-stack")})].every(e=>e.querySelectorAll('.order-status').length===1&&!e.querySelector('.order-actions')&&(!e.querySelector('details')||e.querySelector('details').getBoundingClientRect().top>=e.querySelector('.order-status').getBoundingClientRect().bottom))`));
+            check(`${context}: no page-wide overflow`,
+              await evaluate(`document.documentElement.scrollWidth<=${width}+1`));
+            check(`${context}: controls fit their two lines without wrapping`,
+              await evaluate(`[...document.querySelectorAll(${scoped(".order-actions__line")})].every(e=>{const p=e.getBoundingClientRect();return [...e.children].every(c=>{const r=c.getBoundingClientRect();return r.left>=p.left-1&&r.right<=p.right+1&&r.bottom<=p.bottom+1;});})`));
+            if (width >= 701) {
+              check(`${context}: exactly four columns in requested order`,
+                await evaluate("[...document.querySelectorAll('.order-table thead th')].map(e=>e.className)"),
+                ["order-number-column", "order-production-column", "order-actions-column", "order-status-column"]);
+              check(`${context}: selection is inside first column`,
+                await evaluate("document.querySelectorAll('.order-table tbody tr:first-child > td').length===4&&document.querySelectorAll('.order-table tbody tr:first-child > td:first-child input[type=checkbox]').length"),
+                writable ? 1 : 0);
+            }
+            if (writable) {
+              await click(`${root} .order-row-menu summary`);
+              check(`${context}: change-status label is explicit and localized`,
+                await evaluate(`document.querySelector(${scoped(".order-row-menu summary")}).textContent.trim()`), lang === "ar" ? "تغيير حالة الطلب" : "Change order status");
+              check(`${context}: original menu opens with all three actions`,
+                await evaluate(`document.querySelector(${scoped(".order-row-menu")}).open&&document.querySelector(${scoped(".order-row-menu__items")}).querySelectorAll('button').length===3`));
+              await click(`${root} .order-row-menu summary`);
+              if (admin) await capture(`orders-${lang}-${width}`);
+            }
+            await click(`${root} .order-actions__line > button`);
+            await wait("!!document.querySelector('.odm-summary-strip')");
+            check(`${context}: view still opens actual order-details component`,
+              await evaluate("!!document.querySelector('.odm-summary-strip')"));
+          }
+        }
+      }
+      check("compact design never writes real or fixture data", requests.every((r) => r.method === "GET"));
+      check("compact design has no browser exceptions", errors, []);
+      console.log(`Compact order actions passed ${passed} browser checks with isolated fixtures.`);
+      return;
+    }
     if (releaseOnly) {
       const open = async (details = false) => {
         const loaded = new Promise((resolve,reject)=>{
@@ -276,6 +458,120 @@ const releaseOnly = process.argv.includes("--production-release-only");
       if (large && largeRowCount === 38) check(`${name}: no seventh footer-only page`, pages.length <= 6);
       console.log(`PDF ${name}: ${expectedCount} rows, ${pages.length} pages`);
     };
+    if (headerOnly) {
+      const verifyMetadata = async (context) => {
+        check(`${context}: four label/value pairs have a compact gap without overlap`, await evaluate(`(()=>{
+          const rows=[...document.querySelectorAll('.opp-order-id > div')];
+          return rows.length===4&&rows.every(row=>{
+            const label=row.querySelector('b').getBoundingClientRect(),value=row.querySelector('span').getBoundingClientRect(),box=row.getBoundingClientRect();
+            const gap=Math.max(label.left-value.right,value.left-label.right);
+            return gap>=4&&gap<=8&&Math.min(label.left,value.left)>=box.left-1&&Math.max(label.right,value.right)<=box.right+1;
+          });
+        })()`));
+        check(`${context}: original order number remains unchanged`, await evaluate("document.querySelector('.opp-order-id > div span').textContent.trim()"), order.order_number);
+      };
+      for (language of ["ar", "en"]) {
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });
+          await navigate("/orders/7/print");
+          await wait(`!!document.querySelector('.opp-sheet')&&document.documentElement.lang==='${language}'`);
+          await verifyMetadata(`${language}/${width}`);
+        }
+        await send("Emulation.setEmulatedMedia", { media: "print" });
+        await verifyMetadata(`${language}/paper`);
+        await send("Emulation.setEmulatedMedia", { media: "" });
+        await capture(`compact-metadata-${language}`);
+        await pdf(`compact-metadata-${language}`);
+      }
+      check("header spacing never writes business data", requests.every(r => r.method === "GET"));
+      check("header spacing has no runtime errors", errors, []);
+      console.log(`Verified ${passed} order-header spacing and A4 checks with synthetic fixtures.`);
+      return;
+    }
+    if (columnsOnly) {
+      const expectedHeaders = [
+        ["#", ""], ["الصنف", "Item"], ["المقاس", "Size"], ["الطول", "Length"],
+        ["السماكة", "Thickness"], ["المادة", "Material"], ["اللون", "Color"],
+        ["الطباعة", "Printing"], ["السلندر", "Cylinder"], ["التخريم", "Punching"],
+        ["الكمية", "Qty"], ["ملاحظات", "Note"],
+      ];
+      const verifyColumns = async (context) => {
+        check(`${context}: original thickness includes micron unit`, await evaluate("document.querySelector('.opp-spec-row').cells[4].textContent.trim()"), "10 µm");
+        check(`${context}: sizes stay on one line within the sheet`, await evaluate(`(()=>{
+          const table=document.querySelector('.opp-spec-table'),sheet=document.querySelector('.opp-sheet');
+          return table.getBoundingClientRect().width<=sheet.clientWidth+1&&
+            [...table.querySelectorAll('.opp-size-cell')].every(e=>{
+              const range=document.createRange();range.selectNodeContents(e);
+              return getComputedStyle(e).whiteSpace==='nowrap'&&range.getClientRects().length===1&&e.scrollWidth<=e.clientWidth+1;
+            });
+        })()`));
+        check(`${context}: customer text is centered`, await evaluate("getComputedStyle(document.querySelector('.opp-customer-cell')).textAlign"), "center");
+        check(`${context}: larger item and size data only`, await evaluate(`(()=>{
+          const row=document.querySelector('.opp-spec-row');
+          return [row.querySelector('.opp-item-cell strong'),row.querySelector('.opp-item-cell small'),row.querySelector('.opp-size-cell'),
+            document.querySelector('.opp-spec-table th:nth-child(2) [lang=ar]'),
+            document.querySelector('.opp-spec-table th:nth-child(3) [lang=en]')]
+            .map(e=>getComputedStyle(e).fontSize);
+        })()`), ["18px", "12px", "16px", "12px", "9px"]);
+        check(`${context}: exact bilingual headers`, await evaluate(`[...document.querySelectorAll('.opp-spec-table thead th')].map((th,i)=>i===0?[th.textContent.trim(),'']:[th.querySelector('[lang=ar]')?.textContent.trim(),th.querySelector('[lang=en]')?.textContent.trim()])`), expectedHeaders);
+        check(`${context}: Arabic above English with no clipped labels`, await evaluate(`(()=>{
+          return [...document.querySelectorAll('.opp-spec-table thead th')].flatMap((th,i)=>{
+            if(i===0)return [];
+            const ar=th.querySelector('[lang=ar]'),en=th.querySelector('[lang=en]');
+            const fits=ar.dir==='rtl'&&en.dir==='ltr'&&ar.getBoundingClientRect().bottom<=en.getBoundingClientRect().top+1
+              &&en.getBoundingClientRect().height<=parseFloat(getComputedStyle(en).lineHeight)+1
+              &&[ar,en].every(e=>e.scrollWidth<=e.clientWidth+1&&e.scrollHeight<=e.clientHeight+1);
+            return fits?[]:[{label:en.textContent,width:en.clientWidth,scrollWidth:en.scrollWidth,height:en.clientHeight,scrollHeight:en.scrollHeight,font:getComputedStyle(en).font,lineHeight:getComputedStyle(en).lineHeight,letterSpacing:getComputedStyle(en).letterSpacing}];
+          });
+        })()`), []);
+        check(`${context}: green check and red X are accessible SVGs`, await evaluate(`(()=>{
+          const icons=[...document.querySelectorAll('.opp-spec-row')].map(row=>row.cells[7].querySelector('svg'));
+          return icons.length===2&&icons[0]?.classList.contains('is-printed')&&icons[1]?.classList.contains('is-not-printed')
+            &&icons.every(icon=>icon.getAttribute('role')==='img'&&!!icon.getAttribute('aria-label')&&!!icon.querySelector('path'))
+            &&getComputedStyle(icons[0]).stroke==='rgb(24, 119, 70)'&&getComputedStyle(icons[1]).stroke==='rgb(180, 35, 46)';
+        })()`));
+      };
+      for (language of ["ar", "en"]) {
+        for (const width of [390, 768, 1440]) {
+          await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 700 });
+          await navigate("/orders/7/print");
+          await wait(`!!document.querySelector('.opp-sheet')&&document.documentElement.lang==='${language}'`);
+          await verifyColumns(`${language}/${width}`);
+          if (width === 1440) await capture(`columns-${language}`);
+        }
+        await send("Emulation.setEmulatedMedia", { media: "print" });
+        await verifyColumns(`${language}/paper`);
+        // Older Chromium exposes this CSS property only under the WebKit prefix.
+        check(`${language}: preserve status colors when printing`, await evaluate("[...document.querySelectorAll('.opp-printed-status')].map(e=>{const s=getComputedStyle(e);return s.getPropertyValue('print-color-adjust')||s.getPropertyValue('-webkit-print-color-adjust')})"), ["exact", "exact"]);
+        await send("Emulation.setEmulatedMedia", { media: "" });
+        await pdf(`mixed-print-status-${language}`, false);
+        product.is_printed = null;
+        await navigate("/orders/7/print");
+        await wait("!!document.querySelector('.opp-sheet')");
+        check(`${language}: unknown status is not invented`, await evaluate("document.querySelector('.opp-spec-row').cells[7].textContent.trim()"), "—");
+        product.is_printed = true;
+        anonymous = true;
+        await evaluate("window.__printColumnsPreviousDocument=true");
+        await navigate(publicPath);
+        // Anonymous links may use the public default locale, independently of
+        // the signed-in user's locale. Both header languages are still required.
+        await wait("!window.__printColumnsPreviousDocument&&!!document.querySelector('.opp-sheet')");
+        await verifyColumns(`public link from ${language}`);
+        anonymous = false;
+        large = true;
+        for (const count of [1, 8, 9, 20, 38]) {
+          largeRowCount = count;
+          await navigate("/orders/7/print");
+          await wait(`document.querySelectorAll('.opp-spec-row').length===${count}`);
+          await pdf(`bilingual-${language}-${count}`);
+        }
+        large = false;
+      }
+      check("print refinements make no business writes", requests.every(r => r.method === "GET"));
+      check("no print runtime errors", errors, []);
+      console.log(`Verified ${passed} bilingual column, icon and PDF checks with synthetic fixtures.`);
+      return;
+    }
     const checkSignatures = async (context) => {
       check(`${context}: complete localized signature titles`, await evaluate(
         "[...document.querySelectorAll('.opp-signatures > div > strong')].map(e=>e.textContent.trim())"

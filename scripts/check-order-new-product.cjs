@@ -1,4 +1,12 @@
-// Mocked browser regression check for new products drafted inside an order.
+// Historical atomic-draft browser checks. The order UI now saves new products
+// immediately; its current regression suite runs without Playwright below.
+if (!process.argv.includes("--legacy-draft-contract") && !process.argv.includes("--order-fields-only")) {
+  const { spawnSync } = require("node:child_process");
+  const result = spawnSync(process.execPath, [require("node:path").join(__dirname,
+    "check-customer-production-modals.cjs"), "--immediate-products"], { stdio: "inherit" });
+  if (result.error) throw result.error;
+  process.exit(result.status ?? 1);
+}
 // All API calls are intercepted; this script never creates or changes database records.
 // Requires Playwright/Chromium, or PLAYWRIGHT_MODULE and CHROMIUM_PATH overrides.
 const assert = require("node:assert/strict");

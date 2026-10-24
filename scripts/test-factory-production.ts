@@ -18,12 +18,22 @@ const uiRequests: {route:string;input:{first_position:number;second_position:num
   uiRequestsPath ? JSON.parse(readFileSync(uiRequestsPath,"utf8")) : undefined;
 import { createProductionRouter } from "../server/production/routes";
 import { verifyProductionHistory } from "./verify-production-history";
+import { verifyProductionSearch } from "./verify-production-search";
 import { verifyFilmDurations } from "./verify-film-durations";
 import { verifyRollActors } from "./verify-roll-actors";
 import { verifyFilmOperationSpecs } from "./verify-film-operation-specs";
+import { verifyKgReceiving } from "./verify-kg-receiving";
 
 if (process.env.NODE_ENV === "production") throw Error("Integration tests are development-only.");
 if (process.argv.includes("--large") && !process.argv.includes("--local")) throw Error("Large fixtures require --local and a disposable database.");
+if (process.argv.includes("--search-experiments") && (!process.argv.includes("--local") || !process.argv.includes("--large"))) {
+  throw Error("Search experiments require --local --large and a disposable database.");
+}
+if ((process.argv.includes("--hall-comparison") || process.argv.some(arg => arg.startsWith("--hall-archive-size=")))
+  && (!process.argv.includes("--local") || !process.argv.includes("--large")))
+  throw Error("Hall comparison requires --local --large and a disposable database.");
+if (process.argv.includes("--hall-comparison") && process.argv.includes("--search-experiments"))
+  throw Error("Run hall and search comparisons separately.");
 // --local never connects to the application's database.
 const pool = process.argv.includes("--local")
   ? new LocalPool({ host: "127.0.0.1", port: 55439, user: "runner", database: "factory_isolated_test" })
@@ -64,9 +74,11 @@ try {
       full_name text,password text,email text,phone text);
     CREATE TABLE customers(id varchar(20) PRIMARY KEY,name text,name_ar text,plate_drawer_code text);
     CREATE TABLE items(id varchar(20) PRIMARY KEY,name text,name_ar text);
+    CREATE TABLE categories(id serial PRIMARY KEY,name text);
+    INSERT INTO categories(name) VALUES('Protected fixture category');
     CREATE TABLE master_batch_colors(id varchar(20) PRIMARY KEY,name text,name_ar text,color_hex text);
     CREATE TABLE customer_products(id integer PRIMARY KEY,customer_id varchar(20),item_id varchar(20),
-      width numeric,left_facing numeric,right_facing numeric,universal_thickness numeric,cutting_length_cm integer,
+      width numeric,left_facing numeric,right_facing numeric,thickness numeric DEFAULT 25,universal_thickness numeric,cutting_length_cm integer,
       raw_material text,printing_cylinder text,punching text,notes text,front_print_colors text[],back_print_colors text[],
       is_printed boolean,status text,size_caption text,master_batch_id varchar(20));
     CREATE TABLE machines(id varchar(20) PRIMARY KEY,name text,name_ar text,type text,status text,inline_printer_id varchar(20),
@@ -88,7 +100,39 @@ try {
   `);
   await setup.query(readFileSync("migrations/0011_factory_roll_production.sql", "utf8"));
   await setup.query(readFileSync("migrations/0013_order_number_allocations.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0016_finished_inventory_units.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0014_raw_material_mixing.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0017_raw_mixing_screws.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0018_production_monitoring.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0023_mix_corrections.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0019_finished_receipts_kg_only.sql", "utf8"));
+  await setup.query(readFileSync("migrations/0021_finished_deliveries.sql", "utf8"));
   setup.release(); setup = undefined;
+  await test("fixed hall receives with no locations, rolls back provisioning and serializes concurrent creation", async () => {
+    assert.equal((await query("SELECT count(*)::int n FROM factory_locations"))[0].n,0);
+    await plan(11,4); await film(11,"10",true);
+    await plan(12,4); await film(12,"10",true);
+    const receiver={id:1,permissions:["receive_production"]};
+    const receiptInput=(order:number)=>({...key(),items:[{
+      production_order_id:order,quantity_kg:"1",
+    }]});
+    assert.throws(()=>warehouse.receive({id:1,permissions:["view_production_hall"]},receiptInput(11)),/صلاحية/);
+    await query(`CREATE FUNCTION refuse_fixed_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixed hall rollback'; END $$;
+      CREATE TRIGGER refuse_fixed_receipt BEFORE INSERT ON factory_receipt_items FOR EACH ROW EXECUTE FUNCTION refuse_fixed_receipt()`);
+    await assert.rejects(warehouse.receive(receiver,receiptInput(11)),/fixed hall rollback/);
+    assert.equal((await query("SELECT count(*)::int n FROM factory_locations"))[0].n,0);
+    await query("DROP TRIGGER refuse_fixed_receipt ON factory_receipt_items; DROP FUNCTION refuse_fixed_receipt()");
+    const request=receiptInput(11);
+    const receipts=await Promise.all([warehouse.receive(receiver,request),warehouse.receive(receiver,receiptInput(12))]);
+    const sites=await query("SELECT id,name,name_ar,is_active FROM factory_locations");
+    assert.equal(sites.length,1);
+    assert.equal(sites[0].name_ar,"صالة المواد التامة");
+    assert.ok(receipts.every(receipt=>receipt.items.every(item=>item.location_id===sites[0].id)));
+    const replay=await warehouse.receive(receiver,request);
+    assert.equal(replay.id,receipts[0].id);
+    assert.equal((await query("SELECT count(*)::int n FROM factory_receipts"))[0].n,2);
+    await assert.rejects(warehouse.location(actor,{...key(),name:"Changed",name_ar:"تغيير",is_active:false},sites[0].id),/موقع ثابت/);
+  });
   const location = await warehouse.location(actor, { ...key(), name: "Location", name_ar: "موقع" }) as { id: number };
   const secondLocation = await warehouse.location(actor, { ...key(), name: "Second", name_ar: "ثاني" }) as { id: number };
   await test("printed bag may print/cut and receive while film is still open; hall returns after more cutting", async () => {
@@ -222,10 +266,10 @@ try {
     assert.equal(cutResults.filter(r => r.status === "fulfilled").length, 1);
     assert.equal((await query("SELECT waste_kg FROM factory_rolls WHERE id=$1", [roll.id]))[0].waste_kg, "1.00");
   });
-  await test("multi-item receipts update EVERY balance and movement, distinct product/location identities", async () => {
+  await test("multi-item receipts update EVERY balance and movement at the fixed hall despite legacy location inputs", async () => {
     const input = { ...key(), notes: "Fixture voucher", items: [
       { production_order_id: 1, location_id: secondLocation.id, quantity_kg: "8.00" },
-      { production_order_id: 3, location_id: location.id, quantity_kg: "12.00", packaging: { roll_weight_grams: "1000", rolls_per_unit: 2, units: 6 } },
+      { production_order_id: 3, location_id: location.id, quantity_kg: "12.00" },
     ] };
     const receipt = await warehouse.receive(actor, input);
     const replay = await warehouse.receive(actor, input);
@@ -233,7 +277,9 @@ try {
     const movements = await query("SELECT * FROM factory_movements WHERE receipt_id=$1", [receipt.id]);
     assert.equal(movements.length, 2);
     const balances = await query("SELECT * FROM factory_inventory WHERE production_order_id IN(1,3) ORDER BY production_order_id,location_id");
-    assert.equal(balances.length, 3);
+    assert.equal(balances.length, 2);
+    assert.equal(new Set(balances.map(row=>row.location_id)).size,1);
+    assert.ok(balances.every(row=>row.location_id!==location.id&&row.location_id!==secondLocation.id));
     assert.equal(balances.find(r => r.production_order_id === 3).quantity_kg, "12.00");
   });
   await test("concurrent over-receipt has one winner; partial receipt accounting stays exact", async () => {
@@ -262,14 +308,14 @@ try {
       "UPDATE orders SET customer_id='OTHER' WHERE id=4"]) await assert.rejects(query(sql), /factory|Factory/);
     assert.equal((await query("SELECT count(*)::int n FROM production_orders WHERE id=4"))[0].n, 1);
   });
-  await test("paused orders, wrong machine types/inactive machines, universal thickness are server-checked", async () => {
+  await test("paused orders, wrong machine types/inactive machines, original thickness are server-checked", async () => {
     await query("UPDATE orders SET status='paused' WHERE id=9");
     await assert.rejects(film(9), /متوقف/);
     await query("UPDATE orders SET status='in_production' WHERE id=9");
     await assert.rejects(service.film(actor, 9, { ...key(), machine_id: "P1", weight_kg: "1" }), /نشطة/);
     await assert.rejects(service.film(actor, 9, { ...key(), machine_id: "DOWN", weight_kg: "1" }), /نشطة/);
     await query("UPDATE machines SET min_thickness=30 WHERE id='F1'");
-    await assert.rejects(film(9), /حدود/);
+    await assert.rejects(film(9), /السماكة الأصلية.*الحد الأدنى/);
     await query("UPDATE machines SET min_thickness=NULL WHERE id='F1'");
   });
   await test("permissions, frozen route/product specs, independent stage queues, historic execution absence", async () => {
@@ -423,6 +469,20 @@ try {
       assert.equal((await call("/history/orders", "view_finished_inventory")).status, 403);
       assert.equal((await call("/history/receipts", "operate_film")).status, 403);
       assert.equal((await call("/history/receipts", "view_finished_inventory")).status, 200);
+      const receiptLine={production_order_id:9,quantity_kg:"1"};
+      const packedLine={...receiptLine,packing:{unit:"packet",method:"unit_weight",quantity:"1",unit_weight_kg:"1"}};
+      assert.equal((await call("/receipts","view_finished_inventory",{...key(),items:[receiptLine]})).status,403);
+      for(const invalid of [
+        packedLine,
+        {...packedLine,packing:{...packedLine.packing,unit:"box"}},
+        {...packedLine,packing:{...packedLine.packing,quantity:"-1"}},
+        {...packedLine,packing:{...packedLine.packing,actor_id:123}},
+        {...packedLine,line_number:999},
+        {...packedLine,packaging:{roll_weight_grams:"1",rolls_per_unit:1,units:1}},
+        {production_order_id:9,location_id:location.id},
+      ]){
+        assert.equal((await call("/receipts","receive_production",{...key(),items:[invalid]})).status,400);
+      }
       for (const query of ["limit=101", "limit=0", "before=-1", "search=a&search=b", "from=invalid", "from=2026-02-30", "from=2026-10-02&to=2026-10-01", "status=unknown", "location_id=0"]) {
         assert.equal((await call(`/history/orders?${query}`, "view_production")).status, 400, query);
       }
@@ -437,7 +497,8 @@ try {
       assert.equal(denial.status, 403); assert.ok((await denial.json()).message_en);
       assert.equal((await call("/rolls/1")).status, 401);
       assert.equal((await call("/rolls/1", "view_orders")).status, 403);
-      const traced = await call("/rolls/1", "view_finished_inventory");
+      const [{id:tracedRollId}]=await query("SELECT id FROM factory_rolls WHERE production_order_id=1 ORDER BY sequence LIMIT 1");
+      const traced = await call(`/rolls/${tracedRollId}`, "view_finished_inventory");
       assert.equal(traced.status, 200);
       const rollDetail = await traced.json();
       assert.equal(rollDetail.order_number, "ORDER-1");
@@ -449,18 +510,20 @@ try {
       assert.ok(rollDetail.film_duration.roll_count >= 1);
       assert.equal((await call("/rolls/1/qr")).status, 401);
       assert.equal((await call("/rolls/1/qr", "view_orders")).status, 403);
-      const qrResponse = await call("/rolls/1/qr", "operate_film");
+      const qrResponse = await call(`/rolls/${tracedRollId}/qr`, "operate_film");
       assert.equal(qrResponse.status, 200);
       assert.equal(qrResponse.headers.get("cache-control"), "private, no-store");
       const qr = await qrResponse.json();
-      assert.equal(qr.url, `http://127.0.0.1:${port}/production/rolls/1`);
+      assert.equal(qr.url, `http://127.0.0.1:${port}/production/rolls/${tracedRollId}`);
       assert.ok(qr.image.startsWith("data:image/png;base64,"));
     } finally { await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve())); }
   });
+  if (process.argv.includes("--local")) await verifyProductionSearch(isolated);
   await verifyProductionHistory(isolated, query, process.argv.includes("--large"));
   await verifyFilmDurations(isolated, query);
   await verifyRollActors(isolated, query);
   await verifyFilmOperationSpecs(isolated, query);
+  await verifyKgReceiving(isolated, query);
   console.log(`Verified ${passed} PostgreSQL factory production integration scenarios.`);
 } catch (error) {
   console.error(error);

@@ -1,0 +1,478 @@
+.production.receipt-voucher-backdrop {
+  position: fixed;
+  z-index: 1300;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(8px, 2vw, 22px);
+  background: rgba(24, 45, 40, .58);
+  backdrop-filter: blur(3px);
+}
+.production .receipt-voucher-dialog {
+  width: min(100%, 960px);
+  max-height: min(92dvh, 900px);
+  overflow: auto;
+  border: 1px solid #cbd9ce;
+  background: #f7f8f1;
+  color: #263b35;
+  box-shadow: 0 24px 80px rgba(18, 39, 33, .32);
+  outline: none;
+}
+.production .receipt-voucher-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px clamp(16px, 3vw, 28px);
+  border-bottom: 1px solid #dce6dc;
+  background: #f7f8f1;
+}
+.production .receipt-voucher-header-actions { display: flex; align-items: center; gap: 7px; }
+.production .receipt-voucher-print {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 42px; padding: 0 11px; border: 1px solid #d5e1d7;
+  background: #edf3eb; color: #456b57; font: 650 11px inherit; cursor: pointer;
+}
+.production .receipt-voucher-print svg { width: 15px; height: 15px; }
+.production .receipt-voucher-print:disabled { opacity: .48; cursor: not-allowed; }
+.production .receipt-voucher-kicker {
+  color: #8b9b8e;
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 1.3px;
+}
+.production .receipt-voucher-header h2 {
+  margin: 6px 0 3px;
+  color: #24473e;
+  font-size: clamp(19px, 3vw, 25px);
+  letter-spacing: -.45px;
+}
+.production .receipt-voucher-header p {
+  margin: 0;
+  color: #78897f;
+  font-size: 12px;
+}
+.production .receipt-voucher-close,
+.production .receipt-voucher-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 42px;
+  min-height: 42px;
+  border: 1px solid #d5e1d7;
+  background: #fffefa;
+  color: #65796d;
+  cursor: pointer;
+}
+.production .receipt-voucher-close svg { width: 18px; height: 18px; }
+.production .receipt-voucher-route {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin: 16px clamp(14px, 3vw, 28px) 0;
+  padding: 12px 15px;
+  border: 1px solid #d7e4d9;
+  background: #edf3eb;
+}
+.production .receipt-voucher-route > div { display: grid; gap: 4px; min-width: 0; }
+.production .receipt-voucher-route small { color: #829489; font-size: 9px; }
+.production .receipt-voucher-route strong { color: #34564a; font-size: 12px; }
+.production .receipt-voucher-route > span { color: #a97650; font-size: 20px; }
+.production .receipt-voucher-dialog[dir="rtl"] .receipt-voucher-route > span { transform: scaleX(-1); }
+.production .receipt-voucher-saved {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 12px clamp(14px, 3vw, 28px) 0;
+  padding: 12px 15px;
+  border-inline-start: 3px solid #608c71;
+  background: #e7f0e5;
+}
+.production .receipt-voucher-saved.is-pending { padding-block: 9px; background: #f0f2e8; border-inline-start-color: #a8784c; }
+.production .receipt-voucher-pending-number { color: #826748; font: 600 10px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-saved > div { display: grid; gap: 3px; }
+.production .receipt-voucher-saved strong { color: #37654a; font-size: 12px; }
+.production .receipt-voucher-saved small { color: #849588; font-size: 9px; }
+.production .receipt-voucher-saved bdi { color: #2e5744; font: 700 12px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-dialog form { padding: 15px clamp(14px, 3vw, 28px) 22px; }
+.production .receipt-voucher-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid #dce6dd; }
+.production .receipt-voucher-table { width: 100%; min-width: 0; border-collapse: collapse; table-layout: fixed; }
+.production .receipt-voucher-table th {
+  padding: 9px 8px;
+  background: #edf3eb;
+  color: #71877a;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: start;
+  vertical-align: bottom;
+}
+.production .receipt-voucher-table th:first-child { width: 5%; }
+.production .receipt-voucher-table th:nth-child(2) { width: 52%; }
+.production .receipt-voucher-table th:nth-child(3) { width: 20%; }
+.production .receipt-voucher-table th:nth-child(4) { width: 24%; }
+.production .receipt-voucher-table td { padding: 6px; border-top: 1px solid #e1e8df; vertical-align: top; }
+.production .receipt-voucher-table .receipt-voucher-line { background: #fffefa; }
+.production .receipt-voucher-table .prod-field { display: grid; gap: 3px; min-width: 0; }
+.production .receipt-voucher-table select,
+.production .receipt-voucher-table input { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
+.production .receipt-voucher-table select,
+.production .receipt-voucher-table input { min-height: 34px; padding: 5px 7px; }
+.production .receipt-voucher-table-line { display: grid; justify-items: center; gap: 6px; color: #748a7c; font: 700 10px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-table-line .receipt-voucher-remove { min-width: 30px; min-height: 30px; padding: 4px; }
+.production .receipt-voucher-table-line .receipt-voucher-remove span { display: none; }
+.production .receipt-voucher-available { display: inline-block; padding-top: 8px; color: #416b55; font: 650 11px "IBM Plex Mono", monospace; white-space: nowrap; }
+.production .receipt-voucher-table .receipt-voucher-requested { border-color: #9ab69f; background: #f7fbf4; }
+.production .receipt-voucher-remove {
+  min-height: 30px;
+  padding: 4px 8px;
+  color: #8c6654;
+  font: 600 10px inherit;
+}
+.production .receipt-voucher-remove svg { width: 14px; height: 14px; }
+.production .receipt-voucher-add { margin-top: 11px; }
+.production .receipt-voucher-notes { margin-top: 14px; }
+.production .receipt-voucher-notes textarea { min-height: 48px; resize: vertical; }
+.production .receipt-voucher-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 13px 15px;
+  border-block: 1px solid #dce6dd;
+  color: #71877a;
+  font-size: 12px;
+}
+.production .receipt-voucher-total strong { color: #244f41; font: 750 17px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-error { margin-top: 12px; }
+.production .receipt-voucher-alert {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #ead4a6;
+  background: #fbf4e3;
+  color: #805f26;
+  font-size: 12px;
+}
+.production .receipt-voucher-footer {
+  position: sticky;
+  z-index: 3;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 13px calc(-1 * clamp(14px, 3vw, 28px)) -22px;
+  padding: 12px clamp(14px, 3vw, 28px) 22px;
+  border-top: 1px solid #dce6dd;
+  background: #f7f8f1;
+  box-shadow: 0 -8px 18px rgba(38, 59, 53, .06);
+}
+@media (max-width: 960px) {
+  .production .receipt-voucher-dialog { width: min(100%, 720px); max-height: 94dvh; }
+  .production .receipt-voucher-header { padding: 15px; }
+  .production .receipt-voucher-header-actions { gap: 5px; }
+  .production .receipt-voucher-print { min-width: 42px; padding: 0 8px; }
+  .production .receipt-voucher-route { margin: 12px 12px 0; gap: 7px; padding: 10px; }
+  .production .receipt-voucher-route strong { font-size: 10px; }
+  .production .receipt-voucher-dialog form { padding: 12px 12px 18px; }
+  .production .receipt-voucher-line { padding: 10px; }
+  .production .receipt-voucher-table-wrap { overflow: visible; border: 0; }
+  .production .receipt-voucher-table { display: block; width: 100%; min-width: 0; }
+  .production .receipt-voucher-table thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .production .receipt-voucher-table tbody { display: grid; gap: 10px; }
+  .production .receipt-voucher-table .receipt-voucher-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; padding: 10px; border: 1px solid #dce6dd; border-inline-start: 3px solid #6a9580; }
+  .production .receipt-voucher-table td { display: grid; min-width: 0; padding: 8px 0; border-top: 1px solid #edf0e9; }
+  .production .receipt-voucher-table td::before { content: attr(data-label); margin-bottom: 5px; color: #71877a; font-size: 9px; font-weight: 700; }
+  .production .receipt-voucher-table td:first-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-start; border: 0; padding: 0 0 5px; }
+  .production .receipt-voucher-table td:first-child::before { content: none; }
+  .production .receipt-voucher-table td:nth-child(2) { grid-column: 1 / -1; }
+  .production .receipt-voucher-table-line { display: flex; width: 100%; justify-content: space-between; }
+  .production .receipt-voucher-table-line .receipt-voucher-remove { min-width: 34px; min-height: 30px; }
+  .production .receipt-voucher-table-line .receipt-voucher-remove span { display: inline; }
+  .production .receipt-voucher-table select,
+  .production .receipt-voucher-table input { min-height: 38px; }
+  .production .receipt-voucher-footer > button { flex: 1 1 130px; min-height: 46px; }
+  .production .receipt-voucher-footer { margin-inline: -12px; padding-inline: 12px; padding-bottom: 18px; }
+}
+@media (max-width: 767px) {
+  .production.receipt-voucher-backdrop { padding: 0; align-items: end; }
+  .production .receipt-voucher-dialog { width: 100%; max-height: 96dvh; border-bottom: 0; }
+  .production .receipt-voucher-print span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .production.receipt-voucher-backdrop { scroll-behavior: auto; }
+}
+
+/* Compact voucher layout: the four receiving fields stay adjacent on desktop. */
+.production .receipt-voucher-dialog {
+  width: min(100%, 960px);
+  max-height: min(92dvh, 860px);
+}
+.production .receipt-voucher-header { padding-block: 13px; }
+.production .receipt-voucher-header h2 { margin-top: 4px; }
+.production .receipt-voucher-saved {
+  display: block;
+  margin-top: 9px;
+  padding: 8px 10px;
+}
+.production .receipt-voucher-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  grid-auto-flow: column;
+  align-items: stretch;
+  gap: 7px;
+  direction: inherit;
+}
+.production .receipt-voucher-meta-item {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding-inline: 8px;
+  border-inline-start: 1px solid #d5e2d6;
+}
+.production .receipt-voucher-meta-item:first-child { padding-inline-start: 0; border: 0; }
+.production .receipt-voucher-meta-item small { color: #829489; font-size: 9px; }
+.production .receipt-voucher-meta-item bdi { color: #315c49; font-size: 11px; overflow-wrap: anywhere; }
+.production .receipt-voucher-pending-number { white-space: normal; overflow-wrap: anywhere; }
+.production .receipt-voucher-dialog form { padding-top: 10px; }
+.production .receipt-voucher-table th:first-child { width: 6%; }
+.production .receipt-voucher-table th:nth-child(2) { width: 50%; }
+.production .receipt-voucher-table th:nth-child(3) { width: 20%; }
+.production .receipt-voucher-table th:nth-child(4) { width: 24%; }
+.production .receipt-voucher-table th { padding: 7px 5px; }
+.production .receipt-voucher-table td { padding: 5px 4px; }
+.production .receipt-voucher-table select,
+.production .receipt-voucher-table input { min-height: 32px; padding: 4px 5px; font-size: 10px; }
+.production .receipt-voucher-notes { margin-top: 9px; }
+.production .receipt-voucher-notes textarea { min-height: 42px; }
+.production .receipt-voucher-total { margin-top: 8px; padding-block: 8px; }
+.production .receipt-voucher-footer {
+  justify-content: flex-start;
+  margin-top: 9px;
+  padding-top: 9px;
+}
+.production .receipt-voucher-footer button { min-height: 38px; }
+
+.production .receipt-voucher-preview-backdrop {
+  position: fixed;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  background: rgba(26, 48, 40, .47);
+}
+.production .receipt-voucher-preview {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 760px);
+  max-height: min(88dvh, 760px);
+  overflow: auto;
+  border: 1px solid #cbd9ce;
+  background: #f7f8f1;
+  color: #263b35;
+  box-shadow: 0 18px 60px rgba(18, 39, 33, .3);
+  outline: none;
+}
+.production .receipt-voucher-preview > header,
+.production .receipt-voucher-preview > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #dce6dc;
+}
+.production .receipt-voucher-preview > header h3 { margin: 4px 0 0; color: #24473e; font-size: 18px; }
+.production .receipt-voucher-preview-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 14px;
+  padding: 10px;
+  background: #edf3eb;
+}
+.production .receipt-voucher-preview-meta > div { display: grid; gap: 4px; min-width: 0; }
+.production .receipt-voucher-preview-meta small,
+.production .receipt-voucher-preview-values small,
+.production .receipt-voucher-preview-notes small { color: #829489; font-size: 9px; }
+.production .receipt-voucher-preview-meta bdi { color: #315c49; font-size: 10px; overflow-wrap: anywhere; }
+.production .receipt-voucher-preview-rows { display: grid; gap: 7px; margin: 0 14px; }
+.production .receipt-voucher-preview-row { padding: 9px; border: 1px solid #dce6dd; background: #fffefa; }
+.production .receipt-voucher-preview-row.is-invalid { border-inline-start: 3px solid #b27742; background: #fbf4e6; }
+.production .receipt-voucher-preview-invalid { display: block; margin-top: 6px; color: #8a5a2c; font-size: 10px; }
+.production .receipt-voucher-preview-values {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  font-size: 10px;
+}
+.production .receipt-voucher-preview-values > span { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.production .receipt-voucher-preview-total { display: flex; justify-content: space-between; margin: 10px 14px 0; padding: 9px 0; border-block: 1px solid #dce6dd; color: #71877a; }
+.production .receipt-voucher-preview-total strong { color: #244f41; font: 750 15px "IBM Plex Mono", monospace; }
+.production .receipt-voucher-preview-notes { margin: 9px 14px; }
+.production .receipt-voucher-preview-notes p { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.production .receipt-voucher-preview > footer { margin-top: auto; border-top: 1px solid #dce6dc; border-bottom: 0; color: #829188; font-size: 10px; }
+
+@media (max-width: 960px) {
+  .production .receipt-voucher-table-wrap { overflow: visible; border: 0; }
+  .production .receipt-voucher-table { display: block; width: 100%; }
+  .production .receipt-voucher-table thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .production .receipt-voucher-table tbody { display: grid; gap: 8px; }
+  .production .receipt-voucher-table .receipt-voucher-line {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 10px;
+    padding: 9px;
+    border: 1px solid #dce6dd;
+    border-inline-start: 3px solid #6a9580;
+  }
+  .production .receipt-voucher-table td { display: grid; min-width: 0; padding: 6px 0; border-top: 1px solid #edf0e9; }
+  .production .receipt-voucher-table td::before { content: attr(data-label); margin-bottom: 4px; color: #71877a; font-size: 9px; font-weight: 700; }
+  .production .receipt-voucher-table td:first-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-start; border: 0; padding: 0 0 5px; }
+  .production .receipt-voucher-table td:first-child::before { content: none; }
+  .production .receipt-voucher-table td:nth-child(2),
+  .production .receipt-voucher-table td:last-child { grid-column: 1 / -1; }
+  .production .receipt-voucher-table-line { display: flex; width: 100%; justify-content: space-between; }
+  .production .receipt-voucher-table-line .receipt-voucher-remove span { display: inline; }
+}
+@media (max-width: 767px) {
+  .production.receipt-voucher-backdrop { padding: 0; align-items: end; }
+  .production .receipt-voucher-dialog { width: 100%; max-height: 96dvh; border-bottom: 0; }
+  .production .receipt-voucher-metadata-grid,
+  .production .receipt-voucher-preview-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .production .receipt-voucher-metadata-grid { grid-template-rows: minmax(0, 1fr); grid-auto-flow: column; }
+  .production .receipt-voucher-meta-item { padding-inline: 4px; }
+  .production .receipt-voucher-meta-item small { font-size: 8px; }
+  .production .receipt-voucher-meta-item bdi { font-size: 9px; }
+  .production .receipt-voucher-print span { display: none; }
+  .production .receipt-voucher-footer { margin-inline: -12px; padding-inline: 12px; padding-bottom: 18px; }
+  .production .receipt-voucher-footer > button { flex: 1 1 0; min-width: 0; padding-inline: 8px; }
+  .production .receipt-voucher-preview-backdrop { padding: 0; align-items: end; }
+  .production .receipt-voucher-preview { width: 100%; max-height: 94dvh; }
+  .production .receipt-voucher-preview-meta { margin-inline: 8px; padding: 8px 5px; }
+  .production .receipt-voucher-preview-meta small { font-size: 8px; }
+  .production .receipt-voucher-preview-meta bdi { font-size: 9px; }
+  .production .receipt-voucher-preview-rows { margin-inline: 8px; }
+  .production .receipt-voucher-preview-values { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .production .receipt-voucher-preview-total,
+  .production .receipt-voucher-preview-notes { margin-inline: 8px; }
+}
+
+/* Factory identity is deliberately compact so the working form stays quick to scan. */
+.production .receipt-factory-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px clamp(12px, 2.5vw, 24px);
+  border-bottom: 1px solid #dce6dc;
+  background: #f1f4eb;
+}
+.production .receipt-factory-logo {
+  display: block;
+  width: 58px;
+  height: 44px;
+  object-fit: contain;
+  object-position: center;
+}
+.production .receipt-factory-names { display: grid; gap: 2px; min-width: 0; }
+.production .receipt-factory-names strong {
+  color: #24473e;
+  font-size: 15px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.production .receipt-factory-names span {
+  color: #71877a;
+  font-size: 11px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.production .receipt-factory-contact {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  color: #71877a;
+  font-size: 9px;
+}
+.production .receipt-factory-contact span { overflow-wrap: anywhere; }
+.production .receipt-branding-state {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #71877a;
+  font-size: 10px;
+}
+.production .receipt-branding-state[role="alert"] { color: #8a5a2c; }
+.production .receipt-voucher-table th:nth-child(1) { width: 6%; }
+.production .receipt-voucher-table th:nth-child(2) { width: 25%; }
+.production .receipt-voucher-table th:nth-child(3) { width: 16%; }
+.production .receipt-voucher-table th:nth-child(4) { width: 17%; }
+.production .receipt-voucher-table th:nth-child(5) { width: 18%; }
+.production .receipt-voucher-table th:nth-child(6) { width: 18%; }
+.production .receipt-voucher-table td.receipt-voucher-name-cell {
+  color: #536b5d;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.production .receipt-voucher-order-select { margin-bottom: 5px; }
+.production .receipt-voucher-order-select select { font-size: 11px; }
+.production .receipt-voucher-name-value { display: block; min-height: 1.25em; }
+.production .receipt-voucher-receiver {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px clamp(14px, 3vw, 28px) 0;
+  padding: 7px 10px;
+  border-inline-start: 2px solid #a8784c;
+  background: #f2f0e7;
+  color: #536b5d;
+  font-size: 10px;
+}
+.production .receipt-voucher-receiver small { color: #829489; }
+.production .receipt-voucher-receiver strong { overflow-wrap: anywhere; }
+.production .receipt-voucher-receiver em { color: #8a6d48; font-style: normal; }
+.production .receipt-voucher-dialog :focus-visible,
+.production .receipt-voucher-preview :focus-visible {
+  outline: 3px solid #a8784c;
+  outline-offset: 2px;
+}
+.production .receipt-voucher-preview .receipt-factory-header { margin: 0; }
+.production .receipt-voucher-preview-values { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.production .receipt-voucher-preview-values > span { overflow-wrap: anywhere; }
+@media (max-width: 960px) {
+  .production .receipt-voucher-table-wrap { overflow-x: auto; }
+  .production .receipt-voucher-table { min-width: 620px; display: table; }
+  .production .receipt-voucher-table thead {
+    position: static; width: auto; height: auto; padding: 0; margin: 0;
+    overflow: visible; clip: auto; white-space: normal; border: 0;
+  }
+  .production .receipt-voucher-table tbody { display: table-row-group; }
+  .production .receipt-voucher-table .receipt-voucher-line { display: table-row; padding: 0; border: 0; }
+  .production .receipt-voucher-table td { display: table-cell; padding: 6px; }
+  .production .receipt-voucher-table td::before { content: none; }
+  .production .receipt-voucher-table td:first-child { display: table-cell; padding: 6px; }
+  .production .receipt-voucher-table-line { display: grid; width: auto; justify-content: initial; }
+}
+@media (max-width: 600px) {
+  .production .receipt-factory-header { padding: 8px 12px; gap: 7px; }
+  .production .receipt-factory-logo { width: 46px; height: 36px; }
+  .production .receipt-factory-names strong { font-size: 13px; }
+  .production .receipt-factory-names span { font-size: 10px; }
+  .production .receipt-factory-contact { gap: 3px 8px; }
+  .production .receipt-voucher-table { min-width: 590px; }
+  .production .receipt-voucher-receiver { margin-inline: 12px; }
+}
+@media print {
+  .production .receipt-factory-header { background: #fff; }
+}

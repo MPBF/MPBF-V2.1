@@ -1,15 +1,16 @@
 import i18n, { intlLocale, translate, translateError } from "../i18n";
-import { AlertCircle, ArrowDownLeft, ArrowUpLeft, CalendarDays, Check, Clock3, Coffee, FilePlus2, Fingerprint, LogIn, LogOut, MapPin, MessageCircle, Navigation, Play, Send, ShieldAlert } from "lucide-react";
+import { AlertCircle, ArrowDownLeft, ArrowUpLeft, Check, Clock3, Coffee, FilePlus2, Fingerprint, LogIn, LogOut, MessageCircle, Navigation, Play, Send, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { NetworkRequestError, resilientFetch } from "../lib/resilient-fetch";
+import { attendanceCalendarDate, groupAttendanceEventsByDay, type AttendanceDayStatus } from "../lib/self-attendance-days";
 import "./user-dashboard.css";
 import PageHero from "../components/PageHero";
 
 type AttendanceAction = "check_in" | "break_start" | "break_end" | "check_out";
-type AttendanceEvent = { id: number; action: AttendanceAction; occurred_at: string; latitude: number; longitude: number; accuracy: number | null };
+type AttendanceEvent = { id: number; action: AttendanceAction; occurred_at: string; shift_date?: string | null; latitude: number; longitude: number; accuracy: number | null };
 type Recipient = { id: number; display_name: string | null; display_name_ar: string | null };
 type Message = { id: number; sender_id: number; recipient_id: number; sender_name: string; recipient_name: string; body: string; reply_to_id: number | null; created_at: string; read_at: string | null };
-type RequestRecord = { id: number; type: "leave" | "permission" | "other"; title: string; details: string; status: "pending" | "approved" | "rejected"; response: string | null; created_at: string };
+type RequestRecord = { id: number; type: "leave" | "permission" | "other"; title: string; details: string; status: "pending" | "approved" | "rejected"; response: string | null; created_at: string; leave_start_date?: string | null; leave_end_date?: string | null };
 type Violation = { id: number; title: string; details: string; created_at: string; acknowledged_at: string | null };
 type DashboardUser = { id?: number; display_name_ar?: string | null; display_name?: string | null; username?: string | null };
 type ActiveShift = {
@@ -20,7 +21,7 @@ type ActiveShift = {
   geofenceStatus: "enabled" | "disabled" | "invalid";
   radiusMeters: number | null;
 };
-type AttendanceData = { events: AttendanceEvent[]; status: "out" | "working" | "break"; month: string; daysPresent: number; currentSession?: { id: number; shiftDate: string; incomplete: boolean } | null; unresolvedIncompleteSession?: { id: number; shiftDate: string } | null; activeShift: ActiveShift | null; withinShiftWindow: boolean; serverNow: string; workedSeconds: number; sessionStartedAt: string | null; actionTimes: Partial<Record<AttendanceAction, string>> };
+type AttendanceData = { events: AttendanceEvent[]; dayStatuses?: AttendanceDayStatus[]; absenceAssessmentBlocked?: boolean; status: "out" | "working" | "break"; month: string; daysPresent: number; currentSession?: { id: number; shiftDate: string; incomplete: boolean } | null; unresolvedIncompleteSession?: { id: number; shiftDate: string } | null; activeShift: ActiveShift | null; withinShiftWindow: boolean; serverNow: string; workedSeconds: number; sessionStartedAt: string | null; actionTimes: Partial<Record<AttendanceAction, string>> };
 
 class ApiError extends Error {
   status: number;
@@ -60,7 +61,7 @@ const dateTime = (value: string) => new Intl.DateTimeFormat(intlLocale(), {
 }).format(new Date(value));
 const monthName = (value: string) => {
   const [year, month] = value.split("-").map(Number);
-  return new Intl.DateTimeFormat(intlLocale(), { month: "long", year: "numeric", timeZone: "Asia/Riyadh" })
+  return new Intl.DateTimeFormat(intlLocale(), { month: "long", year: "numeric", timeZone: "Asia/Riyadh", calendar: "gregory" })
     .format(new Date(Date.UTC(year, month - 1, 15, 9)));
 };
 const actionNames: Record<AttendanceAction, string> = {
@@ -78,6 +79,25 @@ const formatDuration = (seconds: number) => {
   return [hours, minutes, remaining].map((value) => String(value).padStart(2, "0")).join(":");
 };
 const actionTime = (value?: string) => value ? new Intl.DateTimeFormat(intlLocale(), { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Riyadh" }).format(new Date(value)) : "—";
+const attendanceDayLabel = (value: string) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Intl.DateTimeFormat(intlLocale(), {
+    dateStyle: "full",
+    calendar: "gregory",
+    timeZone: "Asia/Riyadh",
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+};
+const formatCalendarDate = (value: string) => new Intl.DateTimeFormat(intlLocale(), {
+  dateStyle: "medium",
+  calendar: "gregory",
+  timeZone: "Asia/Riyadh",
+}).format(new Date(`${value}T12:00:00+03:00`));
+const leaveRangeLabel = (start?: string | null, end?: string | null) => {
+  if (start && end) return translate("الفترة: {{start}} – {{end}}", { start: formatCalendarDate(start), end: formatCalendarDate(end) });
+  if (start) return translate("تبدأ الإجازة في {{date}}", { date: formatCalendarDate(start) });
+  if (end) return translate("تنتهي الإجازة في {{date}}", { date: formatCalendarDate(end) });
+  return "";
+};
 
 function locate(): Promise<{ latitude: number; longitude: number; accuracy: number }> {
   return new Promise((resolve, reject) => {
@@ -111,7 +131,7 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
   const [recipientId, setRecipientId] = useState("");
   const [messageBody, setMessageBody] = useState("");
   const [replyTo, setReplyTo] = useState<number | null>(null);
-  const [requestForm, setRequestForm] = useState({ type: "leave" as RequestRecord["type"], title: "", details: "" });
+  const [requestForm, setRequestForm] = useState({ type: "leave" as RequestRecord["type"], title: "", details: "", leave_start_date: "", leave_end_date: "" });
   const [timerTick, setTimerTick] = useState(Date.now());
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const loadController = useRef<AbortController | null>(null);
@@ -183,6 +203,13 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
     if (attendance?.status === "break") return ["break_end"] as AttendanceAction[];
     return ["check_in"] as AttendanceAction[];
   }, [attendance?.status]);
+  const attendanceDays = useMemo(
+    () => groupAttendanceEventsByDay(
+      attendance?.events ?? [],
+      (attendance?.dayStatuses ?? []).filter(({ status }) => !attendance?.absenceAssessmentBlocked || status !== "absent"),
+    ),
+    [attendance?.events, attendance?.dayStatuses, attendance?.absenceAssessmentBlocked],
+  );
 
   const registerAttendance = async (action: AttendanceAction) => {
     setBusy(action); setError(""); setErrorTitle(""); setNotice("");
@@ -225,10 +252,29 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
 
   const submitRequest = async (event: FormEvent) => {
     event.preventDefault();
+    setError(""); setErrorTitle(""); setNotice("");
+    if (requestForm.type === "leave") {
+      if (!requestForm.leave_start_date || !requestForm.leave_end_date) {
+        setError(translate("أدخل تاريخ بداية ونهاية صحيحين للإجازة."));
+        return;
+      }
+      if (requestForm.leave_start_date > requestForm.leave_end_date) {
+        setError(translate("تاريخ نهاية الإجازة يجب أن يكون في يوم البداية أو بعده."));
+        return;
+      }
+    }
     setBusy("request"); setError(""); setErrorTitle(""); setNotice("");
     try {
-      await post("/requests", requestForm);
-      setRequestForm({ type: "leave", title: "", details: "" });
+      await post("/requests", {
+        type: requestForm.type,
+        title: requestForm.title,
+        details: requestForm.details,
+        ...(requestForm.type === "leave" ? {
+          leave_start_date: requestForm.leave_start_date,
+          leave_end_date: requestForm.leave_end_date,
+        } : {}),
+      });
+      setRequestForm({ type: "leave", title: "", details: "", leave_start_date: "", leave_end_date: "" });
       setNotice(translate("تم إرسال الطلب إلى الإدارة."));
       await load(true);
     } catch (cause) { setError((cause as Error).message); }
@@ -267,9 +313,6 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
         <div className="self-attendance-main">
           <div className="self-section-kicker"><Fingerprint size={15} />{" "}{translate("نظام البصمة")}</div>
           <div className="self-attendance-status-line"><h3 id="self-attendance-title">{loading && !attendance ? translate("جارٍ تحميل الحالة…") : statusLabel}</h3><span className={`self-current-status is-${attendance?.status || "out"}`}>{statusLabel}</span></div>
-          <p>{translate("الموقع إلزامي لكل تسجيل. سيُطلب إذن الموقع عند تنفيذ كل إجراء.")}</p>
-          {attendance?.currentSession?.shiftDate && <p>{translate("تاريخ احتساب الوردية:")}{" "}<strong>{attendance.currentSession.shiftDate}</strong>{translate("، حتى لو كان الانصراف بعد منتصف الليل.")}</p>}
-          {attendance?.unresolvedIncompleteSession && <div className="self-window-warning" role="alert"><AlertCircle size={16} />{" "}{translate("وردية")}{" "}{attendance.unresolvedIncompleteSession.shiftDate}{" "}{translate("بلا انصراف. لا تُحتسب ساعاتها أو أجرها حتى تُصححها إدارة الموارد البشرية، ويمكنك بدء ورديتك الجديدة.")}</div>}
           <div className={`self-shift-context is-${attendance?.activeShift?.geofenceStatus || "none"}`}>
             <span className="self-shift-icon"><Navigation size={18} /></span>
             <div className="self-shift-copy">
@@ -307,20 +350,27 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
             </button><time>{actionTime(attendance?.actionTimes[action])}</time></div>; })}
           </div>
         </div>
-        <div className="self-attendance-stat">
-          <span className="self-stat-icon"><CalendarDays size={19} /></span>
-          <div><span>{translate("أيام الحضور")}</span><strong>{loading && !attendance ? "—" : attendance?.daysPresent ?? "—"}</strong><small>{attendance?.month ? monthName(attendance.month) : translate("الشهر الحالي")}</small></div>
-        </div>
       </section>
 
       <section className="self-panel">
         <div className="self-panel-heading"><div><span className="self-section-kicker"><Clock3 size={15} />{" "}{translate("سجل الشهر")}</span><h3>{translate("أحداث الحضور")}</h3></div><span className="self-muted">{attendance?.month ? monthName(attendance.month) : translate("الشهر الحالي")}</span></div>
-        {loading && !attendance ? <div className="self-empty">{translate("جارٍ تحميل سجل الحضور…")}</div> : !attendance?.events.length ? <div className="self-empty">{translate("لا توجد أحداث حضور مسجلة لهذا الشهر.")}</div> : (
-          <div className="self-event-list">
-            {attendance.events.map((event) => <article className="self-event" key={event.id}>
-              <span className={`self-event-dot ${event.action === "check_out" ? "is-soft" : ""}`} />
-              <div className="self-event-copy"><strong>{translate(actionNames[event.action])}</strong><small><MapPin size={12} />{" "}{translate("تم حفظ الموقع")}</small></div>
-              <time dateTime={event.occurred_at}>{dateTime(event.occurred_at)}</time>
+        {attendance?.absenceAssessmentBlocked && <div className="self-window-warning self-attendance-assessment-note" role="note"><AlertCircle size={15} />{" "}{translate("تعذر تقييم الغياب لبعض الأيام لأن هناك إجازات معتمدة قديمة بلا تواريخ أو جدول ورديات غير صالح. راجع الموارد البشرية قبل الاعتماد على سجل الغياب.")}</div>}
+        {loading && !attendance ? <div className="self-empty">{translate("جارٍ تحميل سجل الحضور…")}</div> : !attendanceDays.length ? <div className="self-empty">{translate("لا توجد أحداث حضور مسجلة لهذا الشهر.")}</div> : (
+          <div className="self-attendance-day-list">
+            {attendanceDays.map(({ day, events, status }) => <article className="self-attendance-day" data-day={day} key={day}>
+              <time className="self-attendance-day-date" dateTime={day}>{attendanceDayLabel(day)}</time>
+              <div className="self-attendance-day-events" role="group" aria-label={`${attendanceDayLabel(day)} · ${translate("أحداث الحضور")}`} tabIndex={0}>
+                {events.length ? events.map((event) => {
+                  const Icon = attendanceIcons[event.action];
+                  const actualDay = attendanceCalendarDate(event.occurred_at);
+                  const timestampLabel = dateTime(event.occurred_at);
+                  return <div className={`self-attendance-day-event action-${event.action}`} key={event.id}>
+                    <span className="self-attendance-event-action"><Icon size={14} aria-hidden="true" />{translate(actionNames[event.action])}</span>
+                    <time dateTime={event.occurred_at} aria-label={timestampLabel} title={timestampLabel}>{actionTime(event.occurred_at)}</time>
+                    {actualDay !== day && <span className="self-attendance-event-actual-date">{attendanceDayLabel(actualDay)}</span>}
+                  </div>;
+                }) : status && <span className={`self-attendance-day-status status-${status}`}>{translate(status === "absent" ? "غائب" : "إجازة")}</span>}
+              </div>
             </article>)}
           </div>
         )}
@@ -364,6 +414,10 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
               <div className="self-field"><label htmlFor="self-request-type">{translate("نوع الطلب")}</label><select id="self-request-type" value={requestForm.type} onChange={(event) => setRequestForm({ ...requestForm, type: event.target.value as RequestRecord["type"] })}><option value="leave">{translate("إجازة")}</option><option value="permission">{translate("استئذان")}</option><option value="other">{translate("أخرى")}</option></select></div>
               <div className="self-field"><label htmlFor="self-request-title">{translate("العنوان")}</label><input id="self-request-title" value={requestForm.title} maxLength={200} onChange={(event) => setRequestForm({ ...requestForm, title: event.target.value })} required /></div>
             </div>
+            {requestForm.type === "leave" && <div className="self-leave-date-fields">
+              <label className="self-field" htmlFor="self-request-leave-start"><span>{translate("بداية الإجازة")}</span><input id="self-request-leave-start" type="date" value={requestForm.leave_start_date} max={requestForm.leave_end_date || undefined} onChange={(event) => setRequestForm({ ...requestForm, leave_start_date: event.target.value })} required /></label>
+              <label className="self-field" htmlFor="self-request-leave-end"><span>{translate("نهاية الإجازة")}</span><input id="self-request-leave-end" type="date" value={requestForm.leave_end_date} min={requestForm.leave_start_date || undefined} onChange={(event) => setRequestForm({ ...requestForm, leave_end_date: event.target.value })} required /></label>
+            </div>}
             <label className="self-field" htmlFor="self-request-details"><span>{translate("التفاصيل")}</span><textarea id="self-request-details" value={requestForm.details} onChange={(event) => setRequestForm({ ...requestForm, details: event.target.value })} rows={3} maxLength={5000} required /></label>
             <button className="self-submit" type="submit" disabled={busy === "request"}><Send size={16} />{busy === "request" ? translate("جارٍ الإرسال…") : translate("إرسال الطلب")}</button>
           </form>
@@ -371,6 +425,7 @@ export default function UserDashboard({ user }: { user: DashboardUser }) {
             {!requests.length ? <div className="self-empty">{translate("لم ترسل أي طلبات حتى الآن.")}</div> : requests.map((request) => <article className="self-request" key={request.id}>
               <div className="self-request-top"><span className={`self-status status-${request.status}`}>{translate(requestStatus[request.status] || "قيد المراجعة")}</span><small>{translate(requestNames[request.type])} · {dateTime(request.created_at)}</small></div>
               <h4>{request.title}</h4><p>{request.details}</p>
+              {request.type === "leave" && (request.leave_start_date || request.leave_end_date) && <small className="self-request-leave-range">{leaveRangeLabel(request.leave_start_date, request.leave_end_date)}</small>}
               {request.response && <div className="self-response"><strong>{translate("رد الإدارة")}</strong><p>{request.response}</p></div>}
             </article>)}
           </div>

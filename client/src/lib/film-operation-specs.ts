@@ -36,7 +36,11 @@ export function filmOperationSpecs(product: ProductSnapshot | null, language: st
   const dimensions = [positive(product.width) ? number(product.width) : "", ...faces].filter(Boolean);
   const size = caption.replace(/(?:العرض|الكسرة|Width|Gusset)\s*:?\s*/gi, "").trim()
     || (dimensions.length ? `${dimensions.join(" + ")} cm` : unrecorded);
-  const thickness = positive(product.universal_thickness) ? `${number(product.universal_thickness)} µm` : unrecorded;
+  const rawThickness = product.thickness;
+  const thickness = rawThickness != null && String(rawThickness).trim() !== "" &&
+    Number.isFinite(Number(rawThickness)) && Number(rawThickness) > 0
+    ? number(rawThickness)
+    : unrecorded;
   const batch = product.master_batch ?? null;
   const batchName = !batch ? unrecorded : isTransparentMasterBatch(batch)
     ? language === "en" ? "Transparent" : "شفاف"

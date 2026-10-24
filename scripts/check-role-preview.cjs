@@ -7,21 +7,47 @@ const path = require("node:path");
 const os = require("node:os");
 const { spawn, execFileSync } = require("node:child_process");
 const WebSocket = require("ws");
+const receiptDetailsOnly = process.argv.includes("--receipt-details");
+const mixActionsOnly = process.argv.includes("--mix-actions");
 
 (async () => {
   const root = path.resolve("dist/public");
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "role-preview-browser-"));
-  let language = "ar", originalAdmin = true, selected = null;
+  let language = "ar", originalAdmin = true, selected = null, ordinaryRoleId = 20;
   let failList = false, failMutation = false, deleted = false, roleLists = 0, passed = 0;
   const writes = [], errors = [];
+  const receiptBranding = {
+    companyNameAr: "مصنع اختبار السند", companyNameEn: "Receipt Test Factory",
+    logoSrc: "data:image/svg+xml;base64," + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="#176b55"/></svg>').toString("base64"),
+    address: "Test factory address", phone: "+966000", email: "test@example.invalid", taxNumber: "TAX-TEST",
+  };
+  const receiptOrder = {
+    id: 1, order_id: 1, production_order_number: "JO-TEST-1", order_number: "O-TEST-1",
+    customer_product_id: 11, quantity_kg: "100", final_quantity_kg: "100",
+    status: "in_progress", order_status: "in_production", batch_number: "B1", stage: "cutting",
+    started_at: "2026-10-16T01:00:00Z", film_closed_at: null, completed_at: null,
+    is_printed: false, is_roll_product: false, produced_kg: "50", ready_kg: "50",
+    received_kg: "0", remaining_kg: "50", waste_kg: "0", film_durations: [],
+    product: { id: 11, item_id: "ITM001", customer_name: "Receipt Customer", customer_name_ar: "عميل السند",
+      name: "Receipt Item", name_ar: "صنف السند", width: "30", thickness: "40", universal_thickness: "40",
+      cutting_length_cm: 40, raw_material: "HDPE", printing_cylinder: null, punching: null, notes: null,
+      front_print_colors: [], back_print_colors: [] },
+  };
+  let storedReceipt = null;
   const choices = [
     { id: 10, name: "Administrator", name_ar: "مدير النظام", permissions: ["admin", "manage_orders"] },
     { id: 20, name: "Film operator", name_ar: "مشغل فيلم", permissions: ["operate_film"] },
     { id: 40, name: "No permissions", name_ar: "بلا صلاحيات", permissions: [] },
     { id: 70, name: "دور عربي فقط", name_ar: "دور عربي فقط", permissions: [] },
   ];
+  if (process.argv.includes("--warehouse-only") || process.argv.includes("--warehouse-mobile") || receiptDetailsOnly) choices.push({
+    id: 8, name: "Warehouse Keeper", name_ar: "أمين المستودع",
+    permissions: ["view_home", "view_user_dashboard", "view_production_hall", "receive_production",
+      "view_finished_inventory", "manage_finished_warehouse", "view_raw_inventory", "manage_raw_materials",
+      "view_warehouse", "manage_inventory", "view_inventory", "manage_warehouse"],
+  });
   const currentUser = () => {
-    const role = choices.find(r => r.id === (originalAdmin ? selected || 10 : 20));
+    const role = choices.find(r => r.id === (originalAdmin ? selected || 10 : ordinaryRoleId));
     return { id: 7, username: "fixture", display_name: "Fixture admin", display_name_ar: "مدير الاختبار",
       role_id: role.id, role_name: deleted ? null : role.name, role_name_ar: deleted ? null : role.name_ar,
       permissions: deleted ? [] : role.permissions, preferred_language: language, must_change_password: false,
@@ -31,6 +57,17 @@ const WebSocket = require("ws");
   };
   const app = express();
   app.use(express.json());
+  let receiptPrintHtml;
+  if (receiptDetailsOnly) {
+    const bundle = path.join(temp, "receipt-document.cjs");
+    require("esbuild").buildSync({ entryPoints: ["client/src/lib/receipt-print.ts"], bundle: true, platform: "node", format: "cjs", outfile: bundle, logLevel: "silent" });
+    ({ receiptPrintHtml } = require(bundle));
+    app.get("/fixture-receipt", (req, res) => {
+      const { makeReceiptFixture } = require("./lib/receipt-pagination.cjs");
+      const receipt = makeReceiptFixture(Number(req.query.count), String(req.query.language));
+      res.type("html").send(receiptPrintHtml(receipt, String(req.query.language), receiptBranding));
+    });
+  }
   app.use("/api", (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.path === "/me") return res.json({ user: currentUser() });
@@ -49,6 +86,16 @@ const WebSocket = require("ws");
       deleted = false;
       return res.json({ success: true, user: currentUser() });
     }
+    if (receiptDetailsOnly && req.method === "POST" && req.path === "/production/receipts") {
+      writes.push({ method: req.method, body: req.body });
+      storedReceipt = { id: 101, voucher_number: "FP-Rec0101", created_at: "2026-10-16T08:00:00Z", created_by: 7,
+        receiver_name: "Stored Keeper", receiver_name_ar: "أمين السند المحفوظ", notes: req.body.notes ?? null,
+        items: req.body.items.map((item, index) => ({ ...item, id: index + 1, customer_product_id: 11,
+          item_id: "ITM001", location_id: 1, line_number: index + 1, production_order_number: receiptOrder.production_order_number,
+          customer_name: receiptOrder.product.customer_name, customer_name_ar: receiptOrder.product.customer_name_ar,
+          product_name: receiptOrder.product.name, product_name_ar: receiptOrder.product.name_ar })) };
+      return res.json(storedReceipt);
+    }
     if (req.method !== "GET") {
       errors.push(`Unexpected fixture write ${req.method} ${req.path}`);
       return res.sendStatus(400);
@@ -56,6 +103,26 @@ const WebSocket = require("ws");
     if (req.path === "/self/attendance") return res.json(null);
     if (req.path.startsWith("/self/")) return res.json([]);
     if (req.path === "/dashboard") return res.json({ customers: 1, orders: 1, production_orders: 1, machines: 1, users: 1 });
+    if (req.path === "/production/receipt-branding") return res.json(receiptBranding);
+    if (req.path === "/production/state") return res.json({
+      orders: receiptDetailsOnly ? [receiptOrder] : [], rolls: [], queues: [], machines: [], locations: [], inventory: [], receipts: storedReceipt ? [storedReceipt] : [], movements: [],
+      totals: { orders: 3, receipts: 5, movements: 7, inventory: 4, inventory_kg: "1250" },
+    });
+    if (req.path === "/production/mixing") return res.json({
+      materials: process.argv.includes("--warehouse-mobile") || mixActionsOnly ? [
+        { id: 1, item_id: "RAW-TEST", code: "RAW-TEST", name: "Test raw material", name_ar: "خام اختبار", quantity_kg: "42", is_active: true },
+      ] : [],
+      machines: mixActionsOnly ? [{ id: "MX1", name: "Test machine", name_ar: "ماكينة اختبار", status: "active", screw_type: "single" }] : [],
+      latest_mixes: [], records: mixActionsOnly ? [{
+        id: 1, machine_id: "MX1", machine_name: "Test machine", machine_name_ar: "ماكينة اختبار",
+        screw: "A", created_by: 7, actor_name: "Recorded Operator", actor_name_ar: "مشغل السجل",
+        created_at: "2026-10-16T06:00:00Z", total_kg: "42", notes: null,
+        items: [{ material_id: 1, code: "RAW-TEST", name: "Test raw material", name_ar: "خام اختبار", quantity_kg: "42" }],
+      }] : [], next_before: null, raw_vouchers: [],
+    });
+    if (req.path === "/production/delivery-stock" || req.path === "/production/deliveries" || req.path.startsWith("/production/history/")) {
+      return res.json({ records: [], next: null, total: 0, total_kg: "0" });
+    }
     return res.json([]);
   });
   app.use(express.static(root));
@@ -120,6 +187,213 @@ const WebSocket = require("ws");
       await wait("!!document.querySelector('.shell')");
     };
 
+    if (mixActionsOnly) {
+      originalAdmin = false; ordinaryRoleId = 20;
+      for (const lang of ["ar", "en"]) for (const width of [320, 390, 430, 768, 1440]) {
+        language = lang;
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+        await send("Page.navigate", { url: origin + "/production/mixing" });
+        await wait(`document.documentElement?.lang===${JSON.stringify(lang)}&&document.querySelectorAll('.raw-mix-primary-actions > button').length===3`);
+        const data = await evaluate(`(() => {
+          const buttons=Array.from(document.querySelectorAll('.raw-mix-primary-actions > button'));
+          return {labels:buttons.map(b=>b.textContent.trim()),tops:buttons.map(b=>Math.round(b.getBoundingClientRect().top)),
+            fit:buttons.every(b=>b.scrollWidth<=b.clientWidth+1),heights:buttons.map(b=>b.getBoundingClientRect().height),
+            overflow:document.documentElement.scrollWidth>innerWidth+1};
+        })()`);
+        if (lang === "ar") check(`${width} requested mix labels`, data.labels, ["إضافة مادة", "إضافة ملاحظة", "تسجيل الخلطة"]);
+        check(`${lang} ${width} mixing actions do not overflow`, data.overflow, false);
+        await wait("!!document.querySelector('.raw-ops-record')");
+        check(`${lang} ${width} film operator has no saved composition`, await evaluate("!document.querySelector('.raw-mix-summary-card')"));
+        check(`${lang} ${width} mixing history and details remain`, await evaluate(
+          `document.querySelector('.raw-ops-record').textContent.includes('42')&&document.querySelector('.raw-ops-record').textContent.includes(${JSON.stringify(lang === "ar" ? "خام اختبار" : "Test raw material")})`));
+        if (width < 500) {
+          check(`${lang} ${width} three actions one row`, new Set(data.tops).size, 1);
+          check(`${lang} ${width} readable labels and touch targets`, data.fit && data.heights.every(height=>height>=43));
+        }
+        const rows = await evaluate("document.querySelectorAll('[id^=\"mix-quantity-\"]').length");
+        await click(".raw-mix-primary-actions > button:first-child");
+        check(`${lang} ${width} add material still works`, await evaluate("document.querySelectorAll('[id^=\"mix-quantity-\"]').length"), rows + 1);
+        await click(".raw-mix-primary-actions > button:nth-child(2)");
+        check(`${lang} ${width} note control still works`, await evaluate("!!document.querySelector('#mix-notes')"));
+        if (lang === "ar" && width === 390) {
+          await fs.mkdir(path.resolve("generated-artifacts/mixing-layout"), { recursive: true });
+          await evaluate("document.querySelector('.raw-mix-primary-actions').scrollIntoView({block:'center'})");
+          const capture = await send("Page.captureScreenshot", { format: "png" });
+          await fs.writeFile(path.resolve("generated-artifacts/mixing-layout/operator-ar-390.png"), Buffer.from(capture.data, "base64"));
+        }
+      }
+      originalAdmin = true; selected = 20;
+      await send("Page.navigate", { url: origin + "/production/mixing" });
+      await wait("!!document.querySelector('.raw-ops-record')&&!!document.querySelector('.rs-trigger.is-active')");
+      check("preview of film role also hides composition", await evaluate("!document.querySelector('.raw-mix-summary-card')"));
+      selected = null;
+      await send("Page.navigate", { url: origin + "/production/mixing" });
+      await wait("!!document.querySelector('.raw-mix-summary-card')");
+      check("administrator retains saved composition and history", await evaluate("!!document.querySelector('.raw-ops-record')"));
+      check("mixing controls no runtime errors or unexpected writes", errors, []);
+      console.log(`${passed} mixing action checks passed.`);
+      return;
+    }
+
+    if (receiptDetailsOnly) {
+      originalAdmin = false; ordinaryRoleId = 8;
+      const setNativeValue = (selector, value) => evaluate(`(() => { const el=document.querySelector(${JSON.stringify(selector)});
+        const setter=Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set;
+        setter.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+      for (const lang of ["ar", "en"]) for (const width of [390, 768, 1440]) {
+        language = lang; storedReceipt = null;
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+        await send("Page.navigate", { url: origin + "/warehouse/hall" });
+        await wait(`document.documentElement?.lang===${JSON.stringify(lang)}&&!!document.querySelector('[data-receipt-launcher]')&&!document.querySelector('.prod-loading')`);
+        await click("[data-receipt-launcher]");
+        await wait("!!document.querySelector('[data-receipt-voucher] [data-receipt-factory-header] img')");
+        await setNativeValue("[data-receipt-order='0']", "1");
+        await setNativeValue("[data-receipt-quantity='0']", "5.25");
+        await wait("document.querySelector('[data-receipt-customer]')?.textContent.includes(" + JSON.stringify(lang === "ar" ? "عميل السند" : "Receipt Customer") + ")");
+        check(`${lang} ${width} form displays item`, await evaluate(`document.querySelector('[data-receipt-item]').textContent.includes(${JSON.stringify(lang === "ar" ? "صنف السند" : "Receipt Item")})`));
+        check(`${lang} ${width} factory header includes both names`, await evaluate(
+          "document.querySelector('[data-receipt-factory-header]').textContent.includes('Receipt Test Factory')&&document.querySelector('[data-receipt-factory-header]').textContent.includes('مصنع اختبار السند')"));
+        check(`${lang} ${width} no page overflow`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+        await click("[data-receipt-preview-trigger]");
+        await wait("!!document.querySelector('[data-receipt-preview]')");
+        check(`${lang} ${width} preview displays customer and item`, await evaluate(
+          "!!document.querySelector('[data-receipt-preview-customer]')&&!!document.querySelector('[data-receipt-preview-item]')"));
+        await click("[data-receipt-preview-back]");
+        await click("[data-receipt-submit]");
+        await wait("!!document.querySelector('[data-receipt-receiver]')&&document.querySelector('[data-receipt-receiver]').textContent.includes(" +
+          JSON.stringify(lang === "ar" ? "أمين السند المحفوظ" : "Stored Keeper") + ")");
+        check(`${lang} ${width} saved receiver comes from receipt, not viewer`, await evaluate(
+          "!document.querySelector('[data-receipt-receiver]').textContent.includes('Fixture admin')"));
+      }
+      const directory = path.resolve("generated-artifacts/receipt-documents");
+      await fs.mkdir(directory, { recursive: true });
+      const { makeReceiptFixture, inspectReceiptPdf } = require("./lib/receipt-pagination.cjs");
+      for (const lang of ["ar", "en"]) for (const count of [1, 2, 25, 26, 50, 51, 99, 100]) {
+        await send("Page.navigate", { url: `${origin}/fixture-receipt?language=${lang}&count=${count}` });
+        await wait(`document.documentElement?.lang===${JSON.stringify(lang)}&&document.querySelectorAll('tbody tr').length===${count}`);
+        await evaluate("Promise.all([document.fonts.ready,...Array.from(document.images).map(image=>image.decode())]).then(()=>true)");
+        const pdf = await send("Page.printToPDF", { preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false });
+        const file = path.join(directory, `${lang}-${count}.pdf`);
+        await fs.writeFile(file, Buffer.from(pdf.data, "base64"));
+        inspectReceiptPdf(file, makeReceiptFixture(count, lang), lang, receiptBranding.companyNameAr);
+        check(`${lang} ${count} A4 rows paginate without clipping`, true);
+      }
+      check("receipt identities no runtime errors or unexpected writes", errors, []);
+      console.log(`${passed} receipt identity checks passed.`);
+      return;
+    }
+
+    if (process.argv.includes("--warehouse-mobile")) {
+      const routes = ["/warehouse/hall", "/warehouse/finished-inventory", "/warehouse/raw-materials"];
+      const screenshotDir = path.resolve("generated-artifacts/warehouse-mobile");
+      await fs.mkdir(screenshotDir, { recursive: true });
+      for (const lang of ["ar", "en"]) for (const width of [320, 390, 430, 768, 1440]) {
+        language = lang; originalAdmin = false; ordinaryRoleId = 8; selected = null;
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+        for (const route of routes) {
+          const label = `${lang} ${width} ${route}`;
+          await evaluate("document.documentElement.dataset.previousFixtureDocument='yes'");
+          await send("Page.navigate", { url: origin + route });
+          await wait("!!document.documentElement&&!document.documentElement.dataset.previousFixtureDocument&&!!document.querySelector('.prod-view-nav, .raw-ops-nav')");
+          await wait("!document.querySelector('.prod-loading, .raw-ops-skeleton')");
+          const result = await evaluate(`(() => {
+            const nav=document.querySelector('.prod-view-nav, .raw-ops-nav');
+            const links=Array.from(nav.querySelectorAll('a'));
+            const visible=element=>!!(element.getClientRects().length&&getComputedStyle(element).visibility!=='hidden');
+            const metrics=Array.from(document.querySelectorAll('.warehouse-summary .prod-stat'));
+            return {
+              hrefs:links.map(link=>link.getAttribute('href')),
+              labels:links.map(link=>link.textContent.trim()),
+              top:links.map(link=>Math.round(link.getBoundingClientRect().top)),
+              unclipped:links.every(link=>link.scrollWidth<=link.clientWidth+1),
+              minHeight:Math.min(...links.map(link=>link.getBoundingClientRect().height)),
+              metrics:metrics.length,visibleMetrics:metrics.filter(visible).length,
+              overflow:document.documentElement.scrollWidth>innerWidth+1
+            };
+          })()`);
+          check(`${label} preserves three authorized routes`, result.hrefs, routes);
+          if (lang === "ar") check(`${label} requested labels`, result.labels, ["صالة الإنتاج", "المنتجات التامة", "صالة الخام"]);
+          check(`${label} no page overflow`, result.overflow, false);
+          if (width <= 430) {
+            check(`${label} tabs stay on one row`, new Set(result.top).size, 1);
+            check(`${label} labels are not clipped`, result.unclipped);
+            check(`${label} touch targets remain usable`, result.minHeight >= 43);
+            check(`${label} statistics hidden`, result.visibleMetrics, 0);
+          } else if (route !== "/warehouse/raw-materials") {
+            check(`${label} desktop/tablet summaries retained`, result.metrics > 0 && result.visibleMetrics === result.metrics);
+          }
+          if (route === "/warehouse/raw-materials") {
+            await wait("!!document.querySelector('.raw-stock-card')");
+            check(`${label} raw material balance stays visible`, await evaluate(
+              "Array.from(document.querySelectorAll('.raw-stock-card')).some(card=>card.innerText.includes('42'))"));
+            check(`${label} receipt and issue remain available`, await evaluate(
+              "Array.from(document.querySelectorAll('.raw-movement-launch-actions button')).filter(button=>!button.disabled).length>=2"));
+          }
+          if (width === 390 && lang === "ar") {
+            const capture = await send("Page.captureScreenshot", { format: "png" });
+            await fs.writeFile(path.join(screenshotDir, `${route.split("/").pop()}-ar-390.png`), Buffer.from(capture.data, "base64"));
+          }
+          // Exercise the actual links rather than only comparing their hrefs.
+          await click(`${route === "/warehouse/raw-materials" ? ".raw-ops-nav" : ".prod-view-nav"} a[href="/warehouse/hall"]`);
+          await wait("location.pathname==='/warehouse/hall'&&!!document.querySelector('.prod-view-nav')");
+        }
+      }
+      check("warehouse mobile has no runtime errors or unexpected writes", errors, []);
+      console.log(`${passed} warehouse mobile layout checks passed.`);
+      return;
+    }
+
+    if (process.argv.includes("--warehouse-only")) {
+      for (const lang of ["ar", "en"]) for (const width of [390, 1440]) {
+        language = lang; originalAdmin = false; ordinaryRoleId = 8; selected = null;
+        const label = `${lang} ${width}`;
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+        await open();
+        const expected = ["/my-dashboard", "/warehouse"];
+        check(`${label} exactly two desktop links`, await evaluate(
+          "Array.from(document.querySelectorAll('.sidebar .nav a')).map(a=>a.getAttribute('href'))"), expected);
+        if (width === 390) {
+          await wait("!!document.querySelector('.mobile-navigation-bar a')");
+          check(`${label} exactly two mobile links`, await evaluate(
+            "Array.from(document.querySelectorAll('.mobile-navigation-bar a')).map(a=>a.getAttribute('href'))"), expected);
+        }
+        check(`${label} ordinary keeper has no role switcher`, await evaluate("document.querySelectorAll('.rs-root').length"), 0);
+        for (const blocked of ["/orders", "/customers", "/admin", "/hr", "/planning", "/production/film", "/production/printing", "/production/cutting", "/production/mixing"]) {
+          await send("Page.navigate", { url: origin + blocked });
+          await wait("location.pathname==='/my-dashboard'&&!!document.querySelector('.self-page')");
+          check(`${label} rejects direct ${blocked}`, await evaluate("location.pathname"), "/my-dashboard");
+        }
+        for (const allowed of ["/warehouse/hall", "/warehouse/finished-inventory", "/warehouse/raw-materials"]) {
+          await send("Page.navigate", { url: origin + allowed });
+          await wait("!!document.querySelector('.prod-view-nav, .raw-ops-nav')");
+          check(`${label} warehouse tab ${allowed} opens`, await evaluate("location.pathname"), allowed);
+          check(`${label} warehouse tabs only`, await evaluate(
+            "Array.from(document.querySelectorAll('.prod-view-nav a, .raw-ops-nav a')).every(a=>a.getAttribute('href').startsWith('/warehouse/'))"));
+          check(`${label} fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
+        }
+        // Real preview UI: switch, enforce effective navigation, restore through the same chooser.
+        originalAdmin = true; selected = null;
+        await open();
+        const placement = width <= 700 ? "mobile" : "sidebar";
+        const selector = `.rs-${placement} .rs-trigger`;
+        await wait(`!!document.querySelector(${JSON.stringify(selector)})`);
+        await click(selector);
+        await wait("!!document.querySelector('[data-role-preview-role=\"8\"]')");
+        await click('[data-role-preview-role="8"]');
+        await wait(`!!document.querySelector(${JSON.stringify(selector + ".is-active")})`);
+        check(`${label} preview uses keeper navigation`, await evaluate(
+          "Array.from(document.querySelectorAll('.sidebar .nav a')).map(a=>a.getAttribute('href'))"), expected);
+        await click(selector);
+        await wait("!!document.querySelector('[data-role-preview-action=\"restore\"]:not(:disabled)')");
+        await click('[data-role-preview-action="restore"]');
+        await wait("!!document.querySelector('.sidebar .nav a[href=\"/admin\"]')");
+        check(`${label} original admin restored`, selected, null);
+      }
+      check("no runtime exceptions or unexpected writes", errors, []);
+      console.log(`${passed} warehouse access browser checks passed.`);
+      return;
+    }
+
     for (const lang of ["ar", "en"]) for (const width of [320, 390, 768, 1440]) {
       language = lang; originalAdmin = true; selected = null; deleted = false; roleLists = 0;
       const placement = width <= 700 ? "mobile" : "sidebar";
@@ -143,13 +417,16 @@ const WebSocket = require("ws");
       check(`${label} closing restores trigger focus`, await evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`));
       await click(selector); await wait("!!document.querySelector('[data-role-preview-role=\"20\"]')");
       await click('[data-role-preview-role="20"]');
-      await wait(`!!document.querySelector('.rs-${placement} .rs-return')`);
+      await wait(`!!document.querySelector('.rs-${placement} .rs-trigger.is-active')`);
+      check(`${label} separate return button is removed`, await evaluate("!document.querySelector('.rs-return')"));
       check(`${label} switch uses role id only`, writes.at(-1), { method: "POST", body: { role_id: 20 } });
       check(`${label} role persists through document reload`, selected, 20);
       check(`${label} admin navigation is removed`, await evaluate("!document.querySelector('.sidebar .nav a[href=\"/admin\"]')"));
-      check(`${label} tested role and return remain visible`, await evaluate(`document.querySelector('.rs-${placement}').innerText.includes(${JSON.stringify(lang === "ar" ? "مشغل فيلم" : "Film operator")})`));
+      check(`${label} tested role remains visible in the change-role control`, await evaluate(`document.querySelector('.rs-${placement}').innerText.includes(${JSON.stringify(lang === "ar" ? "مشغل فيلم" : "Film operator")})`));
       check(`${label} active control fits viewport`, await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));
-      await click(`.rs-${placement} .rs-return`);
+      await click(selector);
+      await wait("!!document.querySelector('[data-role-preview-action=\"restore\"]:not(:disabled)')");
+      await click('[data-role-preview-action="restore"]');
       await wait(`!!document.querySelector(${JSON.stringify(selector)})&&!document.querySelector('.rs-return')&&!!document.querySelector('.sidebar .nav a[href="/admin"]')`);
       check(`${label} restore clears preview`, writes.at(-1).method, "DELETE");
       check(`${label} restore returns original permissions`, selected, null);
@@ -159,15 +436,19 @@ const WebSocket = require("ws");
     }
 
     language = "en"; originalAdmin = true; selected = 40; deleted = false;
-    await open(); await wait("!!document.querySelector('.rs-sidebar .rs-return')");
-    check("no-permission preview still offers a return", await evaluate("!!document.querySelector('.rs-sidebar .rs-return')"));
-    deleted = true; await open(); await wait("!!document.querySelector('.rs-sidebar .rs-return')");
+    await open(); await wait("!!document.querySelector('.rs-sidebar .rs-trigger.is-active')");
+    check("no-permission preview still offers role selection without a separate return button", await evaluate("!!document.querySelector('.rs-sidebar .rs-trigger')&&!document.querySelector('.rs-return')"));
+    deleted = true; await open(); await wait("!!document.querySelector('.rs-sidebar .rs-trigger.is-active')");
     check("deleted role fails visibly instead of claiming original permissions", await evaluate("document.querySelector('.rs-sidebar').innerText.includes('Role unavailable')"));
     failMutation = true;
-    await click(".rs-sidebar .rs-return"); await wait("!!document.querySelector('.rs-sidebar [role=\"alert\"]')");
-    check("failed direct return is visible without opening dialog", await evaluate("document.querySelector('.rs-sidebar [role=\"alert\"]').innerText"), "Role switch unavailable");
+    await click(".rs-sidebar .rs-trigger");
+    await wait("!!document.querySelector('[data-role-preview-action=\"restore\"]:not(:disabled)')");
+    await click('[data-role-preview-action="restore"]');
+    await wait("!!document.querySelector('.rs-dialog [role=\"alert\"]')");
+    check("failed return is reported inside the role chooser", await evaluate("document.querySelector('.rs-dialog [role=\"alert\"]').innerText"), "Role switch unavailable");
     failMutation = false;
-    await click(".rs-sidebar .rs-return"); await wait("!document.querySelector('.rs-return')&&!!document.querySelector('.rs-sidebar')");
+    await click('[data-role-preview-action="restore"]');
+    await wait("!document.querySelector('.rs-dialog')&&!!document.querySelector('.rs-sidebar .rs-trigger:not(.is-active)')");
     failList = true;
     await click(".rs-sidebar .rs-trigger"); await wait("!!document.querySelector('.rs-dialog [role=\"alert\"]')");
     check("role-list failure is explicit and retryable", await evaluate("!!document.querySelector('.rs-retry')"));

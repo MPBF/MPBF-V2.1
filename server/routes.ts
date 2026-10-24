@@ -1,10 +1,12 @@
+import { productionRoleBindingSchema } from "../shared/production-role";
+import { ensureProductionRoleBinding, resolveProductionRoleBinding, saveProductionRoleBinding, productionRoleSettingPrefix } from "./production-role";
 import { Router, type Request, type Response } from "express";
 import { releaseOrderToProduction } from "./order-production-release";
 import { deleteOrderProduction, lockOrderProductionDeletion } from "./order-production-delete";
 import { deleteOrdersAtomically } from "./order-bulk-delete";
 import { ORDER_PRODUCTION_RELEASE_STATUSES } from "../shared/order-production-release";
-import { ORDER_DISPLAY_FOLDERS, ORDER_WORKSPACE_ACTIONS, ORDER_WORKSPACE_STATUSES } from "../shared/order-workspace";
-import { applyOrderActions, moveOrderFolders, orderFolderCounts } from "./order-workspace";
+import { ORDER_ACTIVE_STATUSES, ORDER_DISPLAY_FILTERS, ORDER_DISPLAY_FOLDERS, ORDER_FILTER_STATUSES, ORDER_STATUS_FILTERS, ORDER_WORKSPACE_ACTIONS, ORDER_WORKSPACE_STATUSES } from "../shared/order-workspace";
+import { applyOrderActions, moveOrderFolders, orderFolderCounts, orderStatusCounts } from "./order-workspace";
 import { order_display_folder_assignments } from "../shared/schema";
 import { and, asc, count, desc, eq, getTableColumns, ilike, inArray, isNull, or, aliasedTable, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
@@ -39,7 +41,7 @@ import {
   system_settings,
   users,
 } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { nextCategoryId } from "./category-id";
 import { nextItemId } from "./item-id";
 import { nextSectionId } from "./section-id";
@@ -50,15 +52,20 @@ import { customerFormSchema, nextCustomerId, salesRepresentativeRoleCondition, v
 import { allocateOrderNumber, previewOrderNumber, productionOrderNumber, productionOrderSequence } from "./order-number";
 import { deliveryDateFromDays, orderDateInRiyadh } from "./order-delivery";
 import { getOrderDetails } from "./order-details";
+import { customerOrderHistory } from "./customer-order-history";
+import { orderWorkflow } from "./order-workflow";
+import { canViewOrderWorkflow } from "../shared/order-workflow";
 import { createPublicOrderPrintRouter, publicOrderPrintPath } from "./public-order-print";
 import { customerProductFacingNotice, deriveCustomerProductFields, PRINTING_CYLINDERS } from "@shared/customer-product-fields";
-import { authenticate, hashPassword, requireAnyPermission, requireAuth, requirePermission, resolveUser } from "./auth";
+import { authenticate, hashPassword, requireAnyPermission, requireAuth, requirePermission } from "./auth";
 import rolePreviewRouter from "./role-preview";
 import { canGrantPermissions, isProtectedProductionOrder, plannedFinalQuantity } from "./audit-rules";
 import { categoryProductionPlan } from "./category-production-plan";
 import hr from "./hr";
 import selfService from "./self-service";
 import factoryProduction from "./production/routes";
+import dataTransfer from "./data-transfer/routes";
+import databaseBackups from "./database-backups/routes";
 
 const router = Router();
 router.use(createPublicOrderPrintRouter(getOrderDetails));
@@ -142,6 +149,7 @@ const roleAdminSchema = insertRoleSchema.strict().extend({
   name: requiredAdminText(50),
   name_ar: optionalAdminText(100),
   permissions: adminPermissions,
+  production_role_binding: productionRoleBindingSchema.optional(),
 });
 const userAdminSchema = insertUserSchema.omit({ preferred_language: true }).strict().extend({
   username: z.string().trim().min(1).max(50).optional(),
@@ -632,6 +640,8 @@ router.use("/me/role-preview", rolePreviewRouter);
 router.use("/self", selfService);
 router.use("/hr", hr);
 router.use("/production", factoryProduction);
+router.use("/data-transfer", dataTransfer);
+router.use("/database-backups", databaseBackups);
 router.get("/public-branding", async (_req, res, next) => {
   try {
     const profile = (await db.select().from(company_profile).limit(1))[0] ?? null;
@@ -905,13 +915,16 @@ router.delete("/users/:id", admin, async (req, res, next) => {
 router.get("/roles", rolesRead, async (req, res, next) => {
   try {
     const { search } = page(req);
-    res.json(await db.select().from(roles)
+    const found = await db.select().from(roles)
       .where(search ? or(
         ilike(roles.name, `%${search}%`),
         ilike(roles.name_ar, `%${search}%`),
         sql`${roles.id}::text ILIKE ${`%${search}%`}`,
       ) : undefined)
-      .orderBy(roles.id));
+      .orderBy(roles.id);
+    res.json(await Promise.all(found.map(async role => ({
+      ...role, production_role_binding: await resolveProductionRoleBinding(role.id),
+    }))));
   } catch (e) { next(e); }
 });
 router.get("/sections", sectionsRead, async (req, res, next) => {
@@ -930,7 +943,12 @@ router.post("/roles", rolesWrite, async (req, res, next) => {
   try {
     const body = parsed(roleAdminSchema, stripCreateId({ ...(req.body ?? {}) }));
     assertGrantWithinActor(req.user?.permissions ?? [], body.permissions);
-    const row = await db.insert(roles).values(body).returning();
+    const { production_role_binding = { mode: "general", stages: [] }, ...fields } = body;
+    const row = await db.transaction(async tx => {
+      const inserted = await tx.insert(roles).values(fields).returning();
+      await saveProductionRoleBinding(tx, inserted[0].id, production_role_binding);
+      return inserted.map(role => ({ ...role, production_role_binding }));
+    });
     res.status(201).json(row[0]);
   } catch (e) { next(e); }
 });
@@ -959,14 +977,20 @@ router.put("/roles/:id", rolesWrite, async (req, res, next) => {
     assertPutIdIsImmutable(input, id);
     const body = parsed(roleAdminSchema.partial(), input);
     const row = await db.transaction(async (tx) => {
-      const [current] = await tx.select({ permissions: roles.permissions }).from(roles)
+      const [current] = await tx.select().from(roles)
         .where(eq(roles.id, id)).for("update").limit(1);
       if (!current) return [];
       assertGrantWithinActor(req.user?.permissions ?? [], current.permissions);
       if (Object.prototype.hasOwnProperty.call(body, "permissions")) {
         assertGrantWithinActor(req.user?.permissions ?? [], body.permissions);
       }
-      return tx.update(roles).set(body).where(eq(roles.id, id)).returning();
+      const { production_role_binding, ...fields } = body;
+      const previousBinding = await ensureProductionRoleBinding(tx, current);
+      if (production_role_binding) await saveProductionRoleBinding(tx, id, production_role_binding);
+      const updated = Object.keys(fields).length
+        ? await tx.update(roles).set(fields).where(eq(roles.id, id)).returning()
+        : [current];
+      return updated.map(role => ({ ...role, production_role_binding: production_role_binding ?? previousBinding }));
     });
     if (!row[0]) return res.status(404).json({ message: "الدور غير موجود" });
     res.json(row[0]);
@@ -1091,6 +1115,12 @@ const workspaceFailure = (error: unknown, res: Response, next: (error?: unknown)
 router.get("/orders/display-folders", ordersRead, async (_req, res, next) => {
   try { res.json(await orderFolderCounts()); } catch (error) { workspaceFailure(error, res, next); }
 });
+router.get("/orders/status-counts", ordersRead, async (req, res, next) => {
+  try {
+    const folder = z.enum(ORDER_DISPLAY_FOLDERS).optional().parse(req.query.display_folder);
+    res.json(await orderStatusCounts(folder));
+  } catch (error) { workspaceFailure(error, res, next); }
+});
 router.post("/orders/actions", ordersWrite, async (req, res, next) => {
   try {
     const input = z.object({ action: z.enum(ORDER_WORKSPACE_ACTIONS), items: workspaceItems }).strict().parse(req.body);
@@ -1130,6 +1160,29 @@ router.get("/orders/:id/print-link", ordersRead, async (req, res, next) => {
     const [order] = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, id)).limit(1);
     if (!order) return res.status(404).json({ message: "الطلب غير موجود" });
     res.json({ path: publicOrderPrintPath(id) });
+  } catch (error) { next(error); }
+});
+
+router.get("/orders/:id/workflow", requireAuth, (req, res, next) => {
+  if (!canViewOrderWorkflow(req.user as { permissions?: string[] } | undefined)) {
+    return res.status(403).json({
+      message: "سير العمل متاح لمدير النظام وإدارة الإنتاج فقط",
+      message_en: "Order workflow is available to administrators and production managers only.",
+    });
+  }
+  next();
+}, async (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const id = z.coerce.number().int().positive().max(2147483647).parse(req.params.id);
+    const filters = z.object({
+      limit: z.coerce.number().int().min(1).max(100).default(30),
+      offset: z.coerce.number().int().min(0).max(2147483547).default(0),
+      production_order_id: z.coerce.number().int().positive().max(2147483647).optional(),
+      stage: z.enum(["film", "printing", "done"]).optional(),
+      search: z.string().trim().max(100).optional(),
+    }).parse(req.query);
+    res.json(await orderWorkflow(pool, id, filters));
   } catch (error) { next(error); }
 });
 
@@ -1391,7 +1444,8 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
           .where(search ? or(...conditions) : undefined)
           .orderBy(desc(customer_products.id)).limit(limit).offset(offset);
       } else if (path === "orders") {
-        const folder = z.enum(ORDER_DISPLAY_FOLDERS).optional().parse(req.query.display_folder);
+        const folder = z.enum(ORDER_DISPLAY_FILTERS).optional().parse(req.query.display_folder);
+        const statusFilter = z.enum(ORDER_STATUS_FILTERS).optional().parse(req.query.status_filter);
         const conditions = [...entitySearch[path], customers.name, customers.name_ar].map((column) => ilike(column, term));
         rows = await db.select({
           ...getTableColumns(orders),
@@ -1402,7 +1456,9 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
           .leftJoin(customers, eq(orders.customer_id, customers.id))
           .leftJoin(order_display_folder_assignments, eq(order_display_folder_assignments.order_id, orders.id))
           .where(and(search ? or(...conditions) : undefined,
-            folder === "new" ? or(isNull(order_display_folder_assignments.order_id), eq(order_display_folder_assignments.folder, "new"))
+            statusFilter && statusFilter !== "all" ? inArray(orders.status, [...ORDER_FILTER_STATUSES[statusFilter]]) : undefined,
+            folder === "active" ? inArray(orders.status, [...ORDER_ACTIVE_STATUSES])
+              : folder === "new" ? or(isNull(order_display_folder_assignments.order_id), eq(order_display_folder_assignments.folder, "new"))
               : folder ? eq(order_display_folder_assignments.folder, folder) : undefined))
           .orderBy(desc(orders.id)).limit(limit).offset(offset);
         if (rows.length) {
@@ -1664,7 +1720,12 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
         });
         return res.status(201).json(row[0]);
       }
-      if (path === "system-settings") input.updated_by = req.user!.id;
+      if (path === "system-settings") {
+        if (String(input.setting_key ?? "").startsWith(productionRoleSettingPrefix)) {
+          return res.status(403).json({ message: "يجب تعديل ربط الإنتاج من إعدادات الأدوار" });
+        }
+        input.updated_by = req.user!.id;
+      }
       const body = parsed(schemas[path].strict(), input);
       const row: any[] = (await db.insert(table).values(body).returning()) as any;
       res.status(201).json(row[0]);
@@ -1699,12 +1760,12 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
           return res.status(400).json({ message: "قيمة الإعداد غير صالحة" });
         }
         const current = await db
-          .select({ is_editable: system_settings.is_editable })
+          .select({ is_editable: system_settings.is_editable, setting_key: system_settings.setting_key })
           .from(system_settings)
           .where(eq(system_settings.id, key as number))
           .limit(1);
         if (!current[0]) return res.status(404).json({ message: "الإعداد غير موجود" });
-        if (current[0].is_editable === false) {
+        if (current[0].is_editable === false || current[0].setting_key.startsWith(productionRoleSettingPrefix)) {
           return res.status(403).json({ message: "هذا الإعداد غير قابل للتعديل" });
         }
         const updated = await db
@@ -1949,6 +2010,12 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
         if (path === "categories") await tx.execute(sql`SELECT pg_advisory_xact_lock(${29832}, ${2})`);
         if (path === "machines") await tx.execute(sql`SELECT pg_advisory_xact_lock(${29832}, ${5})`);
         if (path === "orders") await lockOrderProductionDeletion(tx);
+        if (path === "system-settings") {
+          const [setting] = await tx.select().from(system_settings).where(eq(system_settings.id, key as number)).for("update").limit(1);
+          if (setting?.setting_key.startsWith(productionRoleSettingPrefix)) {
+            throw orderError("يجب تعديل ربط الإنتاج من إعدادات الأدوار", 403);
+          }
+        }
         if (path === "customer-products") {
           const [current] = await tx.select({ id: customer_products.id }).from(customer_products)
             .where(eq(customer_products.id, key as number)).for("update").limit(1);
@@ -2025,6 +2092,17 @@ for (const [path, table] of Object.entries(entities) as [Entity, any][]) {
     } catch (error) { next(error); }
   });
 }
+
+router.get("/customers/:id/order-history", businessRead, async (req, res, next) => {
+  try {
+    const customerId = z.string().min(1).max(20).parse(req.params.id);
+    const { limit, offset } = z.object({
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+      offset: z.coerce.number().int().min(0).max(2147483547).default(0),
+    }).parse(req.query);
+    res.json(await customerOrderHistory(pool, customerId, limit, offset));
+  } catch (error) { next(error); }
+});
 
 router.get("/customers/:id/detail", businessRead, async (req, res, next) => {
   try {

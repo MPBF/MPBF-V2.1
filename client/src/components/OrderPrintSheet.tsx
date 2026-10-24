@@ -8,11 +8,32 @@ import { printDimensionText, printNumberText } from "../lib/order-print-format";
 import type { OrderPrintDetails, OrderPrintProduction } from "../../../shared/order-details";
 
 const bilingual = (ar: string, en: string) => <span className="opp-bilingual">{i18n.language === "en" ? en : ar}</span>;
+const columnHeader = (ar: string, en: string) => <span className="opp-column-label">
+  <span lang="ar" dir="rtl">{ar}</span>
+  <span lang="en" dir="ltr">{en}</span>
+</span>;
 const safeText = (value: unknown) => displayValue(value);
 const roundedWithUnit = (value: unknown, unit: string) => {
   const text = printNumberText(value);
   return text === "—" ? text : `${text} ${unit}`;
 };
+
+function PrintedStatus({ printed }: { printed: boolean }) {
+  const label = i18n.language === "en"
+    ? printed ? "Printed" : "Not printed"
+    : printed ? "مطبوعة" : "غير مطبوعة";
+  return <svg
+    className={`opp-printed-status ${printed ? "is-printed" : "is-not-printed"}`}
+    viewBox="0 0 24 24"
+    role="img"
+    aria-label={label}
+  >
+    <title>{label}</title>
+    {printed
+      ? <path d="M5 12.5 9.5 17 19 7.5" />
+      : <path d="m7 7 10 10M17 7 7 17" />}
+  </svg>;
+}
 
 function PunchingIcon({ type }: { type: string }) {
   const normalized = type.toLocaleLowerCase();
@@ -61,9 +82,9 @@ function SpecificationRow({ row, index }: { row: OrderPrintProduction; index: nu
       <strong lang="ar" dir="rtl">{safeText(product?.item?.name_ar)}</strong>
       <small lang="en" dir="ltr">{safeText(validEnglishItemName)}</small>
     </td>
-    <td dir="ltr">{product ? sizeText(product) : "—"}</td>
+    <td className="opp-size-cell" dir="ltr">{product ? sizeText(product) : "—"}</td>
     <td dir="ltr">{roundedWithUnit(product?.cutting_length_cm, "cm")}</td>
-    <td dir="ltr">{roundedWithUnit(product?.universal_thickness, "MIC")}</td>
+    <td dir="ltr">{roundedWithUnit(product?.thickness, "µm")}</td>
     <td>{safeText(product?.raw_material)}</td>
     <td>
       <div className="opp-color-cell">
@@ -73,7 +94,7 @@ function SpecificationRow({ row, index }: { row: OrderPrintProduction; index: nu
         {!!printColors.length && <small className="opp-print-colors">{translate("ألوان الطباعة:")}{" "}{printColors.join("، ")}</small>}
       </div>
     </td>
-    <td>{product?.is_printed == null ? "—" : product.is_printed ? translate("نعم / Yes") : translate("لا / No")}</td>
+    <td>{product?.is_printed == null ? "—" : <PrintedStatus printed={product.is_printed} />}</td>
     <td dir="ltr">{cylinder === "—" ? cylinder : `${cylinder}″`}</td>
     <td>{product?.punching ? <PunchingIcon type={product.punching} /> : "—"}</td>
     <td>{productionQuantity(row)}</td>
@@ -127,13 +148,13 @@ export default function OrderPrintSheet({ data, branding }: { data: OrderPrintDe
     {data.actual_production.available === false && <div className="opp-production-disclaimer">{data.actual_production.message}{" "}{translate("الكميات أدناه مخططة وليست سجلاً للإنتاج المنفذ.")}</div>}
 
     <table className="opp-spec-table" aria-label={translate("مواصفات أوامر الإنتاج")}>
-      <colgroup><col style={{ width: "2.5%" }} /><col style={{ width: "13.5%" }} /><col style={{ width: "8%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "7%" }} /><col style={{ width: "9%" }} /><col style={{ width: "5%" }} /><col style={{ width: "6%" }} /><col style={{ width: "6%" }} /><col style={{ width: "12%" }} /><col style={{ width: "20%" }} /></colgroup>
+      <colgroup><col style={{ width: "2.5%" }} /><col style={{ width: "13.5%" }} /><col style={{ width: "14.8%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "5.5%" }} /><col style={{ width: "7%" }} /><col style={{ width: "9%" }} /><col style={{ width: "5%" }} /><col style={{ width: "6%" }} /><col style={{ width: "6%" }} /><col style={{ width: "6%" }} /><col style={{ width: "19.2%" }} /></colgroup>
       <thead><tr>
-        <th>{bilingual("#", "#")}</th><th>{bilingual("الصنف", "Item")}</th><th>{bilingual("المقاس / الواجهات", "Size / Facings")}</th>
-        <th>{bilingual("طول القص", "Cut length")}</th><th>{bilingual("السماكة العامة", "Thickness · MIC")}</th>
-        <th>{bilingual("المادة", "Material")}</th><th>{bilingual("اللون", "Color")}</th><th>{bilingual("الطباعة", "Printed")}</th>
-        <th>{bilingual("السلندر", "Cylinder")}</th><th>{bilingual("التخريم", "Punching")}</th>
-        <th>{bilingual("الكمية", "Quantity")}</th><th>{bilingual("ملاحظات", "Notes")}</th>
+        <th>#</th><th>{columnHeader("الصنف", "Item")}</th><th>{columnHeader("المقاس", "Size")}</th>
+        <th>{columnHeader("الطول", "Length")}</th><th>{columnHeader("السماكة", "Thickness")}</th>
+        <th>{columnHeader("المادة", "Material")}</th><th>{columnHeader("اللون", "Color")}</th><th>{columnHeader("الطباعة", "Printing")}</th>
+        <th>{columnHeader("السلندر", "Cylinder")}</th><th>{columnHeader("التخريم", "Punching")}</th>
+        <th>{columnHeader("الكمية", "Qty")}</th><th>{columnHeader("ملاحظات", "Note")}</th>
       </tr></thead>
       <tbody>{productionOrders.map((row, index) => <SpecificationRow key={`${row.id}-${index}`} row={row} index={index} />)}
         {productionOrders.length === 0 && <tr><td className="opp-no-rows" colSpan={12}>{translate("لا توجد أوامر إنتاج مرتبطة بهذا الطلب.")}</td></tr>}

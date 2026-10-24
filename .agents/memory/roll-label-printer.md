@@ -37,3 +37,23 @@ roll-label permissions.
 **How to apply:** use bounded, searchable pages for label discovery, preserve
 selection across pages, and re-fetch selected records before preview. Do not
 restore unbounded archive downloads or broaden unrelated history access.
+
+The roll label's product identity is the Arabic customer name, then the English
+customer name beneath it, then the item name and size description. Do not
+restore the production-order row in place of this block.
+
+**Why:** the user explicitly requested this identity layout for roll-label
+preview, replacing the production-order line.
+
+**How to apply:** keep preview and printed labels consistent while preserving
+the roll identifier, weight, QR, and approved 4 × 6 inch page.
+
+Center both customer-name lines and the item–size line. Immediately below
+weight, show the recorded account usernames for film, printing, and cutting,
+one line per stage. An unrecorded stage shows a dash, not the current viewer.
+
+**Why:** the user explicitly requested centered customer/product identity and
+the three stage-user lines below weight.
+
+**How to apply:** preserve the original recorded actors and shared preview/print
+layout; adding actor rows must not clip the footer or make the QR unreadable.

@@ -1,15 +1,17 @@
 import { useState, type ReactNode } from "react";
-import { Check, ChevronDown, MoreHorizontal, MoveRight } from "lucide-react";
-import { canApplyOrderAction, type OrderDisplayFolder, type OrderWorkspaceAction } from "../../../shared/order-workspace";
-import { ORDER_FOLDER_KEYS, ORDER_FOLDER_LABELS } from "../lib/order-workspace";
+import { Check, ChevronDown, MoveRight } from "lucide-react";
+import { canApplyOrderAction, type OrderDisplayFolder, type OrderStatusFilter, type OrderWorkspaceAction } from "../../../shared/order-workspace";
+import { ORDER_FOLDER_KEYS, ORDER_FOLDER_LABELS, ORDER_FILTER_KEYS, ORDER_FILTER_LABELS } from "../lib/order-workspace";
 import { translate } from "../i18n";
 import "./OrderWorkspaceControls.css";
+import "./OrderTable.css";
 
 export type WorkspaceOrder = { id: number; status: string; display_folder?: OrderDisplayFolder };
 type Props = {
   rows: WorkspaceOrder[];
   folder: OrderDisplayFolder | "all";
-  counts: Record<OrderDisplayFolder, number>;
+  filter: OrderStatusFilter;
+  counts: Record<OrderStatusFilter, number>;
   selected: number[];
   canManage: boolean;
   canDelete?: boolean;
@@ -17,6 +19,7 @@ type Props = {
   error?: string;
   searchControl?: ReactNode;
   onFolderChange: (folder: OrderDisplayFolder | "all") => void;
+  onFilterChange: (filter: OrderStatusFilter) => void;
   onSelectPage: (checked: boolean) => void;
   onClear: () => void;
   onAction: (action: OrderWorkspaceAction, items: { id: number; expected_status: string }[]) => Promise<void>;
@@ -48,7 +51,7 @@ export function OrderRowActionMenu({ row, enabled, onAction }: { row: WorkspaceO
     setOpen(false);
   };
   return <details className="order-row-menu" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary className="btn btn-plain" aria-label={translate("إجراء على الطلب")} title={translate("إجراء على الطلب")}><MoreHorizontal size={17} /><ChevronDown size={13} /></summary>
+    <summary className="btn btn-plain" aria-label={translate("تغيير حالة الطلب")} title={translate("تغيير حالة الطلب")}><span>{translate("تغيير حالة الطلب")}</span><ChevronDown size={13} /></summary>
     <div className="order-row-menu__items" role="group" aria-label={translate("إجراء على الطلب")}>
       <button type="button" disabled={!enabled || !canApplyOrderAction(row.status, "release")} onClick={() => void perform("release")}>{translate("إطلاق للإنتاج")}</button>
       <button type="button" disabled={!enabled || !canApplyOrderAction(row.status, "pause")} onClick={() => void perform("pause")}>{translate("إيقاف مؤقت")}</button>
@@ -80,13 +83,17 @@ export default function OrderWorkspaceControls(props: Props) {
   };
   return <div className="order-workspace">
     <div className="order-workspace__filters">
-      <nav className="order-workspace__folders" aria-label={translate("مجلدات العرض المشتركة")}>
-      <button type="button" className="order-workspace__folder" aria-current={props.folder === "all" ? "page" : undefined} onClick={() => props.onFolderChange("all")}>{translate("الكل")}<span className="order-workspace__count">{props.counts.new + props.counts.production + props.counts.urgent + props.counts.archive}</span></button>
-      {ORDER_FOLDER_KEYS.map((key) => <button type="button" key={key} className="order-workspace__folder" aria-current={props.folder === key ? "page" : undefined} onClick={() => props.onFolderChange(key)}>{translate(ORDER_FOLDER_LABELS[key])}<span className="order-workspace__count">{props.counts[key]}</span></button>)}
+      <nav className="order-workspace__folders" aria-label={translate("حالة الطلب")}>
+      {ORDER_FILTER_KEYS.map((key) => <button type="button" key={key} className="order-workspace__folder" aria-current={props.filter === key ? "page" : undefined} onClick={() => props.onFilterChange(key)}>{translate(ORDER_FILTER_LABELS[key])}<span className="order-workspace__count">{props.counts[key]}</span></button>)}
       </nav>
+      <label className="order-workspace__folder-filter">{translate("مجلدات العرض المشتركة")}
+        <select value={props.folder} onChange={event => props.onFolderChange(event.target.value as OrderDisplayFolder | "all")}>
+          <option value="all">{translate("الكل")}</option>
+          {ORDER_FOLDER_KEYS.map(key => <option key={key} value={key}>{translate(ORDER_FOLDER_LABELS[key])}</option>)}
+        </select>
+      </label>
       {props.searchControl}
     </div>
-    <p className="order-workspace__note">{translate("الطلبات غير المعيّنة تظهر في مجلد جديد افتراضياً. المجلدات لا تغيّر حالة الطلب.")}</p>
     {props.canManage && props.selected.length > 0 && <div className="order-workspace__toolbar">
       <label className="order-workspace__selection"><input type="checkbox" checked={pageSelected} onChange={(event) => props.onSelectPage(event.target.checked)} aria-label={translate("حدد الصفحة الحالية")} />{translate("حدد الصفحة الحالية")}<span className="order-workspace__selection-count">{props.selected.length}</span><span>{translate("طلبات محددة")}</span></label>
       {props.selected.length > 0 && <button className="btn btn-muted" type="button" onClick={props.onClear}>{translate("إلغاء التحديد")}</button>}

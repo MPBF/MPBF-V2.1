@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
-import { pgTable, serial, integer, varchar, text, boolean, timestamp, decimal, jsonb, unique, index, check, foreignKey, uuid } from "drizzle-orm/pg-core";
-import { customer_products, production_orders, items, machines, users } from "./schema";
-import type { ProductSnapshot, PackagingInput } from "./production";
+import { pgTable, serial, integer, varchar, text, boolean, timestamp, decimal, jsonb, unique, uniqueIndex, index, check, foreignKey, uuid } from "drizzle-orm/pg-core";
+import { customer_products, production_orders, items, machines, users, customers } from "./schema";
+import type { ProductSnapshot } from "./production";
 
 export const factory_execution = pgTable("factory_execution", {
   production_order_id: integer("production_order_id").primaryKey().references(() => production_orders.id, { onDelete: "restrict" }),
@@ -75,12 +75,14 @@ export const factory_receipt_items = pgTable("factory_receipt_items", {
   production_order_id: integer("production_order_id").notNull(), customer_product_id: integer("customer_product_id").notNull(),
   item_id: varchar("item_id", { length: 20 }).notNull(),
   location_id: integer("location_id").notNull().references(() => factory_locations.id, { onDelete: "restrict" }),
-  quantity_kg: decimal("quantity_kg", { precision: 14, scale: 2 }).notNull(), packaging: jsonb("packaging").$type<PackagingInput>(),
+  quantity_kg: decimal("quantity_kg", { precision: 14, scale: 2 }).notNull(),
+  line_number: integer("line_number"),
 }, t => [
   foreignKey({ columns: [t.production_order_id, t.customer_product_id, t.item_id], foreignColumns: [factory_execution.production_order_id, factory_execution.customer_product_id, factory_execution.item_id] }).onDelete("restrict"),
-  unique().on(t.receipt_id, t.production_order_id, t.location_id), unique().on(t.id, t.receipt_id),
+  uniqueIndex("factory_receipt_items_line_unique").on(t.receipt_id, t.line_number), unique().on(t.id, t.receipt_id),
   index("factory_receipt_items_order").on(t.production_order_id),
   check("factory_receipt_items_quantity_kg_check", sql`${t.quantity_kg} > 0`),
+  check("factory_receipt_items_line_check", sql`${t.line_number} IS NULL OR ${t.line_number}>0`),
 ]);
 export const factory_inventory = pgTable("factory_inventory", {
   id: serial("id").primaryKey(), production_order_id: integer("production_order_id").notNull(),
@@ -107,3 +109,25 @@ export const factory_operations = pgTable("factory_operations", {
   fingerprint: text("fingerprint").notNull(), result: jsonb("result").notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).default(sql`clock_timestamp()`).notNull(),
 }, t => [unique().on(t.actor_id, t.request_id)]);
+export const factory_deliveries = pgTable("factory_deliveries", {
+  id: serial("id").primaryKey(), voucher_number: varchar("voucher_number",{length:50}).notNull().unique(),
+  customer_id: varchar("customer_id",{length:20}).notNull().references(()=>customers.id,{onDelete:"restrict"}),
+  customer_name: text("customer_name").notNull(), customer_name_ar: text("customer_name_ar"),
+  created_at: timestamp("created_at",{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+  created_by: integer("created_by").references(()=>users.id,{onDelete:"set null"}), notes: text("notes"),
+}, t=>[index("factory_deliveries_customer").on(t.customer_id,t.id)]);
+export const factory_delivery_items = pgTable("factory_delivery_items", {
+  id: serial("id").primaryKey(), delivery_id: integer("delivery_id").notNull().references(()=>factory_deliveries.id,{onDelete:"restrict"}),
+  inventory_id: integer("inventory_id").notNull().references(()=>factory_inventory.id,{onDelete:"restrict"}),
+  production_order_id: integer("production_order_id").notNull().references(()=>factory_execution.production_order_id,{onDelete:"restrict"}),
+  production_order_number: varchar("production_order_number",{length:50}).notNull(), item_id: varchar("item_id",{length:20}).notNull(),
+  product: jsonb("product").$type<ProductSnapshot>().notNull(), quantity_kg: decimal("quantity_kg",{precision:14,scale:2}).notNull(),
+},t=>[unique().on(t.delivery_id,t.inventory_id),check("factory_delivery_items_quantity_kg_check",sql`${t.quantity_kg}>0`),
+  index("factory_delivery_items_inventory").on(t.inventory_id,t.id)]);
+export const factory_delivery_movements = pgTable("factory_delivery_movements", {
+  id: serial("id").primaryKey(), delivery_item_id: integer("delivery_item_id").notNull().unique().references(()=>factory_delivery_items.id,{onDelete:"restrict"}),
+  inventory_id: integer("inventory_id").notNull().references(()=>factory_inventory.id,{onDelete:"restrict"}),
+  quantity_kg: decimal("quantity_kg",{precision:14,scale:2}).notNull(),
+  created_at: timestamp("created_at",{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[check("factory_delivery_movements_quantity_kg_check",sql`${t.quantity_kg}>0`),
+  index("factory_delivery_movements_inventory").on(t.inventory_id,t.id)]);

@@ -90,7 +90,7 @@ export async function productSnapshot(tx: Connection, order: LockedOrder) {
     SELECT jsonb_build_object('id',cp.id,'item_id',cp.item_id,'name',i.name,'name_ar',i.name_ar,
       'customer_name',c.name,'customer_name_ar',c.name_ar,'width',cp.width::text,
       'left_facing',cp.left_facing::text,'right_facing',cp.right_facing::text,
-      'universal_thickness',cp.universal_thickness::text,'cutting_length_cm',cp.cutting_length_cm,
+      'thickness',cp.thickness::text,'universal_thickness',cp.universal_thickness::text,'cutting_length_cm',cp.cutting_length_cm,
       'raw_material',cp.raw_material,'printing_cylinder',cp.printing_cylinder,'punching',cp.punching,
       'notes',cp.notes,'plate_drawer_code',c.plate_drawer_code,'front_print_colors',cp.front_print_colors,'back_print_colors',cp.back_print_colors,
       'size_caption',cp.size_caption,'master_batch',${masterBatchJSON}) product,
