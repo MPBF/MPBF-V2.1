@@ -232,7 +232,7 @@ function useBranding() {
 }
 
 function BrandIdentity({ branding }: { branding: BrandingSnapshot }) {
-  return <div className="brand">{branding.logoSrc ? <img src={branding.logoSrc} alt={translate("شعار الشركة")} style={{ width: 150, height: 150, borderRadius: 10, objectFit: "cover", border: "1px solid var(--line)" }} /> : <div className="brand-mark">{translate("م")}</div>}<div><small>{i18n.language === "en" ? "PLASTIC MANUFACTURING" : "MPBF"}</small></div></div>;
+  return <div className="brand">{branding.logoSrc ? <img src={branding.logoSrc} alt={translate("شعار الشركة")} style={{ width: 150, height: 150, borderRadius: 10, objectFit: "cover", border: "1px solid var(--line)" }} /> : <div className="brand-mark">{translate("م")}</div>}</div>;
 }
 
 function PublicLanguageSwitcher() {
