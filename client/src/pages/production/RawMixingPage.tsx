@@ -532,18 +532,20 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
                 </select> : <div className="raw-mix-single-screw" aria-label={tx("screwA", en)}>{tx("screwA", en)}</div>}
               </div>}
               </div>
-              <div className="raw-ops-wide raw-ops-items">
+              <div className="raw-ops-wide raw-ops-items raw-mix-entry-list">
+                <div className="raw-mix-entry-head">
+                  <span id="mix-material-heading">{tx("material", en)}</span>
+                  <span id="mix-weight-heading">{tx("weight", en)}</span>
+                </div>
                 {rows.map((row, index) => <div className="raw-ops-item" key={index}>
                   <div className="raw-ops-field">
-                    <label htmlFor={`mix-material-${index}`}>{tx("material", en)}</label>
-                    <select id={`mix-material-${index}`} required value={row.materialId} disabled={locked} onChange={event => updateRow(index, { materialId: event.target.value })}>
+                    <select id={`mix-material-${index}`} aria-labelledby="mix-material-heading" required value={row.materialId} disabled={locked} onChange={event => updateRow(index, { materialId: event.target.value })}>
                       <option value="">{tx("chooseMaterial", en)}</option>
                       {(state?.materials ?? []).filter(material => material.is_active && (!rows.some((other, otherIndex) => otherIndex !== index && other.materialId === String(material.id)) || row.materialId === String(material.id))).map(material => <option key={material.id} value={material.id}>{englishMaterialName(material.name)}</option>)}
                     </select>
                   </div>
                   <div className="raw-ops-field">
-                    <label htmlFor={`mix-quantity-${index}`}>{tx("weight", en)}</label>
-                    <input id={`mix-quantity-${index}`} required inputMode="decimal" autoComplete="off" maxLength={15} value={row.quantity} disabled={locked} onChange={event => updateRow(index, { quantity: event.target.value })} placeholder="0.00" />
+                    <input id={`mix-quantity-${index}`} aria-labelledby="mix-weight-heading" required inputMode="decimal" autoComplete="off" maxLength={15} value={row.quantity} disabled={locked} onChange={event => updateRow(index, { quantity: event.target.value })} placeholder="0.00" />
                   </div>
                   <button className="raw-btn quiet raw-ops-remove" type="button" aria-label={tx("remove", en)} onClick={() => removeRow(index)} disabled={locked || rows.length < 2}><Trash2 />{tx("remove", en)}</button>
                 </div>)}
