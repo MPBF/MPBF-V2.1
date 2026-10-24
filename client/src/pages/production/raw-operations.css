@@ -180,6 +180,14 @@
 }
 
 /* Mixing stays on the shared production chrome without changing warehouse raw-ops. */
+.raw-mix-entry-list { max-width: 720px; width: 100%; gap: 5px; }
+.raw-mix-entry-head,
+.raw-mix-entry-list .raw-ops-item { grid-template-columns: minmax(0,1fr) minmax(110px,150px) 108px; gap: 6px; }
+.raw-mix-entry-head { display: grid; padding-inline: 7px; color: var(--raw-muted); font-size: 11px; font-weight: 750; }
+.raw-mix-entry-list .raw-ops-item { padding: 6px; align-items: center; }
+.raw-mix-entry-list .raw-ops-field select,
+.raw-mix-entry-list .raw-ops-field input { min-height: 34px; height: 34px; padding: 4px 7px; font-size: 13px; }
+.raw-ops.production .raw-mix-entry-list .raw-ops-remove { min-height: 34px; padding: 4px 7px; }
 .raw-mix-history > summary { cursor: pointer; list-style: none; }
 .raw-mix-history > summary::-webkit-details-marker { display: none; }
 .raw-mix-history > summary h2 { flex: 1; }
@@ -243,6 +251,10 @@
 .raw-ops.production .raw-ops-form-actions { gap: 8px; }
 .raw-ops.production .raw-ops-skeleton i { height: 68px; }
 @media (max-width: 700px) {
+  .raw-mix-entry-head,
+  .raw-mix-entry-list .raw-ops-item { grid-template-columns: minmax(0,1fr) minmax(105px,.7fr); }
+  .raw-mix-entry-list .raw-ops-field select,
+  .raw-mix-entry-list .raw-ops-field input { min-height: 38px; height: 38px; }
   .raw-ops.production { padding: 18px 13px 40px; }
   .raw-ops.production .raw-mix-heading {
     align-items: flex-start;

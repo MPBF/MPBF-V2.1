@@ -108,6 +108,20 @@ const literal=JSON.stringify;
         await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width===390});
         await navigate();
         check(`${lang} ${width}: notes opt-in`,await evaluate("!document.querySelector('#mix-notes')"));
+        await button(lang==="ar"?"إضافة مادة":"Add material");
+        check(`${lang} ${width}: one shared heading for multiple material rows`,await evaluate(`(()=>{
+          const list=document.querySelector('.raw-mix-entry-list');
+          return list.querySelectorAll('.raw-ops-item').length===2&&list.querySelectorAll('#mix-material-heading').length===1&&
+            list.querySelectorAll('#mix-weight-heading').length===1&&!list.querySelector('label')&&
+            [...list.querySelectorAll('select')].every(e=>e.getAttribute('aria-labelledby')==='mix-material-heading')&&
+            [...list.querySelectorAll('input')].every(e=>e.getAttribute('aria-labelledby')==='mix-weight-heading');
+        })()`));
+        check(`${lang} ${width}: compact material fields and spacing`,await evaluate(`(()=>{
+          const list=document.querySelector('.raw-mix-entry-list'),row=list.querySelector('.raw-ops-item');
+          return [...row.querySelectorAll('input,select')].every(e=>e.getBoundingClientRect().height<=38)&&getComputedStyle(row).columnGap==='6px'&&
+            (innerWidth<701||list.getBoundingClientRect().width<=720);
+        })()`));
+        await click(".raw-mix-entry-list .raw-ops-item:last-of-type .raw-ops-remove");
         check(`${lang} ${width}: history starts collapsed`,await evaluate("!document.querySelector('.raw-mix-history').open"));
         await click(".raw-mix-history > summary");
         check(`${lang} ${width}: history opens`,await evaluate("document.querySelector('.raw-mix-history').open"));
