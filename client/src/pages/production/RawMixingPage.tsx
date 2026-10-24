@@ -58,7 +58,8 @@ const messages: Record<string, [string, string]> = {
   retryPermission: ["لم تعد تملك صلاحية تسجيل الخلط، لذلك لم يُعاد إرسال الطلب.", "You no longer have permission to record mixes, so the request was not retried."],
   unavailable: ["اسم غير متاح", "Name unavailable"], addNote: ["إضافة ملاحظة", "Add note"], hideNote: ["إخفاء الملاحظة", "Hide note"],
   screw: ["اللولب", "Screw"], chooseScrew: ["اختر اللولب", "Choose screw"], screwA: ["A", "A"], screwB: ["B", "B"],
-  savedComposition: ["التركيبة المحفوظة", "Saved composition"], combined: ["التركيبة المجمعة", "Combined composition"],
+  savedComposition: ["التركيبة المحفوظة", "Saved composition"], combined: ["A+B", "A+B"],
+  compositionTotal: ["المجموع", "Total"],
   unsavedPreview: ["معاينة غير محفوظة — تستبدل تركيبة اللولب المحدد", "Unsaved preview — substitutes the selected screw mix"],
   noScrewMix: ["لا توجد خلطة محفوظة لهذا اللولب.", "No saved mix for this screw."], noComposition: ["لا توجد تركيبات محفوظة بعد.", "No saved compositions yet."],
   partial: ["إجمالي جزئي", "Partial total"], materialPercent: ["النسبة", "Share"], switchConfirm: ["سيؤدي تغيير الماكينة أو اللولب إلى حذف بيانات الخلطة الحالية. هل تريد المتابعة؟", "Changing machine or screw will discard the current mix draft. Continue?"],
@@ -485,10 +486,12 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
   const renderComposition = (label: string, lines: CompositionLine[], partial = false) => {
     const result = composition(lines);
     return <div className="raw-mix-composition">
-      <div className="raw-mix-composition-head"><strong>{label}{partial && <span className="raw-mix-partial">{tx("partial", en)}</span>}</strong><b className="raw-ops-number">{formatNumber(result.total)} kg</b></div>
+      <div className="raw-mix-composition-head"><strong>{label}{partial && <span className="raw-mix-partial">{tx("partial", en)}</span>}</strong></div>
       {result.rows.length ? <div className="raw-mix-composition-lines">{result.rows.map(row => <div className="raw-mix-composition-line" key={row.key}>
         <span>{row.name}</span><b className="raw-ops-number">{formatNumber(row.kg)} kg</b><small className="raw-ops-number">{formatNumber(row.percent)}%</small>
-      </div>)}</div> : <p className="raw-ops-helper">{lines.length ? tx("unavailableComposition", en) : tx("noComposition", en)}</p>}
+      </div>)}<div className="raw-mix-composition-line raw-mix-composition-total">
+        <strong>{tx("compositionTotal", en)}</strong><b className="raw-ops-number">{formatNumber(result.total)} kg</b><small className="raw-ops-number">{formatNumber(100)}%</small>
+      </div></div> : <p className="raw-ops-helper">{lines.length ? tx("unavailableComposition", en) : tx("noComposition", en)}</p>}
     </div>;
   };
 

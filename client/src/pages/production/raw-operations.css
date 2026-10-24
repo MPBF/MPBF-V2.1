@@ -119,8 +119,9 @@
 .raw-mix-composition-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border-bottom: 1px solid var(--theme-raw-operations-raw-ops-material-chip-border); color: var(--raw-deep); font-size: 12px; }
 .raw-mix-composition-head b { font: 700 11px "IBM Plex Mono", monospace; white-space: nowrap; }
 .raw-mix-partial { display: inline-flex; margin-inline-start: 7px; padding: 2px 5px; border: 1px solid var(--theme-raw-operations-raw-ops-banner-warning-border); color: var(--theme-raw-operations-raw-ops-banner-warning-text); background: var(--theme-raw-operations-raw-ops-banner-warning-surface); font-size: 9px; font-weight: 700; }
-.raw-mix-composition-lines { display: grid; }
-.raw-mix-composition-line { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: baseline; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--theme-raw-operations-raw-mix-composition-line-border); font-size: 11px; }
+.raw-mix-composition-lines { display: grid; grid-template-columns: minmax(0,max-content) max-content max-content; column-gap: 6px; padding-inline: 8px; }
+.raw-mix-composition-line { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; padding-block: 5px; border-bottom: 1px solid var(--theme-raw-operations-raw-mix-composition-line-border); font-size: 11px; }
+.raw-mix-composition-total { font-weight: 700; color: var(--raw-deep); border-top: 1px solid var(--raw-line); }
 .raw-mix-composition-line:last-child { border-bottom: 0; }
 .raw-mix-composition-line > span { min-width: 0; overflow-wrap: anywhere; }
 .raw-mix-composition-line b, .raw-mix-composition-line small { white-space: nowrap; font: 700 10px "IBM Plex Mono", monospace; }
@@ -157,8 +158,6 @@
   .raw-mix-dialog { max-height: 92dvh; }
   .raw-mix-dialog-body { padding: 12px; }
   .raw-mix-dialog-head { padding: 11px 12px; }
-  .raw-mix-composition-line { grid-template-columns: minmax(0,1fr) auto; }
-  .raw-mix-composition-line small { grid-column: 2; justify-self: end; }
   .raw-mix-note-head .raw-btn { min-height: 38px; }
   .raw-mix-primary-actions {
     display: grid;
