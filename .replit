@@ -99,11 +99,9 @@ TWILIO_ALLOWED_NUMBERS = "+966550609050,+966539911985"
 
 [[ports]]
 localPort = 5000
-externalPort = 80
 
 [[ports]]
 localPort = 24678
-externalPort = 3000
 
 [postMerge]
 path = "scripts/post-merge.sh"
