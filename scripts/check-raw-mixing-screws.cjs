@@ -108,6 +108,10 @@ const literal=JSON.stringify;
         await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width===390});
         await navigate();
         check(`${lang} ${width}: notes opt-in`,await evaluate("!document.querySelector('#mix-notes')"));
+        check(`${lang} ${width}: history starts collapsed`,await evaluate("!document.querySelector('.raw-mix-history').open"));
+        await click(".raw-mix-history > summary");
+        check(`${lang} ${width}: history opens`,await evaluate("document.querySelector('.raw-mix-history').open"));
+        check(`${lang} ${width}: save label and icon`,await evaluate(`document.querySelector('.raw-mix-primary-actions button[type=submit]').textContent.trim()===${literal(lang==="ar"?"حفظ":"Save")}&&!!document.querySelector('.raw-mix-primary-actions button[type=submit] .lucide-save')`));
         check(`${lang} ${width}: correct text direction`,await evaluate("getComputedStyle(document.querySelector('.raw-ops')).direction"),lang==="ar"?"rtl":"ltr");
         check(`${lang} ${width}: production chrome and navigation parity`,await evaluate(`(()=>{
           const header=document.querySelector('.raw-mix-heading'),refresh=header?.querySelector('.prod-header-refresh');
@@ -117,12 +121,12 @@ const literal=JSON.stringify;
             links.length>0&&links.every(link=>link.classList.contains('prod-btn')&&parseFloat(getComputedStyle(link).minHeight)>=44)&&
             nav.querySelector('[aria-current="page"]')?.textContent.trim()===${literal(lang==="ar"?"خلط مواد الخام":"Raw material mixing")};
         })()`));
-        if(width===390)check(`${lang} ${width}: three primary actions stay on one phone row`,await evaluate(`(()=>{
+        if(width===390)check(`${lang} ${width}: two primary actions stay on one phone row`,await evaluate(`(()=>{
           const buttons=[...document.querySelectorAll('.raw-mix-primary-actions > .raw-btn')];
           const boxes=buttons.map(button=>button.getBoundingClientRect());
-          return buttons.length===3&&boxes.every(box=>box.width>0&&Math.abs(box.top-boxes[0].top)<2)&&
+          return buttons.length===2&&boxes.every(box=>box.width>0&&Math.abs(box.top-boxes[0].top)<2)&&
             getComputedStyle(document.querySelector('.raw-mix-primary-actions')).display==="grid"&&
-            getComputedStyle(document.querySelector('.raw-mix-primary-actions')).gridTemplateColumns.split(" ").length===3;
+            getComputedStyle(document.querySelector('.raw-mix-primary-actions')).gridTemplateColumns.split(" ").length===2;
         })()`));
         await input("#mix-machine","F2");
         check(`${lang} ${width}: ABA explicit screw`,await evaluate("document.querySelector('#mix-screw').value"),"");
@@ -150,11 +154,7 @@ const literal=JSON.stringify;
         await input("#mix-quantity-0","NaN");
         check(`${lang} ${width}: invalid draft has no preview`,await evaluate("!document.querySelector('.raw-mix-live-preview')"));
         await input("#mix-quantity-0","10");
-        await button(lang==="ar"?"إضافة ملاحظة":"Add note");
-        await input("#mix-notes","optional note");
-        await button(lang==="ar"?"إخفاء الملاحظة":"Hide note");
-        await button(lang==="ar"?"إضافة ملاحظة":"Add note");
-        check(`${lang} ${width}: hiding notes retains content`,await evaluate("document.querySelector('#mix-notes').value"),"optional note");
+        check(`${lang} ${width}: add note button removed`,await evaluate("document.querySelectorAll('.raw-mix-primary-actions button').length===2"));
         acceptDialog=false;await input("#mix-screw","B");
         check(`${lang} ${width}: cancelling screw switch preserves target/weights`,await evaluate("[document.querySelector('#mix-screw').value,document.querySelector('#mix-quantity-0').value]"),["A","10"]);
         acceptDialog=true;await input("#mix-machine","F1");
@@ -185,13 +185,12 @@ const literal=JSON.stringify;
     await fs.writeFile("/tmp/mixing-screws-composition.png",Buffer.from(summaryShot.data,"base64"));
     permissions=["operate_film"];await navigate();
     await input("#mix-machine","F2");await input("#mix-screw","B");await input("#mix-material-0","1");await input("#mix-quantity-0","2.50");
-    await button("Add note");await input("#mix-notes","recovered note");await button("Hide note");
     const balance=Number(materials[0].quantity_kg),count=ledger.size;
     loseResponse=true;await submit();await wait("document.querySelector('#mix-quantity-0').disabled");
     const original=writes.at(-1);
     check("lost response commits once",ledger.size,count+1);
     await navigate();
-    check("recovered note opens automatically",await evaluate("document.querySelector('#mix-notes').value"),"recovered note");
+    check("empty recovered notes stay hidden",await evaluate("!document.querySelector('#mix-notes')"));
     check("recovered target stays B",await evaluate("document.querySelector('#mix-screw').value"),"B");
     await click(".raw-ops-banner.error button");await wait("!!document.querySelector('.raw-ops-banner.success')");
     check("retry immutable payload",writes.at(-1),original);
@@ -205,21 +204,22 @@ const literal=JSON.stringify;
     await input("#mix-quantity-0","7.75");
     await input("#mix-machine","F1"); // confirmation discards only the newer draft.
     await input("#mix-material-0","2");await input("#mix-quantity-0","3.75");
-    await button("Add note");await input("#mix-notes","newer draft");
     const oldPayload=writes.at(-1);
     holdResponse=false;await send("Fetch.failRequest",{requestId:held.requestId,errorReason:"ConnectionClosed"});held=null;
     await wait("document.querySelector('#mix-quantity-0').disabled");await navigate();
     check("reload preserves newer draft target/weights",await evaluate("[document.querySelector('#mix-machine').value,document.querySelector('#mix-quantity-0').value]"),["F1","3.75"]);
     await click(".raw-ops-banner.error button");await wait("!!document.querySelector('.raw-ops-banner.success')");
     check("newer draft cannot mutate original retry",writes.at(-1),oldPayload);
-    check("confirmed retry preserves newer edit/notes",await evaluate("[document.querySelector('#mix-machine').value,document.querySelector('#mix-quantity-0').value,document.querySelector('#mix-notes').value]"),["F1","3.75","newer draft"]);
+    check("confirmed retry preserves newer edit",await evaluate("[document.querySelector('#mix-machine').value,document.querySelector('#mix-quantity-0').value]"),["F1","3.75"]);
     check("session cleared after newer-draft retry",await evaluate("sessionStorage.getItem('mpbf:raw-mixing:pending:42')"),null);
     // An exact pre-upgrade committed request has no screw in its payload.
     const legacyInput={request_id:"b93e9516-694e-4cc9-b290-d244aec5fd6e",machine_id:"F2",notes:"legacy note",items:[{material_id:1,quantity_kg:"1.00"}]};
     ledger.set(legacyInput.request_id,{input:legacyInput,body:{id:150,balances:[]}});
     const legacyDraft={machine:"F2",rows:[{materialId:"1",quantity:"1.00"}],notes:"legacy note"};
     await evaluate(`sessionStorage.setItem('mpbf:raw-mixing:pending:42',${literal(JSON.stringify({id:legacyInput.request_id,payload:legacyInput,fingerprint:JSON.stringify(legacyDraft),draft:legacyDraft}))})`);
-    await navigate();await click(".raw-ops-banner.error button");await wait("!!document.querySelector('.raw-ops-banner.success')");
+    await navigate();
+    check("legacy recovered note preserved",await evaluate("document.querySelector('#mix-notes').value"),"legacy note");
+    await click(".raw-ops-banner.error button");await wait("!!document.querySelector('.raw-ops-banner.success')");
     check("legacy pending request never acquires a guessed screw",writes.at(-1),legacyInput);
     check("legacy confirmed retry clears original draft",await evaluate("document.querySelector('#mix-quantity-0').value"),"");
     check("selection changes required confirmations",dialogs>=13);

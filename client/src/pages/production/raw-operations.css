@@ -162,7 +162,7 @@
   .raw-mix-note-head .raw-btn { min-height: 38px; }
   .raw-mix-primary-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px;
   }
   .raw-mix-primary-actions > .raw-btn {
@@ -181,6 +181,12 @@
 }
 
 /* Mixing stays on the shared production chrome without changing warehouse raw-ops. */
+.raw-mix-history > summary { cursor: pointer; list-style: none; }
+.raw-mix-history > summary::-webkit-details-marker { display: none; }
+.raw-mix-history > summary h2 { flex: 1; }
+.raw-mix-history > summary svg { width: 18px; height: 18px; flex: none; }
+.raw-mix-history[open] > summary svg { transform: rotate(180deg); }
+.raw-mix-history > summary:focus-visible { outline: 2px solid var(--prod-deep); outline-offset: 2px; }
 .raw-ops.production {
   max-width: 1600px;
   min-height: calc(100dvh - 76px);

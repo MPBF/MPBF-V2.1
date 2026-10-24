@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, EyeOff, Pencil, Plus, RefreshCw, RotateCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, EyeOff, Pencil, Plus, RefreshCw, RotateCw, Save, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -33,7 +33,7 @@ const messages: Record<string, [string, string]> = {
   machine: ["ماكينة الفيلم", "Film machine"], chooseMachine: ["اختر الماكينة", "Choose machine"],
   material: ["المادة الخام", "Raw material"], chooseMaterial: ["اختر مادة", "Choose material"],
   weight: ["الوزن الفعلي (كجم)", "Actual weight (kg)"], notes: ["ملاحظات (اختياري)", "Notes (optional)"],
-  addLine: ["إضافة مادة", "Add material"], remove: ["حذف السطر", "Remove line"], save: ["تسجيل الخلطة", "Record mix"],
+  addLine: ["إضافة مادة", "Add material"], remove: ["حذف السطر", "Remove line"], save: ["حفظ", "Save"],
   loadFail: ["تعذر تحميل بيانات الخلط.", "Mixing data could not be loaded."],
   retry: ["إعادة المحاولة", "Retry"], refresh: ["تحديث", "Refresh"], loading: ["جارٍ التحميل", "Loading"],
   errorGeneric: ["تعذر حفظ الخلطة. أعد المحاولة بالطلب نفسه.", "The mix could not be saved. Retry this exact request."],
@@ -560,8 +560,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
             </div>}
             <div className="raw-ops-form-actions raw-mix-primary-actions">
               <button className="raw-btn outline" type="button" onClick={addRow} disabled={locked || rows.length >= 100}><Plus />{tx("addLine", en)}</button>
-              <button className="raw-btn outline" type="button" aria-expanded={notesVisible} aria-controls="mix-notes-region" onClick={() => setNotesVisible(value => !value)} disabled={locked}><Plus />{tx(notesVisible ? "hideNote" : "addNote", en)}</button>
-              <button className="raw-btn" type="submit" disabled={busy || locked || !machines.length || !state?.materials.some(material => material.is_active)}><Plus />{busy ? tx("loading", en) : tx("save", en)}</button>
+              <button className="raw-btn" type="submit" disabled={busy || locked || !machines.length || !state?.materials.some(material => material.is_active)}><Save aria-hidden="true" />{busy ? tx("loading", en) : tx("save", en)}</button>
             </div>
           </form> : <div className="raw-ops-helper">{tx("readonly", en)}</div>}
         </div>
@@ -586,8 +585,8 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
             </>}
         </div>
       </section>}
-      <section className="raw-ops-card">
-        <div className="raw-ops-card-head"><h2>{tx("history", en)}</h2><span className="raw-ops-helper">{state ? `${formatWholeNumber(state.records.length)} ${en ? "records" : "سجل"}` : ""}</span></div>
+      <details className="raw-ops-card raw-mix-history">
+        <summary className="raw-ops-card-head"><h2>{tx("history", en)}</h2><span className="raw-ops-helper">{state ? `${formatWholeNumber(state.records.length)} ${en ? "records" : "سجل"}` : ""}</span><ChevronDown aria-hidden="true" /></summary>
         <div className="raw-ops-card-body">
           {manager && <MixRevisionHistory user={user} en={en} refreshToken={revisionRefresh} />}
           {loading && !state ? <LoadingRows label={tx("loading", en)} /> : state?.records.length ? <>
@@ -609,7 +608,7 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
             {state.next_before ? <div className="raw-ops-form-actions"><button className="raw-btn outline" onClick={() => void load(state.next_before ?? undefined)} disabled={olderLoading}><ChevronDown />{olderLoading ? tx("loading", en) : tx("more", en)}</button></div> : <p className="raw-ops-helper">{tx("noMore", en)}</p>}
           </> : <div className="raw-ops-empty"><strong>{tx("noHistory", en)}</strong><span>{tx("notVoucher", en)}</span></div>}
         </div>
-      </section>
+      </details>
     </>}
     {adminRecord && createPortal(<div className="raw-ops raw-mix-dialog-backdrop">
       <section ref={adminDialogRef} className="raw-mix-dialog" role="dialog" aria-modal="true" aria-labelledby="raw-mix-dialog-title" aria-describedby="raw-mix-dialog-description" dir={en ? "ltr" : "rtl"}>
