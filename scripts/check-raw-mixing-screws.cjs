@@ -131,6 +131,20 @@ const literal=JSON.stringify;
         await input("#mix-machine","F2");
         check(`${lang} ${width}: ABA explicit screw`,await evaluate("document.querySelector('#mix-screw').value"),"");
         check(`${lang} ${width}: weighted combined, not average or layer ratio`,(await combined()).includes("36.67%")&&(await combined()).includes("63.33%"));
+        check(`${lang} ${width}: A+B title and final totals`,await evaluate(`(()=>{
+          const cards=[...document.querySelectorAll('.raw-mix-saved-grid .raw-mix-composition')];
+          return cards.length===3&&cards[2].querySelector('.raw-mix-composition-head strong').textContent==='A+B'&&
+            cards.every((card,index)=>{
+              const total=card.querySelector('.raw-mix-composition-lines > :last-child');
+              return total.classList.contains('raw-mix-composition-total')&&total.querySelector('b').textContent===[ '10 kg','20 kg','30 kg'][index]&&total.querySelector('small').textContent==='100%';
+            });
+        })()`));
+        check(`${lang} ${width}: composition columns stay compact on one row`,await evaluate(`(()=>{
+          return [...document.querySelectorAll('.raw-mix-composition-line')].every(row=>{
+            const [name,weight,percent]=[...row.children].map(child=>child.getBoundingClientRect());
+            return Math.abs(weight.top-percent.top)<3&&getComputedStyle(row.parentElement).columnGap==='6px'&&percent.width>0&&name.width>0;
+          });
+        })()`));
         check(`${lang} ${width}: English-only materials everywhere without codes`,await evaluate("document.querySelector('.raw-ops').innerText.includes('High density resin')&&!document.querySelector('.raw-ops').textContent.includes('خام عالي الكثافة')&&!document.querySelector('.raw-ops').textContent.includes('خام منخفض الكثافة')&&!document.querySelector('.raw-ops').innerText.includes('CODE-HIDDEN')"));
         check(`${lang} ${width}: missing English name indicator`,await evaluate("document.querySelector('#mix-material-0 option[value=\"3\"]').textContent"), "—");
         check(`${lang} ${width}: history names are English with compact screw`,await evaluate(`(()=>{
