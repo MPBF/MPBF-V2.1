@@ -142,10 +142,10 @@ function Nav({ user, en }: { user: ProductionUser; en: boolean }) {
     printing: ["الطباعة", "Printing"], cutting: ["القص", "Cutting"], mixing: ["خلط مواد الخام", "Raw material mixing"],
     monitoring: ["مراقبة الإنتاج", "Production monitoring"],
   };
-  return <nav className="raw-ops-nav" aria-label={en ? "Production modules" : "وحدات الإنتاج"}>
-    {views.map(view => <Link key={view.view} href={view.href} aria-current={view.href === "/production/mixing" ? "page" : undefined}>{labels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
+  return <nav className="prod-view-nav raw-mix-nav" aria-label={en ? "Production modules" : "وحدات الإنتاج"}>
+    {views.map(view => <Link key={view.view} className={`prod-btn ${view.href === "/production/mixing" ? "" : "secondary"}`} href={view.href} aria-current={view.href === "/production/mixing" ? "page" : undefined}>{labels[view.view]?.[en ? 1 : 0] ?? view.view}</Link>)}
     {!views.some(view => view.href === "/production/mixing") && (canViewMixing(user) || hasProductionPermission(user, "manage_mixing")) &&
-      <Link href="/production/mixing" aria-current="page">{tx("title", en)}</Link>}
+      <Link className="prod-btn" href="/production/mixing" aria-current="page">{tx("title", en)}</Link>}
   </nav>;
 }
 
@@ -493,11 +493,11 @@ export default function RawMixingPage({ user }: RawMixingPageProps) {
   };
 
   return <main className="raw-ops production">
-    <header className="raw-ops-header">
-      <div className="raw-ops-heading"><div className="raw-ops-kicker">MPBF / {tx("machinesTitle", en)}</div><h1>{tx("title", en)}</h1><p>{tx("intro", en)}</p></div>
-      <div className="raw-ops-actions">
-        <button className="raw-btn quiet" type="button" onClick={() => void load()} disabled={loading}><RefreshCw />{tx("refresh", en)}</button>
-        <div className="raw-ops-mark" aria-hidden="true"><i /><span>RAW<br />TRACE / 02</span></div>
+    <header className="prod-heading raw-mix-heading">
+      <div className="prod-heading-copy"><div className="prod-eyebrow">MPBF / {tx("machinesTitle", en)}</div><h2>{tx("title", en)}</h2><p>{tx("intro", en)}</p></div>
+      <div className="prod-heading-controls">
+        <button className="prod-btn quiet prod-header-refresh" type="button" onClick={() => void load()} disabled={loading} aria-label={tx("refresh", en)} title={tx("refresh", en)}><RefreshCw /><span className="prod-header-refresh-label">{tx("refresh", en)}</span></button>
+        <div className="prod-mark" aria-hidden="true"><i /><span>RAW<br />TRACE / 02</span></div>
       </div>
     </header>
     <Nav user={user} en={en} />
