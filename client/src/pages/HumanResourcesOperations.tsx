@@ -128,7 +128,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       if (tab === "audit") {
         const [audit, open] = await Promise.all([
           hrApi<AttendanceEvent[]>(`/attendance-events?${query({ ...common, month })}`),
-          hrApi<OpenSession[]>(`/attendance-sessions/open?${query(common)}`),
+          hrApi<OpenSession[]>(`/attendance-sessions/open?${query({ ...common, month })}`),
         ]);
         setEvents(audit);
         setOpenSessions(open);
@@ -277,8 +277,6 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       </div>
 
       {tab === "audit" && <>
-        <div className="hr-ops-head"><div><span>{translate("ورديات غير مكتملة")}</span><h3>{translate("ورديات بانتظار تصحيح الانصراف")}</h3><p>{translate("لا تُحتسب الساعات أو الأجر قبل تسجيل وقت الانصراف الفعلي. يمكنك تصحيح استراحة مفتوحة والانصراف معًا.")}</p></div></div>
-        <div className="hr-table-wrap"><table className="hr-data-table"><thead><tr><th>{translate("الموظف")}</th><th>{translate("تاريخ احتساب الوردية")}</th><th>{translate("وقت الحضور الفعلي")}</th><th>{translate("الوردية")}</th><th>{translate("الإجراء")}</th></tr></thead><tbody>{openSessions.map((session) => <tr key={session.id}><td>{employeeName(session)}</td><td>{session.shift_date}</td><td>{formatDateTime(session.check_in_at)}</td><td>{session.shift_id}</td><td><button className="hr-icon-action" type="button" onClick={() => setCorrection({ session, checkout: "", breakEnd: "" })}>{translate("تصحيح الانصراف")}</button></td></tr>)}</tbody></table>{!loading && !openSessions.length && <div className="hr-empty">{translate("لا توجد ورديات غير مكتملة.")}</div>}</div>
         <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{auditTranslate("عرض كل موظف مرة واحدة لكل وردية، مع ترتيب الورديات من الأحدث إلى الأقدم.", "One row per employee per shift, newest shifts first.")}</p></div><button className="hr-primary" type="button" onClick={() => setEventDraft({ user_id: filters.user, action: "break_end", occurred_at: riyadhDateTimeInput() })}><Plus size={17} />{" "}{translate("إنهاء استراحة يدويًا")}</button></div>
         <div className="hr-table-wrap" role="region" aria-label={auditTranslate("سجل تدقيق الحضور", "Attendance audit log")} tabIndex={0}><table className="hr-data-table hr-audit-table"><thead><tr><th>{i18n.language === "en" ? "Serial" : "م"}</th><th>{auditTranslate("التاريخ", "Date")}</th><th>{translate("الموظف")}</th><th>{auditTranslate("وقت الحضور", "Check-in")}</th><th>{auditTranslate("وقت الاستراحة", "Break start")}</th><th>{auditTranslate("وقت العودة من الاستراحة", "Break end")}</th><th>{auditTranslate("وقت المغادرة", "Check-out")}</th><th>{auditTranslate("اسم الوردية", "Shift name")}</th><th>{auditTranslate("الإجراءات", "Actions")}</th></tr></thead><tbody>{auditGroups.map((group, index) => {
           const person = group.employee;
@@ -290,7 +288,13 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
           const timeCell = (items: AttendanceEvent[]) => items.length
             ? <div className="hr-audit-times">{items.map((entry) => <span key={entry.id}>{auditTime(entry.occurred_at, group.shift_date)}</span>)}</div>
             : "—";
-          return <tr key={group.key}><td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small></td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td><td><button className="hr-icon-action" type="button" aria-label={auditTranslate("تفاصيل وإجراءات حركات {{employee}} بتاريخ {{date}}", "Movement details and actions for {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onClick={() => setAuditDetails(group)}>{auditTranslate("تفاصيل الحركات", "Movements")} ({group.events.length.toLocaleString(intlLocale())})</button></td></tr>;
+          const incompleteSession = openSessions.find((session) =>
+            session.user_id === group.user_id &&
+            group.events.some((entry) => entry.session_id === session.id && entry.user_id === session.user_id)
+          );
+          return <tr key={group.key} className={incompleteSession ? "hr-audit-incomplete" : undefined}>
+            <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small>{incompleteSession && <span className="hr-audit-incomplete-badge">{auditTranslate("غير مكتملة", "Incomplete")}</span>}</td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td><td><div className="hr-row-actions"><button className="hr-icon-action" type="button" aria-label={auditTranslate("تفاصيل وإجراءات حركات {{employee}} بتاريخ {{date}}", "Movement details and actions for {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onClick={() => setAuditDetails(group)}>{auditTranslate("تفاصيل الحركات", "Movements")} ({group.events.length.toLocaleString(intlLocale())})</button>{incompleteSession && <button className="hr-icon-action hr-audit-correct-action" type="button" onClick={() => setCorrection({ session: incompleteSession, checkout: "", breakEnd: "" })}>{auditTranslate("تصحيح الوردية", "Correct shift")}</button>}</div></td>
+          </tr>;
         })}</tbody></table>{loading && <div className="hr-empty" aria-live="polite">{translate("جارٍ التحميل…")}</div>}{!loading && !auditGroups.length && <div className="hr-empty">{auditTranslate("لا توجد سجلات مطابقة لهذا الشهر.", "No matching records for this month.")}</div>}</div>
       </>}
 

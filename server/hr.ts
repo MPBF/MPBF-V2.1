@@ -281,12 +281,20 @@ router.delete("/attendance-events/:id", handle(async (req, res) => {
 }));
 
 router.get("/attendance-sessions/open", handle(async (req, res) => {
+  const month = textFilter(req.query.month);
   const userId = positiveId(req.query.user_id, "الموظف");
   const sectionId = textFilter(req.query.section_id, 20);
   const conditions: SQL[] = [isNull(attendance_sessions.check_out_at), lt(attendance_sessions.window_end_at, new Date())];
+  if (month) {
+    const { end } = monthRange(month);
+    conditions.push(
+      gte(attendance_sessions.shift_date, `${month}-01`),
+      lt(attendance_sessions.shift_date, new Date(end.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)),
+    );
+  }
   if (userId) conditions.push(eq(attendance_sessions.user_id, userId));
   if (sectionId) conditions.push(eq(users.section_id, sectionId));
-  const rows = await db.select({
+  const sessionQuery = db.select({
     id: attendance_sessions.id,
     user_id: attendance_sessions.user_id,
     shift_date: attendance_sessions.shift_date,
@@ -297,7 +305,8 @@ router.get("/attendance-sessions/open", handle(async (req, res) => {
     display_name: users.display_name,
     display_name_ar: users.display_name_ar,
   }).from(attendance_sessions).innerJoin(users, eq(attendance_sessions.user_id, users.id))
-    .where(and(...conditions)).orderBy(desc(attendance_sessions.shift_start_at)).limit(100);
+    .where(and(...conditions)).orderBy(desc(attendance_sessions.shift_start_at));
+  const rows = await (month ? sessionQuery : sessionQuery.limit(100));
   const actions = rows.length ? await db.select({
     sessionId: attendance_events.session_id,
     action: attendance_events.action,
