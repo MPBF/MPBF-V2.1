@@ -14,6 +14,7 @@ import { z } from "zod";
 
 import { requireAuth, requirePermission } from "./auth";
 import { db } from "./db";
+import { dailyBreakScope } from "./hr-single-break";
 import { requestInput, reviewInput } from "./self-service-inputs";
 import { monthlyAttendanceStatuses, riyadhCalendarDay } from "./self-attendance-history";
 import {
@@ -364,6 +365,14 @@ router.post("/attendance", handle(async (req, res) => {
     const lastAction = sessionEvents[0]?.action;
     if (!canRecordAttendance(input.action, lastAction)) {
       throw httpError("هذا الإجراء غير متاح حسب حالة جلسة الحضور الحالية", 409, "INVALID_SESSION_ACTION");
+    }
+    if (input.action === "break_start") {
+      const priorBreaks = await tx.select({ id: attendance_events.id }).from(attendance_events)
+        .leftJoin(attendance_sessions, eq(attendance_events.session_id, attendance_sessions.id))
+        .where(dailyBreakScope(userId, session.shift_date)).limit(1);
+      if (priorBreaks.length) {
+        throw httpError("يسمح باستراحة واحدة فقط في اليوم", 409, "DAILY_BREAK_ALREADY_TAKEN");
+      }
     }
     if (input.action === "check_out") {
       const [closed] = await tx.update(attendance_sessions)

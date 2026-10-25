@@ -77,7 +77,7 @@
 }
 
 .hr-audit-status:focus-visible,
-.hr-correction-add-break:focus-visible {
+.hr-correction-time-field select:focus-visible {
   outline: 2px solid #276b57;
   outline-offset: 2px;
 }
@@ -90,13 +90,19 @@
 
 .hr-correction-employee {
   display: grid;
-  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px 20px;
   padding: 14px 18px;
   border-block: 1px solid #e2ebe6;
   background: #f5f8f4;
 }
 
-.hr-correction-employee > span,
+.hr-correction-employee > div {
+  display: grid;
+  gap: 3px;
+}
+
+.hr-correction-employee > div > span,
 .hr-correction-employee small {
   color: #697a71;
   font-size: 0.82rem;
@@ -106,86 +112,102 @@
   color: #233f36;
 }
 
+.hr-correction-employee small {
+  grid-column: 1 / -1;
+}
+
+.hr-correction-blocking {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin: 14px 18px 0;
+  padding: 13px 14px;
+  border: 1px solid #d6a49b;
+  border-radius: 9px;
+  background: #fff3ef;
+  color: #743c32;
+}
+
+.hr-correction-blocking > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.hr-correction-blocking p {
+  margin: 5px 0 9px;
+  line-height: 1.5;
+}
+
+.hr-correction-blocking ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-inline-start: 18px;
+}
+
+.hr-correction-blocking li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 0.85rem;
+}
+
+.hr-correction-blocking time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .hr-correction-fields {
   display: grid;
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px 18px;
   padding: 16px 18px;
 }
 
-.hr-correction-section {
+.hr-correction-time-field {
   display: grid;
-  gap: 12px;
+  gap: 7px;
   min-width: 0;
-  margin: 0;
-  padding: 12px;
+  padding: 11px 12px 12px;
   border: 1px solid #dce7e0;
-  border-radius: 10px;
+  border-radius: 9px;
+  background: #fbfcf9;
 }
 
-.hr-correction-section legend {
-  padding-inline: 6px;
-  color: #315c4b;
-  font-weight: 750;
-}
-
-.hr-correction-section > label,
-.hr-correction-break-pair label {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.hr-correction-section label > span {
+.hr-correction-time-field > span {
   color: #56685f;
-  font-size: 0.84rem;
+  font-size: 0.87rem;
+  font-weight: 700;
 }
 
-.hr-correction-section input {
+.hr-correction-time-field select {
   box-sizing: border-box;
   width: 100%;
-  min-height: 42px;
-  padding: 8px 10px;
+  min-height: 46px;
+  padding: 9px 11px;
   border: 1px solid #c9d7cf;
-  border-radius: 7px;
-  background: #fff;
+  border-radius: 8px;
+  background: #fffefa;
   color: #263b32;
   font: inherit;
-}
-
-.hr-correction-section input:focus-visible {
-  border-color: #32745c;
-  outline: 2px solid #32745c;
-  outline-offset: 1px;
-}
-
-.hr-correction-break-pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e5ece7;
-}
-
-.hr-correction-break-pair:last-of-type {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.hr-correction-add-break {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  gap: 7px;
-  min-height: 40px;
-  padding: 6px 10px;
-  border: 1px solid #b9d1c5;
-  border-radius: 7px;
-  background: #f5faf6;
-  color: #315f4a;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
+}
+
+.hr-correction-time-field select:focus-visible {
+  border-color: #32745c;
+}
+
+.hr-correction-time-field select[aria-invalid="true"] {
+  border-color: #bb6759;
+  background-color: #fff7f4;
+}
+
+.hr-correction-pair-error {
+  margin: -7px 18px 13px;
+  color: #8a4035;
+  font-size: 0.86rem;
+  font-weight: 650;
 }
 
 .hr-correction-modal > footer {
@@ -204,8 +226,26 @@
     min-height: 44px;
   }
 
-  .hr-correction-break-pair {
-    grid-template-columns: minmax(0, 1fr);
+  .hr-correction-employee {
+    gap: 10px 12px;
+    padding-inline: 14px;
+  }
+
+  .hr-correction-fields {
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .hr-correction-time-field {
+    padding: 9px;
+  }
+
+  .hr-correction-time-field select {
+    min-height: 48px;
+  }
+
+  .hr-correction-blocking {
+    margin-inline: 14px;
   }
 
   .hr-correction-modal {

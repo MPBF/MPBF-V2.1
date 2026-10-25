@@ -1,5 +1,6 @@
 /** English coverage for indirect configuration labels and localized validation. */
 const reviewed: Record<string, string> = {
+  "يسمح باستراحة واحدة فقط في اليوم": "Only one break is allowed per day.",
   "تصحيح الوردية": "Correct shift",
   "تم حفظ تصحيح الحضور.": "Attendance correction saved.",
   "الاستراحات": "Breaks",
