@@ -1,8 +1,10 @@
-import i18n, { intlLocale, translate } from "../i18n";
-import { hrApi } from "../lib/hr-api";
 import { AlertTriangle, CalendarDays, Check, Download, Edit3, FileDown, Plus, Printer, Search, ShieldAlert, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
+import i18n, { intlLocale, translate } from "../i18n";
+import { hrApi } from "../lib/hr-api";
+import { groupAttendanceEvents, type AttendanceAction, type AttendanceAuditGroup } from "../lib/hr-audit-grouping";
+import "./hr-audit.css";
 import { riyadhDateTimeInput, riyadhDateTimeToIso } from "../lib/riyadh-time";
 
 export type HrEmployee = {
@@ -20,6 +22,9 @@ type AttendanceEvent = HrEmployee & {
   user_id: number;
   session_id: number | null;
   shift_date: string | null;
+  shift_id?: string | null;
+  shift_name_ar?: string | null;
+  shift_name_en?: string | null;
   action: AttendanceAction;
   occurred_at: string;
   source: "employee" | "manual";
@@ -27,7 +32,7 @@ type AttendanceEvent = HrEmployee & {
   updated_by: number | null;
   updated_at: string;
 };
-type AttendanceAction = "check_in" | "break_start" | "break_end" | "check_out";
+type AuditGroup = AttendanceAuditGroup<AttendanceEvent>;
 type OpenSession = HrEmployee & { id: number; user_id: number; shift_date: string; shift_id: string; check_in_at: string; shift_end_at: string; last_action: AttendanceAction | null };
 type SummaryRow = HrEmployee & {
   workedMinutes: number;
@@ -68,6 +73,14 @@ const reportEnglishName = (employee: HrEmployee) => employee.display_name || "�
 const sectionName = (employee: HrEmployee) => employee.section_name || "—";
 const riyadhToday = () => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const riyadhMonth = () => riyadhToday().slice(0, 7);
+const riyadhDate = (value: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+const riyadhTime = (value: string) => new Intl.DateTimeFormat(intlLocale(), { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Riyadh" }).format(new Date(value));
+const auditTime = (value: string | undefined, accountingDate: string) => {
+  if (!value) return "—";
+  const time = riyadhTime(value);
+  const actualDate = riyadhDate(value);
+  return actualDate === accountingDate ? time : `${time} · ${actualDate}`;
+};
 const formatDateTime = (value: string) => new Intl.DateTimeFormat(intlLocale(), {
   dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh",
 }).format(new Date(value));
@@ -76,6 +89,7 @@ const formatMinutes = (minutes: number) => i18n.language === "en"
   : `${Math.floor(minutes / 60).toLocaleString(intlLocale())} س ${String(minutes % 60).padStart(2, "0")} د`;
 const query = (values: Record<string, string>) => new URLSearchParams(Object.entries(values).filter(([, value]) => value)).toString();
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character]!);
+const auditTranslate = (source: string, english: string, values?: Record<string, unknown>) => translate(source, i18n.language === "en" ? { ...values, defaultValue: english } : values);
 
 function printDocument(title: string, body: string) {
   const popup = window.open("", "_blank", "width=1100,height=800");
@@ -88,7 +102,6 @@ function printDocument(title: string, body: string) {
 
 export default function HumanResourcesOperations({ tab, employees, refreshToken = 0 }: { tab: OperationsTab; employees: HrEmployee[]; refreshToken?: number }) {
   const [filters, setFilters] = useState<Filters>({ section: "", user: "" });
-  const [day, setDay] = useState(riyadhToday);
   const [month, setMonth] = useState(riyadhMonth);
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
   const [openSessions, setOpenSessions] = useState<OpenSession[]>([]);
@@ -97,6 +110,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const [violations, setViolations] = useState<Violation[]>([]);
   const [eventDraft, setEventDraft] = useState<EventDraft | null>(null);
   const [violationDraft, setViolationDraft] = useState<ViolationDraft | null>(null);
+  const [auditDetails, setAuditDetails] = useState<AuditGroup | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -105,6 +119,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
 
   const sections = useMemo(() => Array.from(new Map(employees.filter((employee) => employee.section_id).map((employee) => [employee.section_id!, sectionName(employee)])).entries()), [employees]);
   const filteredEmployees = useMemo(() => employees.filter((employee) => !filters.section || employee.section_id === filters.section), [employees, filters.section]);
+  const auditGroups = useMemo(() => groupAttendanceEvents(events), [events]);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -112,7 +127,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       const common = { section_id: filters.section, user_id: filters.user };
       if (tab === "audit") {
         const [audit, open] = await Promise.all([
-          hrApi<AttendanceEvent[]>(`/attendance-events?${query({ ...common, day })}`),
+          hrApi<AttendanceEvent[]>(`/attendance-events?${query({ ...common, month })}`),
           hrApi<OpenSession[]>(`/attendance-sessions/open?${query(common)}`),
         ]);
         setEvents(audit);
@@ -122,7 +137,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       if (tab === "violations") setViolations(await hrApi<Violation[]>(`/violations?${query(common)}`));
     } catch (cause) { setError((cause as Error).message); }
     finally { setLoading(false); }
-  }, [day, filters.section, filters.user, month, tab]);
+  }, [filters.section, filters.user, month, tab]);
 
   useEffect(() => { void load(); }, [load, refreshToken]);
   useEffect(() => {
@@ -179,6 +194,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     try {
       await hrApi(`/attendance-events/${entry.id}`, { method: "DELETE" });
       setNotice(translate("تم حذف سجل الحضور."));
+      setAuditDetails(null);
       await load();
     } catch (cause) { setError((cause as Error).message); }
     finally { setBusy(""); }
@@ -253,7 +269,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     <section className="hr-ops-section">
       <div className="hr-filters">
         <div className="hr-filter-title"><Search size={17} /><div><strong>{translate("تصفية النتائج")}</strong><small>{translate("تتحدث النتائج تلقائياً")}</small></div></div>
-        {tab === "audit" && <label><span>{translate("اليوم")}</span><input type="date" value={day} onChange={(event) => setDay(event.target.value)} /></label>}
+        {tab === "audit" && <label><span>{translate("الشهر")}</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}
         {tab === "report" && <label><span>{translate("الشهر")}</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}
         <label><span>{translate("القسم")}</span><select value={filters.section} onChange={(event) => setFilters({ section: event.target.value, user: "" })}><option value="">{translate("كل الأقسام")}</option>{sections.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
         <label><span>{translate("الموظف")}</span><select value={filters.user} onChange={(event) => setFilters((current) => ({ ...current, user: event.target.value }))}><option value="">{translate("كل الموظفين")}</option>{filteredEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employeeName(employee)}</option>)}</select></label>
@@ -263,8 +279,19 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       {tab === "audit" && <>
         <div className="hr-ops-head"><div><span>{translate("ورديات غير مكتملة")}</span><h3>{translate("ورديات بانتظار تصحيح الانصراف")}</h3><p>{translate("لا تُحتسب الساعات أو الأجر قبل تسجيل وقت الانصراف الفعلي. يمكنك تصحيح استراحة مفتوحة والانصراف معًا.")}</p></div></div>
         <div className="hr-table-wrap"><table className="hr-data-table"><thead><tr><th>{translate("الموظف")}</th><th>{translate("تاريخ احتساب الوردية")}</th><th>{translate("وقت الحضور الفعلي")}</th><th>{translate("الوردية")}</th><th>{translate("الإجراء")}</th></tr></thead><tbody>{openSessions.map((session) => <tr key={session.id}><td>{employeeName(session)}</td><td>{session.shift_date}</td><td>{formatDateTime(session.check_in_at)}</td><td>{session.shift_id}</td><td><button className="hr-icon-action" type="button" onClick={() => setCorrection({ session, checkout: "", breakEnd: "" })}>{translate("تصحيح الانصراف")}</button></td></tr>)}</tbody></table>{!loading && !openSessions.length && <div className="hr-empty">{translate("لا توجد ورديات غير مكتملة.")}</div>}</div>
-        <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{translate("جميع حركات الحضور مرتبة من الأحدث إلى الأقدم.")}</p></div><button className="hr-primary" type="button" onClick={() => setEventDraft({ user_id: filters.user, action: "break_end", occurred_at: riyadhDateTimeInput() })}><Plus size={17} />{" "}{translate("إنهاء استراحة يدويًا")}</button></div>
-        <div className="hr-table-wrap"><table className="hr-data-table hr-audit-table"><thead><tr><th>{translate("الموظف")}</th><th>{translate("القسم")}</th><th>{translate("الحركة")}</th><th>{translate("وقت الحركة الفعلي")}</th><th>{translate("يوم احتساب الوردية")}</th><th>{translate("المصدر")}</th><th>{translate("الإجراء")}</th></tr></thead><tbody>{events.map((entry) => <tr key={entry.id}><td className="hr-employee-cell"><strong>{reportArabicName(entry)}</strong><small>{reportEnglishName(entry)}</small></td><td>{sectionName(entry)}</td><td><span className={`hr-action-pill ${entry.action}`}>{actionLabels[entry.action]}</span></td><td>{formatDateTime(entry.occurred_at)}</td><td>{entry.shift_date || "سجل قديم"}</td><td><span className={`hr-source ${entry.source}`}>{entry.source === "manual" ? translate("يدوي") : translate("الموظف")}</span></td><td>{entry.session_id != null ? <span>{translate("محفوظ ضمن الجلسة")}</span> : <div className="hr-row-actions"><button className="hr-icon-action" type="button" onClick={() => setEventDraft({ id: entry.id, user_id: String(entry.user_id), action: entry.action, occurred_at: riyadhDateTimeInput(new Date(entry.occurred_at)) })}><Edit3 size={15} />{" "}{translate("تعديل")}</button><button className="hr-icon-action danger" type="button" disabled={busy === `delete-event-${entry.id}`} onClick={() => void deleteAttendanceEvent(entry)}><Trash2 size={15} />{busy === `delete-event-${entry.id}` ? translate("جارٍ الحذف…") : translate("حذف")}</button></div>}</td></tr>)}</tbody></table>{!loading && !events.length && <div className="hr-empty">{translate("لا توجد سجلات مطابقة لهذا اليوم.")}</div>}</div>
+        <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{auditTranslate("عرض كل موظف مرة واحدة لكل وردية، مع ترتيب الورديات من الأحدث إلى الأقدم.", "One row per employee per shift, newest shifts first.")}</p></div><button className="hr-primary" type="button" onClick={() => setEventDraft({ user_id: filters.user, action: "break_end", occurred_at: riyadhDateTimeInput() })}><Plus size={17} />{" "}{translate("إنهاء استراحة يدويًا")}</button></div>
+        <div className="hr-table-wrap" role="region" aria-label={auditTranslate("سجل تدقيق الحضور", "Attendance audit log")} tabIndex={0}><table className="hr-data-table hr-audit-table"><thead><tr><th>{i18n.language === "en" ? "Serial" : "م"}</th><th>{auditTranslate("التاريخ", "Date")}</th><th>{translate("الموظف")}</th><th>{auditTranslate("وقت الحضور", "Check-in")}</th><th>{auditTranslate("وقت الاستراحة", "Break start")}</th><th>{auditTranslate("وقت العودة من الاستراحة", "Break end")}</th><th>{auditTranslate("وقت المغادرة", "Check-out")}</th><th>{auditTranslate("اسم الوردية", "Shift name")}</th><th>{auditTranslate("الإجراءات", "Actions")}</th></tr></thead><tbody>{auditGroups.map((group, index) => {
+          const person = group.employee;
+          const shiftName = i18n.language === "en"
+            ? (person.shift_name_en && !/[\u0600-\u06ff]/.test(person.shift_name_en)
+              ? person.shift_name_en
+              : person.shift_id && !/[\u0600-\u06ff]/.test(person.shift_id) ? person.shift_id : "—")
+            : (person.shift_name_ar || person.shift_name_en || person.shift_id || "—");
+          const timeCell = (items: AttendanceEvent[]) => items.length
+            ? <div className="hr-audit-times">{items.map((entry) => <span key={entry.id}>{auditTime(entry.occurred_at, group.shift_date)}</span>)}</div>
+            : "—";
+          return <tr key={group.key}><td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small></td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td><td><button className="hr-icon-action" type="button" aria-label={auditTranslate("تفاصيل وإجراءات حركات {{employee}} بتاريخ {{date}}", "Movement details and actions for {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onClick={() => setAuditDetails(group)}>{auditTranslate("تفاصيل الحركات", "Movements")} ({group.events.length.toLocaleString(intlLocale())})</button></td></tr>;
+        })}</tbody></table>{loading && <div className="hr-empty" aria-live="polite">{translate("جارٍ التحميل…")}</div>}{!loading && !auditGroups.length && <div className="hr-empty">{auditTranslate("لا توجد سجلات مطابقة لهذا الشهر.", "No matching records for this month.")}</div>}</div>
       </>}
 
       {tab === "report" && <>
@@ -282,6 +309,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       {correction.session.last_action === "break_start" && <label><span>{translate("وقت نهاية الاستراحة الفعلي (بتوقيت الرياض)")}</span><input required type="datetime-local" value={correction.breakEnd} onChange={(event) => setCorrection({ ...correction, breakEnd: event.target.value })} /></label>}
       <label><span>{translate("وقت الانصراف الفعلي (بتوقيت الرياض)")}</span><input required type="datetime-local" value={correction.checkout} onChange={(event) => setCorrection({ ...correction, checkout: event.target.value })} /></label>
     </div><footer><button className="hr-primary" disabled={busy === "correction"}>{busy === "correction" ? translate("جارٍ التصحيح…") : translate("حفظ التصحيح")}</button><button type="button" onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
+    {auditDetails && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuditDetails(null)}><section className="hr-modal hr-compact-modal" role="dialog" aria-modal="true" aria-labelledby="audit-details-title"><header><div><span>{auditTranslate("حركات الوردية", "Shift movements")}</span><h3 id="audit-details-title">{employeeName(auditDetails.employee)} · {auditDetails.shift_date}</h3></div><button type="button" onClick={() => setAuditDetails(null)} aria-label={translate("إغلاق")}><X /></button></header><div className="hr-audit-event-list">{auditDetails.events.map((entry) => <article key={entry.id}><div><span className={`hr-action-pill ${entry.action}`}>{actionLabels[entry.action]}</span><small>{formatDateTime(entry.occurred_at)} · {entry.source === "manual" ? translate("يدوي") : translate("الموظف")}</small></div><div className="hr-row-actions"><button className="hr-icon-action" type="button" aria-label={auditTranslate("تعديل {{action}} عند {{time}}", "Edit {{action}} at {{time}}", { action: actionLabels[entry.action], time: formatDateTime(entry.occurred_at) })} onClick={() => { setEventDraft({ id: entry.id, user_id: String(entry.user_id), action: entry.action, occurred_at: riyadhDateTimeInput(new Date(entry.occurred_at)) }); setAuditDetails(null); }}><Edit3 size={15} />{" "}{translate("تعديل")}</button><button className="hr-icon-action danger" type="button" aria-label={auditTranslate("حذف {{action}} عند {{time}}", "Delete {{action}} at {{time}}", { action: actionLabels[entry.action], time: formatDateTime(entry.occurred_at) })} disabled={busy === `delete-event-${entry.id}`} onClick={() => void deleteAttendanceEvent(entry)}><Trash2 size={15} />{" "}{translate("حذف")}</button></div></article>)}</div><footer><button type="button" onClick={() => setAuditDetails(null)}>{translate("إغلاق")}</button></footer></section></div>}
     {eventDraft && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEventDraft(null)}><form className="hr-modal hr-compact-modal" onSubmit={saveEvent}><header><div><span>{translate("سجل الحضور")}</span><h3>{eventDraft.id ? translate("تعديل سجل الحضور") : translate("إضافة سجل يدوي")}</h3></div><button type="button" onClick={() => setEventDraft(null)} aria-label={translate("إغلاق")}><X /></button></header><div className="hr-form-grid">
       <label><span>{translate("الموظف")}</span><select required value={eventDraft.user_id} onChange={(event) => setEventDraft({ ...eventDraft, user_id: event.target.value })}><option value="">{translate("اختر الموظف")}</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employeeName(employee)} — {sectionName(employee)}</option>)}</select></label>
       <label><span>{translate("الحركة")}</span><select disabled={!eventDraft.id} value={eventDraft.action} onChange={(event) => setEventDraft({ ...eventDraft, action: event.target.value as AttendanceAction })}>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></label>

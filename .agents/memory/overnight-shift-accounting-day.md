@@ -11,6 +11,16 @@ timestamps when presenting an overnight session under its start day.
 **How to apply:** keep all recorded operations visible; grouping the display
 must not change attendance calculations or infer missing checkout events.
 
+The HR audit tab has a distinct approved grouping: one row per employee per
+shift session, not one row per employee-day when multiple shifts exist.
+Show the current month by default in descending accounting-date order, retain
+every repeated break, and keep each underlying event editable/deletable.
+
+**Why:** the user explicitly approved the per-employee/per-shift organization
+for the HR audit table.
+**How to apply:** preserve separate shift sessions in this management audit
+view; do not treat the employee dashboard's daily grouping as a universal rule.
+
 The user also requested a full-width biometric panel: remove its adjacent
 attendance-days card, but retain the top monthly summary. Hide the generic
 location-permission paragraph, shift-accounting-date paragraph, and prior

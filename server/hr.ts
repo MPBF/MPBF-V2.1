@@ -124,13 +124,20 @@ router.get("/data", handle(async (_req, res) => {
 }));
 
 router.get("/attendance-events", handle(async (req, res) => {
+  const month = textFilter(req.query.month);
   const day = textFilter(req.query.day, 10) || new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const { start, end } = dayRange(day);
+  const { start, end } = month ? monthRange(month) : dayRange(day);
+  const sessionDateFilter = month
+    ? and(
+      gte(attendance_sessions.shift_date, `${month}-01`),
+      lt(attendance_sessions.shift_date, new Date(end.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)),
+    )
+    : eq(attendance_sessions.shift_date, day);
   const userId = positiveId(req.query.user_id, "الموظف");
   const sectionId = textFilter(req.query.section_id, 20);
   const conditions: SQL[] = [or(
     and(isNull(attendance_events.session_id), gte(attendance_events.occurred_at, start), lt(attendance_events.occurred_at, end)),
-    eq(attendance_sessions.shift_date, day),
+    sessionDateFilter,
   )!];
   if (userId) conditions.push(eq(attendance_events.user_id, userId));
   if (sectionId) conditions.push(eq(users.section_id, sectionId));
@@ -146,6 +153,9 @@ router.get("/attendance-events", handle(async (req, res) => {
     occurred_at: attendance_events.occurred_at,
     shift_date: attendance_sessions.shift_date,
     session_id: attendance_events.session_id,
+    shift_id: attendance_sessions.shift_id,
+    shift_name_ar: shift_definitions.name_ar,
+    shift_name_en: shift_definitions.name_en,
     source: attendance_events.source,
     created_by: attendance_events.created_by,
     updated_by: attendance_events.updated_by,
@@ -154,6 +164,7 @@ router.get("/attendance-events", handle(async (req, res) => {
     .innerJoin(users, eq(attendance_events.user_id, users.id))
     .leftJoin(sections, eq(users.section_id, sections.id))
     .leftJoin(attendance_sessions, eq(attendance_events.session_id, attendance_sessions.id))
+    .leftJoin(shift_definitions, eq(attendance_sessions.shift_id, shift_definitions.id))
     .where(and(...conditions))
     .orderBy(desc(attendance_events.occurred_at), desc(attendance_events.id));
   res.json(rows);
