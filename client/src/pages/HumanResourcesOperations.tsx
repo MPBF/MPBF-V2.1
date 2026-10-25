@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import i18n, { intlLocale, translate } from "../i18n";
 import { hrApi } from "../lib/hr-api";
 import { groupAttendanceEvents, type AttendanceAction, type AttendanceAuditGroup } from "../lib/hr-audit-grouping";
+import { resolveCorrectionTimes, type CorrectionAction } from "../lib/hr-correction-time";
 import "./hr-audit.css";
 import { riyadhDateTimeInput, riyadhDateTimeToIso } from "../lib/riyadh-time";
 
@@ -53,8 +54,14 @@ type Filters = { section: string; user: string };
 type EventDraft = { id?: number; user_id: string; action: AttendanceAction; occurred_at: string };
 type ViolationDraft = { user_id: string; title: string; details: string };
 type CorrectionEventDraft = { id?: number; action: AttendanceAction; occurred_at: string };
-type CorrectionBreakDraft = { start: CorrectionEventDraft; end: CorrectionEventDraft };
-type AttendanceCorrection = { group: AuditGroup; checkIns: CorrectionEventDraft[]; breaks: CorrectionBreakDraft[]; checkOuts: CorrectionEventDraft[] };
+type AttendanceCorrection = {
+  group: AuditGroup;
+  checkIn: CorrectionEventDraft;
+  breakStart: CorrectionEventDraft;
+  breakEnd: CorrectionEventDraft;
+  checkOut: CorrectionEventDraft;
+  duplicateActions: AttendanceAction[];
+};
 
 const rawActionLabels: Record<AttendanceAction, string> = {
   check_in: "تسجيل حضور",
@@ -96,7 +103,7 @@ const auditTranslate = (source: string, english: string, values?: Record<string,
 const correctionEvent = (entry: AttendanceEvent | undefined, action: AttendanceAction): CorrectionEventDraft => ({
   ...(entry ? { id: entry.id } : {}),
   action,
-  occurred_at: entry ? riyadhDateTimeInput(new Date(entry.occurred_at)) : "",
+  occurred_at: entry ? riyadhDateTimeInput(new Date(entry.occurred_at)).slice(11, 16) : "",
 });
 const correctionFromGroup = (group: AuditGroup): AttendanceCorrection => {
   const byAction = (action: AttendanceAction) => group.events.filter((entry) => entry.action === action);
@@ -106,14 +113,17 @@ const correctionFromGroup = (group: AuditGroup): AttendanceCorrection => {
   const checkOuts = byAction("check_out");
   return {
     group,
-    checkIns: (checkIns.length ? checkIns : [undefined]).map((entry) => correctionEvent(entry, "check_in")),
-    breaks: Array.from({ length: Math.max(1, starts.length, ends.length) }, (_, index) => ({
-      start: correctionEvent(starts[index], "break_start"),
-      end: correctionEvent(ends[index], "break_end"),
-    })),
-    checkOuts: (checkOuts.length ? checkOuts : [undefined]).map((entry) => correctionEvent(entry, "check_out")),
+    checkIn: correctionEvent(checkIns[0], "check_in"),
+    breakStart: correctionEvent(starts[0], "break_start"),
+    breakEnd: correctionEvent(ends[0], "break_end"),
+    checkOut: correctionEvent(checkOuts[0], "check_out"),
+    duplicateActions: (["check_in", "break_start", "break_end", "check_out"] as AttendanceAction[]).filter((action) => byAction(action).length > 1),
   };
 };
+
+const correctionTimeOptions = Array.from({ length: 24 * 60 }, (_, index) =>
+  `${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}`,
+);
 
 function printDocument(title: string, body: string) {
   const popup = window.open("", "_blank", "width=1100,height=800");
@@ -184,22 +194,29 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const correctAttendance = async (event: FormEvent) => {
     event.preventDefault();
     if (!correction) return;
+    if (correction.duplicateActions.length) return;
+    if (Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at)) {
+      setError(auditTranslate("يجب إدخال وقتي بدء الاستراحة وانتهائها معًا، أو تركهما فارغين.", "Enter both break times, or leave both blank."));
+      return;
+    }
+    if (!correction.checkIn.occurred_at || !correction.checkOut.occurred_at) {
+      setError(auditTranslate("وقت الحضور ووقت الانصراف مطلوبان.", "Check-in and check-out times are required."));
+      return;
+    }
     setBusy("correction"); setError(""); setNotice("");
     try {
       const group = correction.group;
-      const correctionRows = [...correction.checkIns, ...correction.breaks.flatMap((pair) => [pair.start, pair.end]), ...correction.checkOuts];
-      const eventsPayload = correctionRows
-        .filter((entry) => entry.occurred_at)
-        .map((entry) => {
-          const original = group.events.find((event) => event.id === entry.id);
-          // An untouched minute-resolution field must not truncate the recorded seconds.
-          const unchanged = original && entry.occurred_at === riyadhDateTimeInput(new Date(original.occurred_at));
-          return {
-            ...(entry.id ? { id: entry.id } : {}),
-            action: entry.action,
-            occurred_at: unchanged ? original.occurred_at : riyadhDateTimeToIso(entry.occurred_at),
-          };
-        });
+      const correctionRows = [correction.checkIn, correction.breakStart, correction.breakEnd, correction.checkOut];
+      const resolved = resolveCorrectionTimes(
+        correctionRows.map((entry) => ({ id: entry.id, action: entry.action as CorrectionAction, time: entry.occurred_at })),
+        group.shift_date,
+        group.events,
+      );
+      const eventsPayload = correctionRows.filter((entry) => entry.occurred_at).map((entry) => ({
+        ...(entry.id ? { id: entry.id } : {}),
+        action: entry.action,
+        occurred_at: resolved[entry.action as CorrectionAction]!,
+      }));
       await hrApi("/attendance-corrections", {
         method: "POST",
         body: JSON.stringify({
@@ -217,16 +234,11 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     finally { setBusy(""); }
   };
 
-  const updateCorrectionEvent = (action: AttendanceAction, index: number, value: string, pairIndex?: number) => {
-    setCorrection((current) => {
-      if (!current) return current;
-      if (action === "check_in") return { ...current, checkIns: current.checkIns.map((entry, entryIndex) => entryIndex === index ? { ...entry, occurred_at: value } : entry) };
-      if (action === "check_out") return { ...current, checkOuts: current.checkOuts.map((entry, entryIndex) => entryIndex === index ? { ...entry, occurred_at: value } : entry) };
-      if (pairIndex === undefined) return current;
-      return { ...current, breaks: current.breaks.map((pair, entryIndex) => entryIndex === pairIndex
-        ? { ...pair, [action === "break_start" ? "start" : "end"]: { ...pair[action === "break_start" ? "start" : "end"], occurred_at: value } }
-        : pair) };
-    });
+  const updateCorrectionEvent = (action: AttendanceAction, value: string) => {
+    const field = action === "check_in" ? "checkIn"
+      : action === "break_start" ? "breakStart"
+        : action === "break_end" ? "breakEnd" : "checkOut";
+    setCorrection((current) => current ? { ...current, [field]: { ...current[field], occurred_at: value } } : current);
   };
 
   const saveViolation = async (event: FormEvent) => {
@@ -383,14 +395,32 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       </>}
     </section>
 
-    {correction && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && busy !== "correction" && setCorrection(null)}><form className="hr-modal hr-compact-modal hr-correction-modal" onSubmit={correctAttendance}><header><div><span>{translate("تصحيح الحضور")}</span><h3>{translate("تصحيح الوردية")} · {correction.group.shift_date}</h3></div><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)} aria-label={translate("إغلاق")}><X /></button></header>
-      <div className="hr-correction-employee"><span>{translate("الموظف")}</span><strong>{employeeName(correction.group.employee)}</strong><small>{auditTranslate("توقيت الرياض · أدخل الوقت الفعلي للحركة.", "Riyadh time · Enter the actual movement time.")}</small></div>
+    {correction && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && busy !== "correction" && setCorrection(null)}><form className="hr-modal hr-compact-modal hr-correction-modal" onSubmit={correctAttendance}><header><div><span>{auditTranslate("تصحيح سجل الوردية", "SHIFT ATTENDANCE CORRECTION")}</span><h3>{employeeName(correction.group.employee)}</h3></div><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)} aria-label={translate("إغلاق")}><X /></button></header>
+      <div className="hr-correction-employee" aria-label={auditTranslate("بيانات الموظف والوردية", "Employee and shift details")}><div><span>{auditTranslate("التاريخ المحاسبي", "Accounting date")}</span><strong>{correction.group.shift_date}</strong></div><div><span>{auditTranslate("اسم الوردية", "Shift name")}</span><strong>{i18n.language === "en"
+        ? (correction.group.employee.shift_name_en && !/[\u0600-\u06ff]/.test(correction.group.employee.shift_name_en) ? correction.group.employee.shift_name_en : correction.group.employee.shift_id || "—")
+        : correction.group.employee.shift_name_ar || correction.group.employee.shift_name_en || correction.group.employee.shift_id || "—"}</strong></div><small>{auditTranslate("أدخل وقت الرياض فقط. يمكن إدخال استراحة واحدة كحد أقصى.", "Riyadh time only. One break pair is allowed per day.")}</small></div>
       {error && <div className="hr-alert error" role="alert"><AlertTriangle size={16} />{error}</div>}
+      {correction.duplicateActions.length > 0 && <div className="hr-correction-blocking" role="alert"><AlertTriangle size={18} /><div><strong>{auditTranslate("لا يمكن تصحيح هذه الوردية من هذه الشاشة.", "This shift cannot be corrected here.")}</strong><p>{auditTranslate("تحتوي السجلات التاريخية على حركات مكررة. تم الاحتفاظ بكل الحركات، ويجب مراجعة السجل كاملًا قبل أي تصحيح.", "Historical records contain duplicate actions. Every event is preserved; review the complete audit history before making a correction.")}</p><ul>{correction.group.events.map((entry) => <li key={entry.id}><span>{actionLabels[entry.action]}</span><time>{auditTime(entry.occurred_at, correction.group.shift_date)}</time></li>)}</ul></div></div>}
       <div className="hr-correction-fields">
-        <fieldset className="hr-correction-section"><legend>{translate("تسجيل الحضور")}</legend>{correction.checkIns.map((entry, index) => <label key={`check-in-${entry.id ?? index}`}><span>{correction.checkIns.length > 1 ? `${translate("حضور")} ${index + 1}` : translate("وقت الحضور")} {entry.id ? "" : `· ${translate("إضافة")}`}</span><input required type="datetime-local" value={entry.occurred_at} onChange={(event) => updateCorrectionEvent("check_in", index, event.target.value)} /></label>)}</fieldset>
-        <fieldset className="hr-correction-section"><legend>{translate("الاستراحات")}</legend>{correction.breaks.map((pair, index) => <div className="hr-correction-break-pair" key={`break-pair-${pair.start.id ?? pair.end.id ?? index}`}><label><span>{correction.breaks.length > 1 ? `${translate("بدء الاستراحة")} ${index + 1}` : translate("بدء الاستراحة")}</span><input type="datetime-local" required={Boolean(pair.start.id || pair.end.id || pair.end.occurred_at)} value={pair.start.occurred_at} onChange={(event) => updateCorrectionEvent("break_start", index, event.target.value, index)} /></label><label><span>{correction.breaks.length > 1 ? `${translate("العودة من الاستراحة")} ${index + 1}` : translate("العودة من الاستراحة")}</span><input type="datetime-local" required={Boolean(pair.end.id || pair.start.id || pair.start.occurred_at)} value={pair.end.occurred_at} onChange={(event) => updateCorrectionEvent("break_end", index, event.target.value, index)} /></label></div>)}<button className="hr-correction-add-break" type="button" disabled={busy === "correction"} onClick={() => setCorrection((current) => current ? { ...current, breaks: [...current.breaks, { start: correctionEvent(undefined, "break_start"), end: correctionEvent(undefined, "break_end") }] } : current)}><Plus size={15} /> {translate("إضافة فترة استراحة")}</button></fieldset>
-        <fieldset className="hr-correction-section"><legend>{translate("تسجيل الانصراف")}</legend>{correction.checkOuts.map((entry, index) => <label key={`check-out-${entry.id ?? index}`}><span>{correction.checkOuts.length > 1 ? `${translate("انصراف")} ${index + 1}` : translate("وقت الانصراف")} {entry.id ? "" : `· ${translate("إضافة")}`}</span><input required type="datetime-local" value={entry.occurred_at} onChange={(event) => updateCorrectionEvent("check_out", index, event.target.value)} /></label>)}</fieldset>
-      </div><footer><button className="hr-primary" disabled={busy === "correction"}>{busy === "correction" ? translate("جارٍ الحفظ…") : translate("حفظ التصحيح")}</button><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
+        {[correction.checkIn, correction.checkOut, correction.breakStart, correction.breakEnd].map((entry, fieldIndex) => {
+          const labels = [
+            auditTranslate("حضور", "Check-in"),
+            auditTranslate("انصراف", "Check-out"),
+            auditTranslate("استراحة", "Break start"),
+            auditTranslate("انتهاء استراحة", "Break end"),
+          ];
+          const required = entry.action === "check_in" || entry.action === "check_out";
+          return <label className={`hr-correction-time-field field-${fieldIndex + 1}`} key={entry.action} htmlFor={`correction-${entry.action}`}>
+            <span>{labels[fieldIndex]}{required ? <b aria-hidden="true"> *</b> : null}</span>
+            <select id={`correction-${entry.action}`} required={required} value={entry.occurred_at} aria-label={labels[fieldIndex]} aria-invalid={(entry.action === "break_start" && Boolean(entry.occurred_at) !== Boolean(correction.breakEnd.occurred_at)) || (entry.action === "break_end" && Boolean(entry.occurred_at) !== Boolean(correction.breakStart.occurred_at))} disabled={correction.duplicateActions.length > 0 || busy === "correction"} onChange={(event) => updateCorrectionEvent(entry.action, event.target.value)}>
+              <option value="">{auditTranslate("بدون وقت", "No time")}</option>
+              {correctionTimeOptions.map((time) => <option key={time} value={time}>{time}</option>)}
+            </select>
+          </label>;
+        })}
+      </div>
+      {Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at) && <p className="hr-correction-pair-error" role="alert">{auditTranslate("يجب إدخال وقتي بدء الاستراحة وانتهائها معًا، أو تركهما فارغين.", "Enter both break times, or leave both blank.")}</p>}
+      <footer><button className="hr-primary" disabled={busy === "correction" || correction.duplicateActions.length > 0 || !correction.checkIn.occurred_at || !correction.checkOut.occurred_at || (Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at))}>{busy === "correction" ? translate("جارٍ الحفظ…") : translate("حفظ التصحيح")}</button><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
     {eventDraft && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEventDraft(null)}><form className="hr-modal hr-compact-modal" onSubmit={saveEvent}><header><div><span>{translate("سجل الحضور")}</span><h3>{eventDraft.id ? translate("تعديل سجل الحضور") : translate("إضافة سجل يدوي")}</h3></div><button type="button" onClick={() => setEventDraft(null)} aria-label={translate("إغلاق")}><X /></button></header><div className="hr-form-grid">
       <label><span>{translate("الموظف")}</span><select required value={eventDraft.user_id} onChange={(event) => setEventDraft({ ...eventDraft, user_id: event.target.value })}><option value="">{translate("اختر الموظف")}</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employeeName(employee)} — {sectionName(employee)}</option>)}</select></label>
       <label><span>{translate("الحركة")}</span><select disabled={!eventDraft.id} value={eventDraft.action} onChange={(event) => setEventDraft({ ...eventDraft, action: event.target.value as AttendanceAction })}>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></label>

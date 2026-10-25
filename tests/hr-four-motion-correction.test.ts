@@ -26,7 +26,7 @@ const baseSession = {
   window_end_at: new Date("2026-06-28T14:00:00Z"),
 };
 
-function mockTransaction({ session = baseSession as typeof baseSession | null, rows = original, overlap = false, failInsert = false } = {}) {
+function mockTransaction({ session = baseSession as typeof baseSession | null, rows = original, overlap = false, failInsert = false, otherBreak = false } = {}) {
   const writes: Array<{ table: unknown; values: Record<string, unknown> }> = [];
   let locked = false;
   let sessionReads = 0;
@@ -34,14 +34,17 @@ function mockTransaction({ session = baseSession as typeof baseSession | null, r
     execute: async () => { locked = true; },
     select: () => {
       let table: unknown;
+      let dailyBreakQuery = false;
       const result = () => {
         expect(locked).toBe(true);
+        if (dailyBreakQuery) return otherBreak ? [{ id: 99 }] : [];
         if (table === attendance_events) return rows;
         sessionReads++;
         return sessionReads === 1 ? session ? [session] : [] : overlap ? [{ id: 99 }] : [];
       };
       const query = {
         from: (value: unknown) => { table = value; return query; },
+        leftJoin: () => { dailyBreakQuery = true; return query; },
         where: () => query, orderBy: () => query, limit: () => Promise.resolve(result()),
         then: (resolve: (value: unknown[]) => void) => resolve(result()),
       };
@@ -91,12 +94,12 @@ describe("four-motion correction validation", () => {
     bad.events[2].occurred_at = bad.events[1].occurred_at;
     expect(() => validateCorrection(bad, original)).toThrow("غير متساوية");
   });
-  test("preserves multiple break pairs", () => {
+  test("rejects multiple break pairs without deleting historical events", () => {
     const repeated = input();
     repeated.events.splice(3, 0,
       { action: "break_start", occurred_at: "2026-06-28T10:00:00.000Z" },
       { action: "break_end", occurred_at: "2026-06-28T10:10:00.000Z" });
-    expect(validateCorrection(repeated, original).filter((event) => event.action === "break_start")).toHaveLength(2);
+    expect(() => validateCorrection(repeated, original)).toThrow("استراحة واحدة");
   });
   test("permits a shift without breaks but requires checkout and forbids future timestamps", () => {
     const noBreak = input(); noBreak.events.splice(1, 2);
@@ -108,6 +111,11 @@ describe("four-motion correction validation", () => {
 });
 
 describe("atomic four-motion session correction", () => {
+  test("rejects a break already taken in another session on the same accounting day", async () => {
+    const { writes } = mockTransaction({ otherBreak: true });
+    await expect(correctAttendance(input(), 7)).rejects.toThrow("استراحة واحدة");
+    expect(writes).toHaveLength(0);
+  });
   test("updates existing punches, adds missing ones and updates session boundaries in one transaction", async () => {
     const { writes } = mockTransaction();
     await expect(correctAttendance(input(), 7)).resolves.toEqual({ success: true });

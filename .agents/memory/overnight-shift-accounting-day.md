@@ -36,8 +36,22 @@ break start, break return, and checkout, including edits to completed records.
 
 **Why:** the user explicitly requested four-movement correction and replacing
 movement details with the record status.
-**How to apply:** keep all recorded break pairs editable in the same correction;
-do not revert to checkout-only correction or restore the details button.
+**How to apply:** do not revert to checkout-only correction or restore the details
+button. Apply the single-break correction rule below without deleting historical
+events.
+
+The owner clarified: "لايمكن ان يحتوي على اكثر من استراحة وغير ممسموح الا اخذ
+استراحة مره واحد فيه اليوم". Only one break is allowed per accounting day,
+including across separate shift sessions on that day. Correction displays employee
+name, date and shift name above exactly four time-only dropdowns: check-in /
+checkout, then break / break end. No date inputs or add-break action.
+
+**Why:** the user explicitly corrected the previous repeated-break assumption.
+**How to apply:** reject a second break in employee recording and HR correction
+under the same employee lock. Keep historical repeated events visible without
+silently dropping them; duplicate-action records require explicit review rather
+than saving a four-field subset. Resolve overnight time selections into actual
+dates while preserving the original shift accounting day.
 
 The user also requested a full-width biometric panel: remove its adjacent
 attendance-days card, but retain the top monthly summary. Hide the generic

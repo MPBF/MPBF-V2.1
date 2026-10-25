@@ -1,8 +1,9 @@
-import { and, eq, gte, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { attendance_events, attendance_sessions } from "@shared/schema";
 import { db } from "./db";
 import { dayRange } from "./hr-report";
+import { dailyBreakScope } from "./hr-single-break";
 
 const action = z.enum(["check_in", "break_start", "break_end", "check_out"]);
 export const correctionInput = z.object({
@@ -43,6 +44,10 @@ export function validateCorrection(input: Correction, current: StoredEvent[], no
     if (new Date(event.occurred_at) > now) conflict("لا يمكن تسجيل حركة حضور بتاريخ مستقبلي");
   }
   if (seen.size !== current.length) conflict("يجب الحفاظ على جميع حركات السجل أثناء التصحيح");
+  if (input.events.filter((event) => event.action === "break_start").length > 1 ||
+    input.events.filter((event) => event.action === "break_end").length > 1) {
+    conflict("يسمح باستراحة واحدة فقط في اليوم");
+  }
   const timeline = input.events.slice().sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at));
   let state: "start" | "working" | "break" | "closed" = "start";
   for (let index = 0; index < timeline.length; index++) {
@@ -108,6 +113,15 @@ export async function correctAttendance(input: Correction, actorId: number) {
       return time < range.start || time >= range.end;
     })) {
       conflict("يجب أن تبقى الحركات غير المرتبطة بوردية ضمن تاريخ السجل");
+    }
+    if (timeline.some((event) => event.action === "break_start")) {
+      const otherBreaks = await tx.select({ id: attendance_events.id }).from(attendance_events)
+        .leftJoin(attendance_sessions, eq(attendance_events.session_id, attendance_sessions.id))
+        .where(and(
+          dailyBreakScope(input.user_id, input.shift_date),
+          notInArray(attendance_events.id, current.map((event) => event.id)),
+        )).limit(1);
+      if (otherBreaks.length) conflict("يسمح باستراحة واحدة فقط في اليوم");
     }
     const now = new Date();
     for (const event of timeline) {
