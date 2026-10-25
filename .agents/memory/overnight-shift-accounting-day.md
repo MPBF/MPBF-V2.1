@@ -21,6 +21,15 @@ for the HR audit table.
 **How to apply:** preserve separate shift sessions in this management audit
 view; do not treat the employee dashboard's daily grouping as a universal rule.
 
+In the HR audit tab, incomplete shifts belong in the audit table itself, marked
+red with an inline correction action, not in a separate incomplete-shifts section.
+Only overdue unclosed sessions are incomplete; ongoing shifts are not errors.
+
+**Why:** the user requested removing the separate section and correcting the
+red-marked rows within the audit log.
+**How to apply:** retain the real break-end/checkout correction flow without
+restoring a second table or changing attendance accounting.
+
 The user also requested a full-width biometric panel: remove its adjacent
 attendance-days card, but retain the top monthly summary. Hide the generic
 location-permission paragraph, shift-accounting-date paragraph, and prior

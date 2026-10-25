@@ -3,7 +3,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "../server/db";
 import router from "../server/hr";
-import { shift_definitions } from "../shared/schema";
+import { attendance_sessions, shift_definitions } from "../shared/schema";
 
 jest.mock("../server/db", () => ({ db: { select: jest.fn() } }));
 jest.mock("../server/auth", () => ({
@@ -16,6 +16,7 @@ describe("HR audit month read contract", () => {
   let condition: unknown;
   let selected: Record<string, unknown>;
   let joined: unknown[];
+  let limitCalls: number;
   const dialect = new PgDialect();
   const rows = [{ id: 4, session_id: 3, shift_date: "2026-10-31", occurred_at: "2026-11-01T00:00:00Z", shift_name_ar: "ليلية", shift_name_en: "Night" }];
 
@@ -32,14 +33,18 @@ describe("HR audit month read contract", () => {
   afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
   beforeEach(() => {
     joined = [];
+    limitCalls = 0;
     jest.mocked(db.select).mockImplementation(((fields: Record<string, unknown>) => {
       selected = fields;
+      let table: unknown;
       const builder = {
-        from: () => builder,
+        from: (value: unknown) => { table = value; return builder; },
         innerJoin: () => builder,
         leftJoin: (table: unknown) => { joined.push(table); return builder; },
         where: (value: unknown) => { condition = value; return builder; },
-        orderBy: async () => rows,
+        orderBy: () => builder,
+        limit: () => { limitCalls++; return builder; },
+        then: (resolve: (value: unknown[]) => void) => resolve(table === attendance_sessions ? [] : rows),
       };
       return builder;
     }) as unknown as typeof db.select);
@@ -78,5 +83,22 @@ describe("HR audit month read contract", () => {
   test("rejects invalid months", async () => {
     expect((await fetch(`${url}?month=2026-13`)).status).toBe(400);
     expect((await fetch(`${url}?month=2026-10invalid`)).status).toBe(400);
+  });
+
+  test("monthly incomplete-session lookup is scoped to accounting month without the old 100-row cap", async () => {
+    const response = await fetch(`${url.replace("attendance-events", "attendance-sessions/open")}?month=2026-12&user_id=12&section_id=film`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+    expect(compiled().params).toEqual(expect.arrayContaining(["2026-12-01", "2027-01-01", 12, "film"]));
+    expect(compiled().sql).toContain('"attendance_sessions"."check_out_at" is null');
+    expect(compiled().sql).toContain('"attendance_sessions"."window_end_at" <');
+    expect(limitCalls).toBe(0);
+  });
+
+  test("legacy incomplete-session callers retain their cap and invalid months are rejected", async () => {
+    const endpoint = url.replace("attendance-events", "attendance-sessions/open");
+    expect((await fetch(endpoint)).status).toBe(200);
+    expect(limitCalls).toBe(1);
+    expect((await fetch(`${endpoint}?month=2026-13`)).status).toBe(400);
   });
 });

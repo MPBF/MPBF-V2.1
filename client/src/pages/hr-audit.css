@@ -20,6 +20,50 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.hr-table-wrap .hr-audit-table tbody tr.hr-audit-incomplete > td {
+  background-color: #fff0ed;
+  color: #702c27;
+}
+.hr-table-wrap .hr-audit-table tbody tr.hr-audit-incomplete > td:first-child {
+  border-inline-start: 3px solid #a8443c;
+}
+.hr-table-wrap .hr-audit-table tbody tr.hr-audit-incomplete:hover > td {
+  background-color: #ffe5e0;
+  color: #702c27;
+}
+.hr-audit-incomplete-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 7px;
+  padding: 3px 8px;
+  border: 1px solid #c97970;
+  border-radius: 999px;
+  background: #fff8f6;
+  color: #7e302b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.hr-audit-table .hr-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+.hr-audit-table .hr-audit-correct-action {
+  min-height: 44px;
+  border-color: #a8443c;
+  color: #7e302b;
+}
+.hr-audit-table .hr-audit-correct-action:hover {
+  background-color: #f8d6d1;
+  color: #702c27;
+}
+.hr-audit-table .hr-audit-correct-action:focus-visible {
+  outline: 2px solid #7e302b;
+  outline-offset: 2px;
+}
 .hr-audit-event-list {
   display: flex;
   flex-direction: column;
