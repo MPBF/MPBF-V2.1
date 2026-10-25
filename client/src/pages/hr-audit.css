@@ -1,0 +1,57 @@
+.hr-table-wrap .hr-audit-table {
+  min-width: 1080px;
+}
+.hr-audit-table th,
+.hr-audit-table td {
+  vertical-align: top;
+}
+.hr-table-wrap .hr-audit-table td:nth-child(2) {
+  text-align: center;
+  white-space: nowrap;
+}
+.hr-audit-table .hr-employee-cell strong,
+.hr-audit-table .hr-employee-cell small {
+  display: block;
+}
+.hr-audit-times {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.hr-audit-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+.hr-audit-event-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.hr-audit-event-list article > div:first-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.hr-audit-event-list small {
+  overflow-wrap: anywhere;
+}
+.hr-audit-event-list .hr-icon-action {
+  min-height: 44px;
+}
+@media (max-width: 640px) {
+  .hr-audit-table .hr-icon-action {
+    min-height: 44px;
+  }
+  .hr-audit-event-list article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
