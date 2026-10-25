@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requireAnyPermission } from "./auth";
 import { db } from "./db";
 import { dayRange, monthRange, summarizeAttendance } from "./hr-report";
+import { correctAttendance, correctionInput } from "./hr-correction";
 
 const router = Router();
 const hrAdmin = requireAnyPermission("manage_hr", "manage_attendance", "admin");
@@ -317,6 +318,10 @@ router.get("/attendance-sessions/open", handle(async (req, res) => {
     if (event.sessionId != null && !latest.has(event.sessionId)) latest.set(event.sessionId, event.action);
   }
   res.json(rows.map((row) => ({ ...row, last_action: latest.get(row.id) ?? null })));
+}));
+
+router.post("/attendance-corrections", handle(async (req, res) => {
+  res.json(await correctAttendance(correctionInput.parse(req.body), req.user!.id));
 }));
 
 router.post("/attendance-sessions/:id/checkout", handle(async (req, res) => {
