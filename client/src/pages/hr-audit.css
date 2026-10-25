@@ -1,18 +1,22 @@
 .hr-table-wrap .hr-audit-table {
   min-width: 1080px;
 }
+
 .hr-audit-table th,
 .hr-audit-table td {
   vertical-align: top;
 }
+
 .hr-table-wrap .hr-audit-table td:nth-child(2) {
   text-align: center;
   white-space: nowrap;
 }
+
 .hr-audit-table .hr-employee-cell strong,
 .hr-audit-table .hr-employee-cell small {
   display: block;
 }
+
 .hr-audit-times {
   display: flex;
   flex-direction: column;
@@ -20,82 +24,192 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.hr-table-wrap .hr-audit-table tbody tr.hr-audit-incomplete > td {
+
+.hr-table-wrap .hr-audit-table tbody tr.hr-audit-overdue > td {
   background-color: #fff0ed;
   color: #702c27;
 }
-.hr-table-wrap .hr-audit-table tbody tr.hr-audit-incomplete > td:first-child {
+
+.hr-table-wrap .hr-audit-table tbody tr.hr-audit-overdue > td:first-child {
   border-inline-start: 3px solid #a8443c;
 }
-.hr-table-wrap .hr-audit-table tbody tr.hr-audit-incomplete:hover > td {
+
+.hr-table-wrap .hr-audit-table tbody tr.hr-audit-overdue:hover > td {
   background-color: #ffe5e0;
   color: #702c27;
 }
-.hr-audit-incomplete-badge {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  margin-top: 7px;
-  padding: 3px 8px;
-  border: 1px solid #c97970;
+
+.hr-audit-status {
+  min-height: 40px;
+  padding: 7px 12px;
+  border: 1px solid #9cbdb1;
   border-radius: 999px;
+  background: #eff7f3;
+  color: #23604d;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.hr-audit-status.incomplete {
+  border-color: #d6b775;
+  background: #fbf5e8;
+  color: #795a1f;
+}
+
+.hr-audit-overdue .hr-audit-status.incomplete {
+  border-color: #c97970;
   background: #fff8f6;
   color: #7e302b;
-  font-size: 0.75rem;
-  font-weight: 700;
-  line-height: 1.4;
 }
-.hr-audit-table .hr-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 6px;
+
+.hr-audit-status:hover {
+  border-color: #286d59;
+  background: #e1f0e9;
 }
-.hr-audit-table .hr-audit-correct-action {
-  min-height: 44px;
-  border-color: #a8443c;
-  color: #7e302b;
+
+.hr-audit-status.incomplete:hover {
+  border-color: #a77b32;
+  background: #f5ebd3;
 }
-.hr-audit-table .hr-audit-correct-action:hover {
-  background-color: #f8d6d1;
-  color: #702c27;
-}
-.hr-audit-table .hr-audit-correct-action:focus-visible {
-  outline: 2px solid #7e302b;
+
+.hr-audit-status:focus-visible,
+.hr-correction-add-break:focus-visible {
+  outline: 2px solid #276b57;
   outline-offset: 2px;
 }
-.hr-audit-event-list {
-  display: flex;
-  flex-direction: column;
+
+.hr-correction-modal {
+  width: min(720px, calc(100vw - 28px));
+  max-height: min(88dvh, 900px);
+  overflow: auto;
+}
+
+.hr-correction-employee {
+  display: grid;
+  gap: 4px;
+  padding: 14px 18px;
+  border-block: 1px solid #e2ebe6;
+  background: #f5f8f4;
+}
+
+.hr-correction-employee > span,
+.hr-correction-employee small {
+  color: #697a71;
+  font-size: 0.82rem;
+}
+
+.hr-correction-employee strong {
+  color: #233f36;
+}
+
+.hr-correction-fields {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+}
+
+.hr-correction-section {
+  display: grid;
   gap: 12px;
-  padding: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #dce7e0;
+  border-radius: 10px;
+}
+
+.hr-correction-section legend {
+  padding-inline: 6px;
+  color: #315c4b;
+  font-weight: 750;
+}
+
+.hr-correction-section > label,
+.hr-correction-break-pair label {
+  display: grid;
+  gap: 6px;
   min-width: 0;
 }
-.hr-audit-event-list article {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
+
+.hr-correction-section label > span {
+  color: #56685f;
+  font-size: 0.84rem;
+}
+
+.hr-correction-section input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #c9d7cf;
+  border-radius: 7px;
+  background: #fff;
+  color: #263b32;
+  font: inherit;
+}
+
+.hr-correction-section input:focus-visible {
+  border-color: #32745c;
+  outline: 2px solid #32745c;
+  outline-offset: 1px;
+}
+
+.hr-correction-break-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5ece7;
 }
-.hr-audit-event-list article > div:first-child {
+
+.hr-correction-break-pair:last-of-type {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.hr-correction-add-break {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 7px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid #b9d1c5;
+  border-radius: 7px;
+  background: #f5faf6;
+  color: #315f4a;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hr-correction-modal > footer {
+  position: sticky;
+  bottom: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid #e2ebe6;
+  background: #fff;
 }
-.hr-audit-event-list small {
-  overflow-wrap: anywhere;
-}
-.hr-audit-event-list .hr-icon-action {
-  min-height: 44px;
-}
+
 @media (max-width: 640px) {
-  .hr-audit-table .hr-icon-action {
+  .hr-audit-status {
     min-height: 44px;
   }
-  .hr-audit-event-list article {
-    align-items: stretch;
-    flex-direction: column;
+
+  .hr-correction-break-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hr-correction-modal {
+    width: calc(100vw - 20px);
+    max-height: 92dvh;
   }
 }

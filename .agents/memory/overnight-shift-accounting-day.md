@@ -13,8 +13,8 @@ must not change attendance calculations or infer missing checkout events.
 
 The HR audit tab has a distinct approved grouping: one row per employee per
 shift session, not one row per employee-day when multiple shifts exist.
-Show the current month by default in descending accounting-date order, retain
-every repeated break, and keep each underlying event editable/deletable.
+Show the current month by default in descending accounting-date order and retain
+every repeated break.
 
 **Why:** the user explicitly approved the per-employee/per-shift organization
 for the HR audit table.
@@ -29,6 +29,15 @@ Only overdue unclosed sessions are incomplete; ongoing shifts are not errors.
 red-marked rows within the audit log.
 **How to apply:** retain the real break-end/checkout correction flow without
 restoring a second table or changing attendance accounting.
+
+The audit row's action is a clickable "مكتمل" / "غير مكتمل" status, not a
+movement-details button. Correction includes all four movement types: check-in,
+break start, break return, and checkout, including edits to completed records.
+
+**Why:** the user explicitly requested four-movement correction and replacing
+movement details with the record status.
+**How to apply:** keep all recorded break pairs editable in the same correction;
+do not revert to checkout-only correction or restore the details button.
 
 The user also requested a full-width biometric panel: remove its adjacent
 attendance-days card, but retain the top monthly summary. Hide the generic

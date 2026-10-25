@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarDays, Check, Download, Edit3, FileDown, Plus, Printer, Search, ShieldAlert, Trash2, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, Download, FileDown, Plus, Printer, Search, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import i18n, { intlLocale, translate } from "../i18n";
@@ -52,6 +52,9 @@ type Violation = HrEmployee & {
 type Filters = { section: string; user: string };
 type EventDraft = { id?: number; user_id: string; action: AttendanceAction; occurred_at: string };
 type ViolationDraft = { user_id: string; title: string; details: string };
+type CorrectionEventDraft = { id?: number; action: AttendanceAction; occurred_at: string };
+type CorrectionBreakDraft = { start: CorrectionEventDraft; end: CorrectionEventDraft };
+type AttendanceCorrection = { group: AuditGroup; checkIns: CorrectionEventDraft[]; breaks: CorrectionBreakDraft[]; checkOuts: CorrectionEventDraft[] };
 
 const rawActionLabels: Record<AttendanceAction, string> = {
   check_in: "تسجيل حضور",
@@ -90,6 +93,27 @@ const formatMinutes = (minutes: number) => i18n.language === "en"
 const query = (values: Record<string, string>) => new URLSearchParams(Object.entries(values).filter(([, value]) => value)).toString();
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character]!);
 const auditTranslate = (source: string, english: string, values?: Record<string, unknown>) => translate(source, i18n.language === "en" ? { ...values, defaultValue: english } : values);
+const correctionEvent = (entry: AttendanceEvent | undefined, action: AttendanceAction): CorrectionEventDraft => ({
+  ...(entry ? { id: entry.id } : {}),
+  action,
+  occurred_at: entry ? riyadhDateTimeInput(new Date(entry.occurred_at)) : "",
+});
+const correctionFromGroup = (group: AuditGroup): AttendanceCorrection => {
+  const byAction = (action: AttendanceAction) => group.events.filter((entry) => entry.action === action);
+  const checkIns = byAction("check_in");
+  const starts = byAction("break_start");
+  const ends = byAction("break_end");
+  const checkOuts = byAction("check_out");
+  return {
+    group,
+    checkIns: (checkIns.length ? checkIns : [undefined]).map((entry) => correctionEvent(entry, "check_in")),
+    breaks: Array.from({ length: Math.max(1, starts.length, ends.length) }, (_, index) => ({
+      start: correctionEvent(starts[index], "break_start"),
+      end: correctionEvent(ends[index], "break_end"),
+    })),
+    checkOuts: (checkOuts.length ? checkOuts : [undefined]).map((entry) => correctionEvent(entry, "check_out")),
+  };
+};
 
 function printDocument(title: string, body: string) {
   const popup = window.open("", "_blank", "width=1100,height=800");
@@ -105,12 +129,11 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const [month, setMonth] = useState(riyadhMonth);
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
   const [openSessions, setOpenSessions] = useState<OpenSession[]>([]);
-  const [correction, setCorrection] = useState<{ session: OpenSession; checkout: string; breakEnd: string } | null>(null);
+  const [correction, setCorrection] = useState<AttendanceCorrection | null>(null);
   const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [violations, setViolations] = useState<Violation[]>([]);
   const [eventDraft, setEventDraft] = useState<EventDraft | null>(null);
   const [violationDraft, setViolationDraft] = useState<ViolationDraft | null>(null);
-  const [auditDetails, setAuditDetails] = useState<AuditGroup | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -158,23 +181,52 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     finally { setBusy(""); }
   };
 
-  const correctSession = async (event: FormEvent) => {
+  const correctAttendance = async (event: FormEvent) => {
     event.preventDefault();
     if (!correction) return;
     setBusy("correction"); setError(""); setNotice("");
     try {
-      await hrApi(`/attendance-sessions/${correction.session.id}/checkout`, {
+      const group = correction.group;
+      const correctionRows = [...correction.checkIns, ...correction.breaks.flatMap((pair) => [pair.start, pair.end]), ...correction.checkOuts];
+      const eventsPayload = correctionRows
+        .filter((entry) => entry.occurred_at)
+        .map((entry) => {
+          const original = group.events.find((event) => event.id === entry.id);
+          // An untouched minute-resolution field must not truncate the recorded seconds.
+          const unchanged = original && entry.occurred_at === riyadhDateTimeInput(new Date(original.occurred_at));
+          return {
+            ...(entry.id ? { id: entry.id } : {}),
+            action: entry.action,
+            occurred_at: unchanged ? original.occurred_at : riyadhDateTimeToIso(entry.occurred_at),
+          };
+        });
+      await hrApi("/attendance-corrections", {
         method: "POST",
         body: JSON.stringify({
-          occurred_at: riyadhDateTimeToIso(correction.checkout),
-          ...(correction.session.last_action === "break_start" ? { break_end_at: riyadhDateTimeToIso(correction.breakEnd) } : {}),
+          session_id: group.events[0]?.session_id ?? null,
+          user_id: group.user_id,
+          shift_date: group.shift_date,
+          expected_events: group.events.map(({ id, updated_at }) => ({ id, updated_at })),
+          events: eventsPayload,
         }),
       });
       setCorrection(null);
-      setNotice(translate("تم تصحيح الانصراف واحتساب الوردية في تاريخ بدايتها."));
+      setNotice(translate("تم حفظ تصحيح الحضور."));
       await load();
     } catch (cause) { setError((cause as Error).message); }
     finally { setBusy(""); }
+  };
+
+  const updateCorrectionEvent = (action: AttendanceAction, index: number, value: string, pairIndex?: number) => {
+    setCorrection((current) => {
+      if (!current) return current;
+      if (action === "check_in") return { ...current, checkIns: current.checkIns.map((entry, entryIndex) => entryIndex === index ? { ...entry, occurred_at: value } : entry) };
+      if (action === "check_out") return { ...current, checkOuts: current.checkOuts.map((entry, entryIndex) => entryIndex === index ? { ...entry, occurred_at: value } : entry) };
+      if (pairIndex === undefined) return current;
+      return { ...current, breaks: current.breaks.map((pair, entryIndex) => entryIndex === pairIndex
+        ? { ...pair, [action === "break_start" ? "start" : "end"]: { ...pair[action === "break_start" ? "start" : "end"], occurred_at: value } }
+        : pair) };
+    });
   };
 
   const saveViolation = async (event: FormEvent) => {
@@ -184,18 +236,6 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     try {
       await hrApi("/violations", { method: "POST", body: JSON.stringify({ ...violationDraft, user_id: Number(violationDraft.user_id) }) });
       setViolationDraft(null); setNotice(translate("تم تسجيل المخالفة وإتاحتها للموظف.")); await load();
-    } catch (cause) { setError((cause as Error).message); }
-    finally { setBusy(""); }
-  };
-
-  const deleteAttendanceEvent = async (entry: AttendanceEvent) => {
-    if (!window.confirm(translate("حذف سجل {{action}} للموظف {{employee}} بتاريخ {{date}}؟", { action: actionLabels[entry.action], employee: employeeName(entry), date: formatDateTime(entry.occurred_at) }))) return;
-    setBusy(`delete-event-${entry.id}`); setError(""); setNotice("");
-    try {
-      await hrApi(`/attendance-events/${entry.id}`, { method: "DELETE" });
-      setNotice(translate("تم حذف سجل الحضور."));
-      setAuditDetails(null);
-      await load();
     } catch (cause) { setError((cause as Error).message); }
     finally { setBusy(""); }
   };
@@ -292,8 +332,42 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
             session.user_id === group.user_id &&
             group.events.some((entry) => entry.session_id === session.id && entry.user_id === session.user_id)
           );
-          return <tr key={group.key} className={incompleteSession ? "hr-audit-incomplete" : undefined}>
-            <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small>{incompleteSession && <span className="hr-audit-incomplete-badge">{auditTranslate("غير مكتملة", "Incomplete")}</span>}</td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td><td><div className="hr-row-actions"><button className="hr-icon-action" type="button" aria-label={auditTranslate("تفاصيل وإجراءات حركات {{employee}} بتاريخ {{date}}", "Movement details and actions for {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onClick={() => setAuditDetails(group)}>{auditTranslate("تفاصيل الحركات", "Movements")} ({group.events.length.toLocaleString(intlLocale())})</button>{incompleteSession && <button className="hr-icon-action hr-audit-correct-action" type="button" onClick={() => setCorrection({ session: incompleteSession, checkout: "", breakEnd: "" })}>{auditTranslate("تصحيح الوردية", "Correct shift")}</button>}</div></td>
+          const ordered = group.events;
+          let breakDepth = 0;
+          let breaksWellFormed = true;
+          for (const entry of ordered) {
+            if (entry.action === "break_start") {
+              if (breakDepth > 0) breaksWellFormed = false;
+              breakDepth += 1;
+            }
+            if (entry.action === "break_end") {
+              if (breakDepth <= 0) breaksWellFormed = false;
+              else breakDepth -= 1;
+            }
+          }
+          const hasCheckIn = group.checkIns.length > 0;
+          const hasCheckOut = group.checkOuts.length > 0;
+          const firstCheckIn = group.checkIns[0];
+          const lastCheckOut = group.checkOuts[group.checkOuts.length - 1];
+          const checkInTime = firstCheckIn ? Date.parse(firstCheckIn.occurred_at) : Number.NaN;
+          const checkOutTime = lastCheckOut ? Date.parse(lastCheckOut.occurred_at) : Number.NaN;
+          const breaksOutsideShift = Boolean(firstCheckIn && lastCheckOut) && group.events.some((entry) =>
+            (entry.action === "break_start" || entry.action === "break_end") &&
+            (Date.parse(entry.occurred_at) <= checkInTime || Date.parse(entry.occurred_at) >= checkOutTime)
+          );
+          const malformedClosed = hasCheckOut && (
+            group.checkIns.length !== 1 ||
+            group.checkOuts.length !== 1 ||
+            breakDepth !== 0 ||
+            !breaksWellFormed ||
+            checkInTime >= checkOutTime ||
+            breaksOutsideShift
+          );
+          const incomplete = !hasCheckIn || !hasCheckOut || malformedClosed;
+          const overdueOpen = Boolean(incompleteSession && Date.now() > Date.parse(incompleteSession.shift_end_at));
+          const redRow = overdueOpen || malformedClosed;
+          return <tr key={group.key} className={redRow ? "hr-audit-overdue" : undefined}>
+            <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small></td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td><td><button className={`hr-audit-status ${incomplete ? "incomplete" : "complete"}`} type="button" aria-label={auditTranslate("تصحيح حالة حضور {{employee}} بتاريخ {{date}}", "Correct attendance status for {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onClick={() => setCorrection(correctionFromGroup(group))}>{incomplete ? auditTranslate("غير مكتمل", "Incomplete") : auditTranslate("مكتمل", "Complete")}</button></td>
           </tr>;
         })}</tbody></table>{loading && <div className="hr-empty" aria-live="polite">{translate("جارٍ التحميل…")}</div>}{!loading && !auditGroups.length && <div className="hr-empty">{auditTranslate("لا توجد سجلات مطابقة لهذا الشهر.", "No matching records for this month.")}</div>}</div>
       </>}
@@ -309,11 +383,14 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       </>}
     </section>
 
-    {correction && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setCorrection(null)}><form className="hr-modal hr-compact-modal" onSubmit={correctSession}><header><div><span>{translate("تصحيح الحضور")}</span><h3>{translate("تصحيح وردية")}{" "}{correction.session.shift_date}</h3></div><button type="button" onClick={() => setCorrection(null)} aria-label={translate("إغلاق")}><X /></button></header><p>{translate("الموظف:")}{" "}{employeeName(correction.session)}{" "}{translate("· الحضور:")}{" "}{formatDateTime(correction.session.check_in_at)}{translate(". أدخل وقت الانصراف الحقيقي، لا وقت إدخال التصحيح.")}</p><div className="hr-form-grid">
-      {correction.session.last_action === "break_start" && <label><span>{translate("وقت نهاية الاستراحة الفعلي (بتوقيت الرياض)")}</span><input required type="datetime-local" value={correction.breakEnd} onChange={(event) => setCorrection({ ...correction, breakEnd: event.target.value })} /></label>}
-      <label><span>{translate("وقت الانصراف الفعلي (بتوقيت الرياض)")}</span><input required type="datetime-local" value={correction.checkout} onChange={(event) => setCorrection({ ...correction, checkout: event.target.value })} /></label>
-    </div><footer><button className="hr-primary" disabled={busy === "correction"}>{busy === "correction" ? translate("جارٍ التصحيح…") : translate("حفظ التصحيح")}</button><button type="button" onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
-    {auditDetails && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAuditDetails(null)}><section className="hr-modal hr-compact-modal" role="dialog" aria-modal="true" aria-labelledby="audit-details-title"><header><div><span>{auditTranslate("حركات الوردية", "Shift movements")}</span><h3 id="audit-details-title">{employeeName(auditDetails.employee)} · {auditDetails.shift_date}</h3></div><button type="button" onClick={() => setAuditDetails(null)} aria-label={translate("إغلاق")}><X /></button></header><div className="hr-audit-event-list">{auditDetails.events.map((entry) => <article key={entry.id}><div><span className={`hr-action-pill ${entry.action}`}>{actionLabels[entry.action]}</span><small>{formatDateTime(entry.occurred_at)} · {entry.source === "manual" ? translate("يدوي") : translate("الموظف")}</small></div><div className="hr-row-actions"><button className="hr-icon-action" type="button" aria-label={auditTranslate("تعديل {{action}} عند {{time}}", "Edit {{action}} at {{time}}", { action: actionLabels[entry.action], time: formatDateTime(entry.occurred_at) })} onClick={() => { setEventDraft({ id: entry.id, user_id: String(entry.user_id), action: entry.action, occurred_at: riyadhDateTimeInput(new Date(entry.occurred_at)) }); setAuditDetails(null); }}><Edit3 size={15} />{" "}{translate("تعديل")}</button><button className="hr-icon-action danger" type="button" aria-label={auditTranslate("حذف {{action}} عند {{time}}", "Delete {{action}} at {{time}}", { action: actionLabels[entry.action], time: formatDateTime(entry.occurred_at) })} disabled={busy === `delete-event-${entry.id}`} onClick={() => void deleteAttendanceEvent(entry)}><Trash2 size={15} />{" "}{translate("حذف")}</button></div></article>)}</div><footer><button type="button" onClick={() => setAuditDetails(null)}>{translate("إغلاق")}</button></footer></section></div>}
+    {correction && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && busy !== "correction" && setCorrection(null)}><form className="hr-modal hr-compact-modal hr-correction-modal" onSubmit={correctAttendance}><header><div><span>{translate("تصحيح الحضور")}</span><h3>{translate("تصحيح الوردية")} · {correction.group.shift_date}</h3></div><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)} aria-label={translate("إغلاق")}><X /></button></header>
+      <div className="hr-correction-employee"><span>{translate("الموظف")}</span><strong>{employeeName(correction.group.employee)}</strong><small>{auditTranslate("توقيت الرياض · أدخل الوقت الفعلي للحركة.", "Riyadh time · Enter the actual movement time.")}</small></div>
+      {error && <div className="hr-alert error" role="alert"><AlertTriangle size={16} />{error}</div>}
+      <div className="hr-correction-fields">
+        <fieldset className="hr-correction-section"><legend>{translate("تسجيل الحضور")}</legend>{correction.checkIns.map((entry, index) => <label key={`check-in-${entry.id ?? index}`}><span>{correction.checkIns.length > 1 ? `${translate("حضور")} ${index + 1}` : translate("وقت الحضور")} {entry.id ? "" : `· ${translate("إضافة")}`}</span><input required type="datetime-local" value={entry.occurred_at} onChange={(event) => updateCorrectionEvent("check_in", index, event.target.value)} /></label>)}</fieldset>
+        <fieldset className="hr-correction-section"><legend>{translate("الاستراحات")}</legend>{correction.breaks.map((pair, index) => <div className="hr-correction-break-pair" key={`break-pair-${pair.start.id ?? pair.end.id ?? index}`}><label><span>{correction.breaks.length > 1 ? `${translate("بدء الاستراحة")} ${index + 1}` : translate("بدء الاستراحة")}</span><input type="datetime-local" required={Boolean(pair.start.id || pair.end.id || pair.end.occurred_at)} value={pair.start.occurred_at} onChange={(event) => updateCorrectionEvent("break_start", index, event.target.value, index)} /></label><label><span>{correction.breaks.length > 1 ? `${translate("العودة من الاستراحة")} ${index + 1}` : translate("العودة من الاستراحة")}</span><input type="datetime-local" required={Boolean(pair.end.id || pair.start.id || pair.start.occurred_at)} value={pair.end.occurred_at} onChange={(event) => updateCorrectionEvent("break_end", index, event.target.value, index)} /></label></div>)}<button className="hr-correction-add-break" type="button" disabled={busy === "correction"} onClick={() => setCorrection((current) => current ? { ...current, breaks: [...current.breaks, { start: correctionEvent(undefined, "break_start"), end: correctionEvent(undefined, "break_end") }] } : current)}><Plus size={15} /> {translate("إضافة فترة استراحة")}</button></fieldset>
+        <fieldset className="hr-correction-section"><legend>{translate("تسجيل الانصراف")}</legend>{correction.checkOuts.map((entry, index) => <label key={`check-out-${entry.id ?? index}`}><span>{correction.checkOuts.length > 1 ? `${translate("انصراف")} ${index + 1}` : translate("وقت الانصراف")} {entry.id ? "" : `· ${translate("إضافة")}`}</span><input required type="datetime-local" value={entry.occurred_at} onChange={(event) => updateCorrectionEvent("check_out", index, event.target.value)} /></label>)}</fieldset>
+      </div><footer><button className="hr-primary" disabled={busy === "correction"}>{busy === "correction" ? translate("جارٍ الحفظ…") : translate("حفظ التصحيح")}</button><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
     {eventDraft && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEventDraft(null)}><form className="hr-modal hr-compact-modal" onSubmit={saveEvent}><header><div><span>{translate("سجل الحضور")}</span><h3>{eventDraft.id ? translate("تعديل سجل الحضور") : translate("إضافة سجل يدوي")}</h3></div><button type="button" onClick={() => setEventDraft(null)} aria-label={translate("إغلاق")}><X /></button></header><div className="hr-form-grid">
       <label><span>{translate("الموظف")}</span><select required value={eventDraft.user_id} onChange={(event) => setEventDraft({ ...eventDraft, user_id: event.target.value })}><option value="">{translate("اختر الموظف")}</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employeeName(employee)} — {sectionName(employee)}</option>)}</select></label>
       <label><span>{translate("الحركة")}</span><select disabled={!eventDraft.id} value={eventDraft.action} onChange={(event) => setEventDraft({ ...eventDraft, action: event.target.value as AttendanceAction })}>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></label>
