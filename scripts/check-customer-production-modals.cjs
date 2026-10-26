@@ -641,10 +641,11 @@ const WebSocket = require("ws");
     const beforeFacingChecks = writes.length;
     await input("#cp-width", "10");
     for (const side of ["right", "left"]) {
-      await input("#cp-right", side === "right" ? "6" : "0");
-      await input("#cp-left", side === "left" ? "6" : "0");
+      await input(`#cp-${side}`, "6");
+      verify(`${side} selection synchronizes both sides`,
+        await evaluate("[document.querySelector('#cp-right').value,document.querySelector('#cp-left').value]"), ["6", "6"]);
       await click(".cp-save");
-      await wait("document.querySelector('.cp-error')?.textContent.includes('نصف العرض')");
+      await wait("document.querySelector('.cp-error')?.textContent.includes('مجموع الجانب الأيمن والجانب الأيسر')");
       verify(`${side} side exceeding half the width is blocked without writes`, writes.length, beforeFacingChecks);
       verify(`${side} invalid side cannot be bypassed with mismatch confirmation`,
         await evaluate("!document.querySelector('.cp-facing-warning')"));
@@ -654,8 +655,8 @@ const WebSocket = require("ws");
       verify(`facing labels and arrows fit at ${width}px`, await evaluate("(()=>{const d=document.querySelector('[role=dialog]');return d.scrollWidth<=d.clientWidth+1&&['cp-right','cp-left'].every(id=>{const label=document.querySelector('label[for='+id+']'),r=label.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&label.scrollWidth<=label.clientWidth+1})})()"));
       verify(`left-facing arrow follows Arabic text at ${width}px`,
         await evaluate("(()=>{const l=document.querySelector('label[for=cp-left]');return l.querySelector('svg').getBoundingClientRect().right<=l.querySelector('span').getBoundingClientRect().left})()"));
-      verify(`facing controls have half their former width at ${width}px`,
-        await evaluate("['cp-right','cp-left'].every(id=>{const c=document.getElementById(id),p=c.closest('.cp-field');return Math.abs(c.getBoundingClientRect().width-p.getBoundingClientRect().width/2)<1})"));
+      verify(`facing controls have half the width field with equal gaps at ${width}px`,
+        await evaluate("(()=>{const [r,w,l]=['cp-right','cp-width','cp-left'].map(id=>document.getElementById(id).getBoundingClientRect());return Math.abs(r.width*2-w.width)<1&&Math.abs(l.width*2-w.width)<1&&Math.abs((r.left-w.right)-(w.left-l.right))<1})()"));
       await evaluate("document.getElementById('cp-right').scrollIntoView({block:'center'})");
       await screenshot(`product-facing-rules-${width}`);
     }
