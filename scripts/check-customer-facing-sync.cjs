@@ -8,25 +8,32 @@ const WebSocket = require("ws");
 
 (async () => {
   const temp = await fs.mkdtemp("/tmp/customer-facing-check-");
+  const logo = await fs.readFile("attached_assets/Firefly_replace_the_font_of_the_text_around_the_logo_(Small)_1792995814002.png");
   let server, chrome, ws;
   try {
     await build({
       stdin: { contents: `
         import React from 'react';import {createRoot} from 'react-dom/client';
         import Modal from './client/src/components/CustomerProductModal';
+        import HumanResources from './client/src/pages/HumanResources';
+        import i18n from './client/src/i18n';
         import './client/src/styles/theme-tokens.css';
         const params=new URLSearchParams(location.search);
+        if(params.has('en'))await i18n.changeLanguage('en');
         const row=params.has('edit')?{id:17,customer_id:1,width:'30',right_facing:'5',left_facing:'4',thickness:'20',notes:'old',punching:'بدون',status:'active',front_print_colors:[],back_print_colors:[]}:{customer_id:1,width:'30',thickness:'20'};
         window.writes=[];window.saved=false;
+        window.logoSource=${JSON.stringify(`data:image/png;base64,${logo.toString("base64")}`)};
+        window.makeImage=(fill)=>{const c=document.createElement('canvas');c.width=c.height=100;const ctx=c.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,100,100);ctx.fillStyle=fill;ctx.fillRect(20,20,60,60);return c.toDataURL();};
         window.fetch=async(input,options={})=>{
           const url=new URL(String(input),location.origin);
           if(!url.pathname.startsWith('/api/'))throw Error('Unexpected fetch '+url);
           if(options.method&&options.method!=='GET'){if(url.pathname!=='/api/customer-products'&&url.pathname!=='/api/customer-products/17')throw Error('Unexpected write');window.writes.push({method:options.method,body:JSON.parse(options.body)});return {ok:true,json:async()=>({id:17})};}
           const data={'/api/customers':[{id:1,name_ar:'عميل تجريبي',name:'Test customer'}],'/api/categories':[{id:'HOOK',name_ar:'أكياس علاقي',name:'Hanger bags'},{id:'BANANA',name_ar:'أكياس بنانة',name:'Banana bags'},{id:'COAL',name_ar:'أكياس فحم',name:'Charcoal bags'}],'/api/items':[],'/api/master-batch-colors':[],'/api/customer-products/form-options':{printing_cylinders:[]}};
+          data['/api/hr/data']={shifts:[],history:[],users:[{id:1,username:'test',display_name:'Test employee',display_name_ar:'موظف تجريبي',section_id:'2',section_name:'الطباعة',section_name_ar:'الطباعة',section_name_en:'Printing',shift_id:null,assignment_id:null,assigned_at:null},{id:2,username:'none',display_name:'No section',display_name_ar:'بدون قسم',section_id:'99',section_name:null,shift_id:null,assignment_id:null,assigned_at:null}]};
           if(!(url.pathname in data))throw Error('Unexpected lookup '+url);
           return {ok:true,json:async()=>data[url.pathname]};
         };
-        createRoot(document.getElementById('root')).render(<Modal row={row} onClose={()=>{}} onSaved={()=>{window.saved=true}}/>);
+        createRoot(document.getElementById('root')).render(params.has('hr')?<HumanResources canReviewRequests={false}/>:<Modal row={row} onClose={()=>{}} onSaved={()=>{window.saved=true}}/>);
       `, resolveDir: process.cwd(), loader: "tsx" },
       bundle: true, platform: "browser", format: "esm", jsx: "automatic", outfile: `${temp}/check.js`, logLevel: "silent",
     });
@@ -142,6 +149,67 @@ const WebSocket = require("ws");
       assert.equal(await evaluate("window.writes[0].body.punching"), "بنانة");
       assert.equal(await evaluate("window.writes[0].body.category_id"), "COAL");
       console.log(`PASS ${width}px: category defaults, charcoal optional banana, explicit override preserved and saved`);
+    }
+    for (const width of [390, 768, 1280]) {
+      await open(width);
+      const upload = async (side, source) => {
+        await evaluate(`(async()=>{const src=${source};const bytes=Uint8Array.from(atob(src.split(',')[1]),c=>c.charCodeAt(0));const input=document.querySelectorAll('.cp-file')[${side}];const dt=new DataTransfer();dt.items.add(new File([bytes],'artwork.png',{type:'image/png'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+        await wait(`!document.querySelectorAll('.cp-file')[${side}].disabled`);
+        await wait(`!!document.querySelectorAll('.cp-image-card')[${side}].querySelector('.cp-preview img')`);
+      };
+      const colors = (side) => evaluate(`[...document.querySelectorAll('.cp-image-card')[${side}].querySelectorAll('.cp-color-pill>span')].map(e=>e.textContent)`);
+      await upload(0, "window.logoSource");
+      const palette = await colors(0);
+      console.log("Logo palette:", palette);
+      assert.equal(palette.length, 2, "logo must produce only green and navy");
+      const rgb = palette.map(hex => hex.slice(1).match(/../g).map(n=>parseInt(n,16)));
+      assert.ok(rgb.some(([r,g,b])=>g>r*1.5&&g>b*1.3), "green ink");
+      assert.ok(rgb.some(([r,g,b])=>b>g*1.5&&b>r*1.4), "navy ink");
+      const processed = await evaluate(`(async()=>{const img=document.querySelectorAll('.cp-image-card')[0].querySelector('.cp-preview img');await img.decode();const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);return {width:c.width,height:c.height,cornerAlpha:ctx.getImageData(0,0,1,1).data[3],source:img.src};})()`);
+      assert.equal(processed.width, 480, "original width preserved");
+      assert.equal(processed.height, 480, "original height preserved");
+      assert.equal(processed.cornerAlpha, 0, "background is actually transparent in saved image");
+      assert.notEqual(processed.source, await evaluate("window.logoSource"));
+      assert.deepEqual(await colors(1), [], "front upload must not affect back");
+      await evaluate("document.querySelector('.cp-colors').scrollIntoView({block:'center'})");
+      assert.ok(await evaluate("document.querySelector('.cp-modal').scrollWidth<=document.querySelector('.cp-modal').clientWidth"), "no artwork-section overflow");
+      if (width === 390) {
+        const screenshot = await send("Page.captureScreenshot", { format: "jpeg", quality: 75 });
+        await fs.writeFile("/tmp/customer-product-print-colors.jpg", Buffer.from(screenshot.data, "base64"));
+      }
+      await upload(1, "window.makeImage('#d02020')");
+      assert.equal((await colors(1)).length, 1);
+      assert.deepEqual(await colors(0), palette, "back upload must not affect front");
+      await evaluate(`(()=>{const e=document.querySelectorAll('.cp-image-card')[0].querySelector('.cp-ink-edit');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'#123456');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await wait("document.querySelectorAll('.cp-image-card')[0].querySelector('.cp-color-pill>span').textContent==='#123456'");
+      await evaluate("document.querySelectorAll('.cp-image-card')[0].querySelector('.cp-color-add button').click()");
+      assert.equal((await colors(0)).length, 3, "manual add remains available");
+      await evaluate("document.querySelectorAll('.cp-image-card')[0].querySelector('.cp-color-pill button').click()");
+      assert.equal((await colors(0)).length, 2, "manual removal remains available");
+      await upload(0, "window.makeImage('#d02020')");
+      assert.equal((await colors(0)).length, 1, "reupload replaces, not appends");
+      const previous = await colors(0);
+      await evaluate(`(()=>{const input=document.querySelectorAll('.cp-file')[0];const dt=new DataTransfer();dt.items.add(new File(['broken image'],'broken.png',{type:'image/png'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await wait("!!document.querySelectorAll('.cp-image-card')[0].querySelector('[role=alert]')");
+      assert.deepEqual(await colors(0), previous, "invalid image preserves palette");
+      await evaluate("document.querySelector('.cp-save').click()");
+      await wait("window.saved");
+      assert.deepEqual(await evaluate("window.writes[0].body.front_print_colors"), previous);
+      assert.equal((await evaluate("window.writes[0].body.back_print_colors")).length, 1);
+      console.log(`PASS ${width}px: logo has two inks, separate faces, manual changes, replacement, decode failure, saved colors`);
+    }
+    for (const width of [390, 768, 1280]) {
+      for (const english of [false, true]) {
+        await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/?hr=1${english ? "&en=1" : ""}` });
+        await wait("document.querySelectorAll('.hr-table-wrap tbody tr').length===2");
+        const names = await evaluate("[...document.querySelectorAll('.hr-table-wrap tbody tr')].map(r=>r.cells[2].textContent)");
+        assert.deepEqual(names, [english ? "Printing" : "الطباعة", "—"]);
+        await evaluate(`(()=>{const e=document.querySelector('.hr-search input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(english ? "Printing" : "الطباعة")});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+        await wait("document.querySelectorAll('.hr-table-wrap tbody tr').length===1");
+        assert.equal(await evaluate("document.querySelector('.hr-table-wrap tbody tr').cells[2].textContent"), english ? "Printing" : "الطباعة");
+      }
+      console.log(`PASS ${width}px: HR section names (Arabic/English), missing-name placeholder and section-name search`);
     }
   } finally {
     ws?.close();

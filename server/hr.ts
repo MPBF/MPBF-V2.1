@@ -86,6 +86,8 @@ router.get("/data", handle(async (_req, res) => {
       display_name_ar: users.display_name_ar,
       section_id: users.section_id,
       section_name: sql<string | null>`COALESCE(${sections.name_ar}, ${sections.name})`,
+      section_name_ar: sections.name_ar,
+      section_name_en: sections.name,
       assignment_id: user_shift_assignments.id,
       shift_id: user_shift_assignments.shift_id,
       assigned_at: user_shift_assignments.assigned_at,

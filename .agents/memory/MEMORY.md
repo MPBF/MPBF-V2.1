@@ -45,7 +45,7 @@
 - [users.id FK columns are integer](users-fk-column-types.md) — every column referencing users.id must be declared integer (live DB is ground truth); varchar decls are latent bugs that let String(id) casts compile; check `any`-typed objects too.
 - [PDF template path traversal](security-fixes.md) — /api/pdf/generate & generatePDFFromTemplate must resolve template paths and reject anything escaping the templates dir (was arbitrary file read for any authed user).
 - [Punching hook/banana detection](punching-hook-detection.md) — overrun % from substring match on punching (hook/علاقي/t-shirt=20%, banana/بنانة=10%, else 5%); new علاقي* variants auto-inherit, no enum.
-- [Dominant color extraction](color-extraction-clustering.md) — extractColors uses LAB weighted k-means + shade-merge → area-share %; ignoreWhite default true (bag substrate), % intentionally may not sum to 100.
+- [Printing artwork colors](color-extraction-clustering.md) — remove backgrounds before reading inks; merge shades; reuploads replace only that face’s palette, with manual editing retained.
 - [Encrypted restore safety](backup-restore-generated-columns.md) — full-copy scope includes accounts; require external safety copy and atomic rollback, not legacy partial salvage.
 - [pdfkit Arabic rendering](pdfkit-arabic-rendering.md) — pass raw Unicode + features:["rtla"]; never reshape+bidi first (garbles text); pre-reverse digit runs & mirror brackets.
 - [Route tests under ts-jest](route-tests-jest-cjs.md) — mock routes/shared, notification-manager & storage or jest crashes (multer TDZ) or hangs; x-test-user header auth pattern.
