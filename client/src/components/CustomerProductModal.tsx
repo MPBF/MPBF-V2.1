@@ -2,7 +2,7 @@ import { localizedName, translate, translateError } from "../i18n";
 import { AlertCircle, Check, ChevronDown, CircleHelp, FileImage, LoaderCircle, Package, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type SyntheticEvent, type KeyboardEvent } from "react";
 
-import { PRINTING_CYLINDERS, customerProductFacingNotice, deriveCustomerProductFields, isManualCuttingProduct, punchingOptions, type ProductInput } from "../../../shared/customer-product-fields";
+import { PRINTING_CYLINDERS, customerProductFacingNotice, defaultPunching, deriveCustomerProductFields, isManualCuttingProduct, punchingOptions, type ProductInput } from "../../../shared/customer-product-fields";
 
 import { buildCustomerProductDirtyPayload, buildCustomerProductPayload, customerProductSourcesChanged, initializeCustomerProductForm, validateCustomerProductForm } from "./customer-product-form";
 import { CustomerPicker, ProductValueSelect, PRODUCT_SELECT_VALUES, unitWeightLabel } from "./customer-product-controls";
@@ -182,7 +182,11 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
   };
   const changeCategory = (id: string) => {
     setUserCutChanged(true);
-    setForm((prev) => ({ ...prev, category_id: id, item_id: "", punching: "بدون" }));
+    const selectedCategory = options.categories.find((category) => String(category.id) === id);
+    setForm((prev) => ({ ...prev, category_id: id, item_id: "", punching: defaultPunching(selectedCategory ? name(selectedCategory) : "") }));
+  };
+  const changeFacing = (value: string) => {
+    setForm((prev) => ({ ...prev, right_facing: value, left_facing: value }));
   };
   const changeCylinder = (v: string) => { setUserCutChanged(true); set("printing_cylinder", v); };
   const onFile = (side: Side, event: ChangeEvent<HTMLInputElement>) => {
@@ -309,9 +313,9 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
           </section>
           <section className="cp-section"><h3 className="cp-section-title"><span>02</span>{translate("المواصفات والأبعاد")}</h3>
             <div className="cp-grid cp-dimensions">
-              <ProductValueSelect label="الجانب الأيمن" labelDirection="right" id="cp-right" value={form.right_facing} values={PRODUCT_SELECT_VALUES.facing} onChange={(v) => set("right_facing", v)} />
+              <ProductValueSelect label="الجانب الأيمن" labelDirection="right" id="cp-right" value={form.right_facing} values={PRODUCT_SELECT_VALUES.facing} onChange={changeFacing} />
               <ProductValueSelect label="العرض (سم)" id="cp-width" value={form.width} values={PRODUCT_SELECT_VALUES.width} onChange={(v) => set("width", v)} />
-              <ProductValueSelect label="الجانب الأيسر" labelDirection="left" id="cp-left" value={form.left_facing} values={PRODUCT_SELECT_VALUES.facing} onChange={(v) => set("left_facing", v)} />
+              <ProductValueSelect label="الجانب الأيسر" labelDirection="left" id="cp-left" value={form.left_facing} values={PRODUCT_SELECT_VALUES.facing} onChange={changeFacing} />
               <div className="cp-field"><label>{translate("وصف المقاس المحسوب")}</label><div className="cp-readonly">{preview.size_caption || "—"}</div></div>
             </div>
             <div className="cp-grid cp-specifications">

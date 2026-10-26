@@ -18,7 +18,19 @@ export function punchingOptions(name: string): string[] {
   if (normalized.includes("بنانة") || normalized.includes("banana")) {
     return ["بدون", "بنانة", "بنانة 6سم"];
   }
+  if (normalized.includes("فحم") || normalized.includes("charcoal") || normalized.includes("coal")) {
+    return ["بدون", "بنانة"];
+  }
   return ["بدون"];
+}
+
+/** Defaults apply when the user explicitly selects a category, never on load. */
+export function defaultPunching(name: string): string {
+  const options = punchingOptions(name);
+  if (options.includes("علاقي")) return "علاقي";
+  const normalized = name.toLocaleLowerCase();
+  if (normalized.includes("بنانة") || normalized.includes("banana")) return "بنانة";
+  return "بدون";
 }
 
 export function printingCylinderLength(value: unknown): number | null {

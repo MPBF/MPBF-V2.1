@@ -1,8 +1,19 @@
 import { describe, expect, it } from "@jest/globals";
-import { deriveCustomerProductFields, isManualCuttingCategory, isManualCuttingProduct, PRINTING_CYLINDERS, printingCylinderLength, punchingOptions } from "../shared/customer-product-fields";
+import { defaultPunching, deriveCustomerProductFields, isManualCuttingCategory, isManualCuttingProduct, PRINTING_CYLINDERS, printingCylinderLength, punchingOptions } from "../shared/customer-product-fields";
 import { insertCustomerProductSchema } from "../shared/schema";
 
 describe("customer-product shared calculations", () => {
+  it("defaults hook and banana categories but keeps charcoal without punching", () => {
+    for (const category of ["أكياس علاقي", "اكياس علاقي", "T-shirt bags", "Hanger bags"]) {
+      expect(defaultPunching(category)).toBe("علاقي");
+    }
+    for (const category of ["أكياس بنانة", "Banana bags"]) {
+      expect(defaultPunching(category)).toBe("بنانة");
+    }
+    for (const category of ["أكياس فحم", "Charcoal bags", "Coal bags", "roll", ""]) {
+      expect(defaultPunching(category)).toBe("بدون");
+    }
+  });
   it("exports canonical printing and punching options", () => {
     expect(PRINTING_CYLINDERS).toEqual([
       "8\"", "10\"", "12\"", "14\"", "16\"", "18\"", "20\"", "22\"",
@@ -11,6 +22,8 @@ describe("customer-product shared calculations", () => {
     expect(punchingOptions("كيس علاقي")).toEqual(["بدون", "علاقي", "علاقي هوك"]);
     expect(punchingOptions("banana bag")).toEqual(["بدون", "بنانة", "بنانة 6سم"]);
     expect(punchingOptions("roll")).toEqual(["بدون"]);
+    expect(punchingOptions("أكياس فحم")).toEqual(["بدون", "بنانة"]);
+    expect(punchingOptions("Charcoal bags")).toEqual(["بدون", "بنانة"]);
     expect(isManualCuttingCategory("سفرة بلاستيكية مطوية")).toBe(true);
     expect(isManualCuttingCategory("Reusable Table Cover")).toBe(true);
     expect(isManualCuttingCategory("shopping bag")).toBe(false);
