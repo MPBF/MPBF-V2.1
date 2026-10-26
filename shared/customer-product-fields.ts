@@ -13,10 +13,10 @@ export function isManualCuttingCategory(name: string): boolean {
 export function punchingOptions(name: string): string[] {
   const normalized = name.toLocaleLowerCase();
   if (normalized.includes("علاقي") || normalized.includes("hanger") || normalized.includes("t-shirt")) {
-    return ["بدون", "علاقي", "علاقي هوك"];
+    return ["علاقي", "علاقي هوك"];
   }
   if (normalized.includes("بنانة") || normalized.includes("banana")) {
-    return ["بدون", "بنانة", "بنانة 6سم"];
+    return ["بنانة", "بنانة 6سم"];
   }
   if (normalized.includes("فحم") || normalized.includes("charcoal") || normalized.includes("coal")) {
     return ["بدون", "بنانة"];

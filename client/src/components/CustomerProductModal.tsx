@@ -139,6 +139,8 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
 
   const category = options.categories.find((c) => String(c.id) === String(form.category_id));
   const categoryName = [category?.name_ar, category?.name].filter(Boolean).join(" ");
+  const availablePunching = punchingOptions(categoryName);
+  const excludedNoPunching = !availablePunching.includes("بدون") && (!form.punching || form.punching === "بدون");
   const computed = useMemo(() => deriveCustomerProductFields(form, categoryName, initialEditCut.current && !userCutChanged), [form, categoryName, userCutChanged]);
   const manualCut = isManualCuttingProduct(form, categoryName);
   const historicalPreview = Boolean(row.id) && !row.__clone_source_id;
@@ -321,7 +323,7 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
             <div className="cp-grid cp-specifications">
               <ProductValueSelect label={translate("السماكة")} id="cp-thickness" value={form.thickness} values={PRODUCT_SELECT_VALUES.thickness} onChange={(v) => set("thickness", v)} />
               <ProductValueSelect label="الكثافة" id="cp-density" value={form.density} values={PRODUCT_SELECT_VALUES.density} onChange={(v) => set("density", v)} />
-              <div className="cp-field"><label htmlFor="cp-punching">{translate("التخريم")}</label><select id="cp-punching" value={String(form.punching || "بدون")} onChange={(e) => set("punching", e.target.value)}>{(punchingOptions(categoryName) || []).map((p) => <option key={p} value={p}>{p}</option>)}{form.punching && !(punchingOptions(categoryName) || []).includes(String(form.punching)) && <option value={String(form.punching)}>{translate("القيمة الحالية:")}{" "}{String(form.punching)}</option>}</select></div>
+              <div className="cp-field"><label htmlFor="cp-punching">{translate("التخريم")}</label><select id="cp-punching" value={excludedNoPunching ? "" : String(form.punching || "بدون")} onChange={(e) => set("punching", e.target.value)}>{excludedNoPunching && <option value="" disabled>{translate("اختر التخريم")}</option>}{availablePunching.map((p) => <option key={p} value={p}>{p}</option>)}{form.punching && !excludedNoPunching && !availablePunching.includes(String(form.punching)) && <option value={String(form.punching)}>{translate("القيمة الحالية:")}{" "}{String(form.punching)}</option>}</select></div>
                <div className="cp-field"><label>{translate("وزن الكيس (جرام)")}</label><div className="cp-readonly ltr">{preview.bag_weight_grams || "—"}</div></div>
                <div className="cp-field"><label>{translate("عدد الأكياس في الكيلو")}</label><div className="cp-readonly ltr">{preview.bags_per_kilo || "—"}</div></div>
             </div>
