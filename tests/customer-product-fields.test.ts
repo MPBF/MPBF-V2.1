@@ -19,8 +19,8 @@ describe("customer-product shared calculations", () => {
       "8\"", "10\"", "12\"", "14\"", "16\"", "18\"", "20\"", "22\"",
       "24\"", "26\"", "28\"", "30\"", "32\"", "34\"", "36\"", "39\"", "بدون طباعة",
     ]);
-    expect(punchingOptions("كيس علاقي")).toEqual(["بدون", "علاقي", "علاقي هوك"]);
-    expect(punchingOptions("banana bag")).toEqual(["بدون", "بنانة", "بنانة 6سم"]);
+    expect(punchingOptions("كيس علاقي")).toEqual(["علاقي", "علاقي هوك"]);
+    expect(punchingOptions("banana bag")).toEqual(["بنانة", "بنانة 6سم"]);
     expect(punchingOptions("roll")).toEqual(["بدون"]);
     expect(punchingOptions("أكياس فحم")).toEqual(["بدون", "بنانة"]);
     expect(punchingOptions("Charcoal bags")).toEqual(["بدون", "بنانة"]);
