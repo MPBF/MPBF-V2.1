@@ -121,9 +121,13 @@ const correctionFromGroup = (group: AuditGroup): AttendanceCorrection => {
   };
 };
 
-const correctionTimeOptions = Array.from({ length: 24 * 60 }, (_, index) =>
-  `${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}`,
-);
+const correctionHourOptions = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0"));
+const correctionMinuteOptions = Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, "0"));
+const isCompleteCorrectionTime = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+const correctionTimeParts = (value: string) => ({
+  hour: value.match(/^(\d{2}):/)?.[1] ?? "",
+  minute: value.match(/:(\d{2})$/)?.[1] ?? "",
+});
 
 function printDocument(title: string, body: string) {
   const popup = window.open("", "_blank", "width=1100,height=800");
@@ -153,6 +157,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const sections = useMemo(() => Array.from(new Map(employees.filter((employee) => employee.section_id).map((employee) => [employee.section_id!, sectionName(employee)])).entries()), [employees]);
   const filteredEmployees = useMemo(() => employees.filter((employee) => !filters.section || employee.section_id === filters.section), [employees, filters.section]);
   const auditGroups = useMemo(() => groupAttendanceEvents(events), [events]);
+  const correctionRows = correction ? [correction.checkIn, correction.breakStart, correction.breakEnd, correction.checkOut] : [];
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -195,6 +200,10 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     event.preventDefault();
     if (!correction) return;
     if (correction.duplicateActions.length) return;
+    if (correctionRows.some((entry) => entry.occurred_at && !isCompleteCorrectionTime(entry.occurred_at))) {
+      setError(auditTranslate("أكمل اختيار الساعة والدقيقة لكل وقت تم تغييره.", "Choose both an hour and minute for every time you edit."));
+      return;
+    }
     if (Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at)) {
       setError(auditTranslate("يجب إدخال وقتي بدء الاستراحة وانتهائها معًا، أو تركهما فارغين.", "Enter both break times, or leave both blank."));
       return;
@@ -206,7 +215,6 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     setBusy("correction"); setError(""); setNotice("");
     try {
       const group = correction.group;
-      const correctionRows = [correction.checkIn, correction.breakStart, correction.breakEnd, correction.checkOut];
       const resolved = resolveCorrectionTimes(
         correctionRows.map((entry) => ({ id: entry.id, action: entry.action as CorrectionAction, time: entry.occurred_at })),
         group.shift_date,
@@ -234,11 +242,17 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     finally { setBusy(""); }
   };
 
-  const updateCorrectionEvent = (action: AttendanceAction, value: string) => {
+  const updateCorrectionEvent = (action: AttendanceAction, part: "hour" | "minute", value: string) => {
     const field = action === "check_in" ? "checkIn"
       : action === "break_start" ? "breakStart"
         : action === "break_end" ? "breakEnd" : "checkOut";
-    setCorrection((current) => current ? { ...current, [field]: { ...current[field], occurred_at: value } } : current);
+    setCorrection((current) => {
+      if (!current) return current;
+      const parts = correctionTimeParts(current[field].occurred_at);
+      const next = { ...parts, [part]: value };
+      const occurred_at = next.hour && next.minute ? `${next.hour}:${next.minute}` : next.hour ? `${next.hour}:` : next.minute ? `:${next.minute}` : "";
+      return { ...current, [field]: { ...current[field], occurred_at } };
+    });
   };
 
   const saveViolation = async (event: FormEvent) => {
@@ -410,17 +424,25 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
             auditTranslate("انتهاء استراحة", "Break end"),
           ];
           const required = entry.action === "check_in" || entry.action === "check_out";
-          return <label className={`hr-correction-time-field field-${fieldIndex + 1}`} key={entry.action} htmlFor={`correction-${entry.action}`}>
+          const parts = correctionTimeParts(entry.occurred_at);
+          const partial = Boolean(entry.occurred_at) && !isCompleteCorrectionTime(entry.occurred_at);
+          const requiredPart = required || partial;
+          return <div className={`hr-correction-time-field field-${fieldIndex + 1}`} key={entry.action}>
             <span>{labels[fieldIndex]}{required ? <b aria-hidden="true"> *</b> : null}</span>
-            <select id={`correction-${entry.action}`} required={required} value={entry.occurred_at} aria-label={labels[fieldIndex]} aria-invalid={(entry.action === "break_start" && Boolean(entry.occurred_at) !== Boolean(correction.breakEnd.occurred_at)) || (entry.action === "break_end" && Boolean(entry.occurred_at) !== Boolean(correction.breakStart.occurred_at))} disabled={correction.duplicateActions.length > 0 || busy === "correction"} onChange={(event) => updateCorrectionEvent(entry.action, event.target.value)}>
-              <option value="">{auditTranslate("بدون وقت", "No time")}</option>
-              {correctionTimeOptions.map((time) => <option key={time} value={time}>{time}</option>)}
-            </select>
-          </label>;
+            <div className="hr-correction-time-controls">
+              <label htmlFor={`correction-${entry.action}-hour`}><span>{auditTranslate("س", "Hr")}</span><select id={`correction-${entry.action}-hour`} dir="ltr" required={requiredPart} value={parts.hour} aria-label={`${labels[fieldIndex]} — ${auditTranslate("الساعة", "hour")}`} aria-invalid={partial || (entry.action === "break_start" && Boolean(entry.occurred_at) !== Boolean(correction.breakEnd.occurred_at)) || (entry.action === "break_end" && Boolean(entry.occurred_at) !== Boolean(correction.breakStart.occurred_at))} disabled={correction.duplicateActions.length > 0 || busy === "correction"} onChange={(event) => updateCorrectionEvent(entry.action, "hour", event.target.value)}>
+                <option value="">{auditTranslate("س", "Hr")}</option>{correctionHourOptions.map((hour) => <option key={hour} value={hour}>{hour}</option>)}
+              </select></label>
+              <label htmlFor={`correction-${entry.action}-minute`}><span>{auditTranslate("د", "Min")}</span><select id={`correction-${entry.action}-minute`} dir="ltr" required={requiredPart} value={parts.minute} aria-label={`${labels[fieldIndex]} — ${auditTranslate("الدقيقة", "minute")}`} aria-invalid={partial || (entry.action === "break_start" && Boolean(entry.occurred_at) !== Boolean(correction.breakEnd.occurred_at)) || (entry.action === "break_end" && Boolean(entry.occurred_at) !== Boolean(correction.breakStart.occurred_at))} disabled={correction.duplicateActions.length > 0 || busy === "correction"} onChange={(event) => updateCorrectionEvent(entry.action, "minute", event.target.value)}>
+                <option value="">{auditTranslate("د", "Min")}</option>{correctionMinuteOptions.map((minute) => <option key={minute} value={minute}>{minute}</option>)}
+              </select></label>
+            </div>
+          </div>;
         })}
       </div>
+      {correctionRows.some((entry) => entry.occurred_at && !isCompleteCorrectionTime(entry.occurred_at)) && <p className="hr-correction-pair-error" role="alert">{auditTranslate("أكمل اختيار الساعة والدقيقة لكل وقت تم تغييره.", "Choose both an hour and minute for every time you edit.")}</p>}
       {Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at) && <p className="hr-correction-pair-error" role="alert">{auditTranslate("يجب إدخال وقتي بدء الاستراحة وانتهائها معًا، أو تركهما فارغين.", "Enter both break times, or leave both blank.")}</p>}
-      <footer><button className="hr-primary" disabled={busy === "correction" || correction.duplicateActions.length > 0 || !correction.checkIn.occurred_at || !correction.checkOut.occurred_at || (Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at))}>{busy === "correction" ? translate("جارٍ الحفظ…") : translate("حفظ التصحيح")}</button><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
+      <footer><button className="hr-primary" disabled={busy === "correction" || correction.duplicateActions.length > 0 || !isCompleteCorrectionTime(correction.checkIn.occurred_at) || !isCompleteCorrectionTime(correction.checkOut.occurred_at) || correctionRows.some((entry) => entry.occurred_at && !isCompleteCorrectionTime(entry.occurred_at)) || (Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at))}>{busy === "correction" ? translate("جارٍ الحفظ…") : translate("حفظ التصحيح")}</button><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
     {eventDraft && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEventDraft(null)}><form className="hr-modal hr-compact-modal" onSubmit={saveEvent}><header><div><span>{translate("سجل الحضور")}</span><h3>{eventDraft.id ? translate("تعديل سجل الحضور") : translate("إضافة سجل يدوي")}</h3></div><button type="button" onClick={() => setEventDraft(null)} aria-label={translate("إغلاق")}><X /></button></header><div className="hr-form-grid">
       <label><span>{translate("الموظف")}</span><select required value={eventDraft.user_id} onChange={(event) => setEventDraft({ ...eventDraft, user_id: event.target.value })}><option value="">{translate("اختر الموظف")}</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employeeName(employee)} — {sectionName(employee)}</option>)}</select></label>
       <label><span>{translate("الحركة")}</span><select disabled={!eventDraft.id} value={eventDraft.action} onChange={(event) => setEventDraft({ ...eventDraft, action: event.target.value as AttendanceAction })}>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></label>

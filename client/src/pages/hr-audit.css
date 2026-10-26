@@ -198,6 +198,29 @@
   border-color: #32745c;
 }
 
+.hr-correction-time-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  direction: ltr;
+}
+
+.hr-correction-time-controls > label {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  color: #697a71;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: start;
+}
+
+.hr-correction-time-controls select {
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: 5px;
+}
+
 .hr-correction-time-field select[aria-invalid="true"] {
   border-color: #bb6759;
   background-color: #fff7f4;
@@ -241,7 +264,7 @@
   }
 
   .hr-correction-time-field select {
-    min-height: 48px;
+    min-height: 44px;
   }
 
   .hr-correction-blocking {
