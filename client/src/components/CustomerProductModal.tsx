@@ -201,10 +201,25 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
     setImageStatus((prev) => ({ ...prev, [side]: { loading: true, error: "" } }));
     const reader = new FileReader();
     reader.onerror = () => { if (live.current && fileTokens.current[side] === token) setImageStatus((prev) => ({ ...prev, [side]: { loading: false, error: translate("تعذر قراءة الملف. أعد المحاولة.") } })); };
-    reader.onload = () => {
+    reader.onload = async () => {
       if (!live.current || fileTokens.current[side] !== token || typeof reader.result !== "string") return;
-      set(idField(side), reader.result);
-      setImageStatus((prev) => ({ ...prev, [side]: { loading: false, error: "" } }));
+      const source = reader.result;
+      try {
+        const { preparePrintArtwork } = await import("../lib/print-color-extraction");
+        const { image, colors } = await preparePrintArtwork(source);
+        if (!live.current || fileTokens.current[side] !== token) return;
+        const key = side === "front" ? "front_print_colors" : "back_print_colors";
+        setForm((prev) => ({ ...prev, [idField(side)]: image, [key]: colors }));
+        setImageStatus((prev) => ({ ...prev, [side]: {
+          loading: false,
+          error: colors.length ? "" : translate("لم تُكتشف ألوان طباعة واضحة. أضف الألوان يدويًا."),
+        } }));
+      } catch {
+        if (!live.current || fileTokens.current[side] !== token) return;
+        // Keep the old palette and artwork together on failure; don't silently
+        // attach a new image to unrelated ink colors.
+        setImageStatus((prev) => ({ ...prev, [side]: { loading: false, error: translate("تعذر تحليل ألوان الصورة. أعد المحاولة بصورة صالحة.") } }));
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -282,10 +297,10 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
     const colors = normalizeColors(form[key]);
     return <div className="cp-colors">
       <span className="cp-color-label">{side === "front" ? translate("ألوان طباعة الوجه الأمامي") : translate("ألوان طباعة الوجه الخلفي")}</span>
-      <div className="cp-color-add"><input aria-label={`${translate("اختيار لون")} ${translate(side === "front" ? "الوجه الأمامي" : "الوجه الخلفي")}`} type="color" value={side === "front" ? newFrontColor : newBackColor} onChange={(e) => side === "front" ? setNewFrontColor(e.target.value) : setNewBackColor(e.target.value)} /><button type="button" className="btn btn-muted" onClick={() => addPrintColor(side)}><Plus size={14} />{" "}{translate("أضف اللون")}</button></div>
+      <div className="cp-color-add"><input disabled={imageStatus[side].loading} aria-label={`${translate("اختيار لون")} ${translate(side === "front" ? "الوجه الأمامي" : "الوجه الخلفي")}`} type="color" value={side === "front" ? newFrontColor : newBackColor} onChange={(e) => side === "front" ? setNewFrontColor(e.target.value) : setNewBackColor(e.target.value)} /><button disabled={imageStatus[side].loading} type="button" className="btn btn-muted" onClick={() => addPrintColor(side)}><Plus size={14} />{" "}{translate("أضف اللون")}</button></div>
       <div className="cp-color-pills" aria-live="polite">{colors.map((color, index) => {
         const swatch = safeColor(color);
-        return <span className="cp-color-pill" key={`${color}-${index}`}><i style={swatch ? { background: swatch } : undefined} aria-hidden="true" /><span>{color}</span><button type="button" aria-label={`${translate("إزالة اللون")} ${color}`} onClick={() => removePrintColor(side, index)}><X size={13} /></button></span>;
+        return <span className="cp-color-pill" key={index}>{swatch && /^#[0-9a-f]{6}$/i.test(swatch) ? <input className="cp-ink-edit" type="color" value={swatch} disabled={imageStatus[side].loading} aria-label={`${translate("تعديل لون الطباعة")} ${index + 1} ${translate(side === "front" ? "الوجه الأمامي" : "الوجه الخلفي")}`} onChange={(event) => set(key, colors.map((current, i) => i === index ? event.target.value : current))} /> : <i style={swatch ? { background: swatch } : undefined} aria-hidden="true" />}<span>{color}</span><button disabled={imageStatus[side].loading} type="button" aria-label={`${translate("إزالة اللون")} ${color}`} onClick={() => removePrintColor(side, index)}><X size={13} /></button></span>;
       })}{colors.length === 0 && <span className="cp-hint">{translate("لم تُحدد ألوان للطباعة بعد.")}</span>}</div>
     </div>;
   };
@@ -375,7 +390,7 @@ export default function CustomerProductModal({ row, onClose, onSaved, fixedCusto
                 <input className="cp-file" ref={(el) => { fileRefs.current[side] = el; }} type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif" aria-label={`${translate("رفع تصميم")} ${translate(side === "front" ? "الوجه الأمامي" : "الوجه الخلفي")}`} onChange={(e) => onFile(side, e)} disabled={saving || imageStatus[side].loading} />
                 <span className="cp-hint">{translate("PNG · JPEG · GIF · WebP · BMP · AVIF — حتى 5 ميغابايت. اسم الملف محلي ولا يُحفظ.")}</span>
                 {imageStatus[side].error && <span className="cp-invalid" role="alert">{imageStatus[side].error}</span>}
-                {imageStatus[side].loading && <span className="cp-hint" role="status">{translate("جارٍ قراءة الصورة…")}</span>}
+                {imageStatus[side].loading && <span className="cp-hint" role="status">{translate("جارٍ إزالة الخلفية واستخراج ألوان الطباعة…")}</span>}
                 <div className="cp-preview">{form[idField(side)] ? <><img src={String(form[idField(side)])} alt={`${translate("معاينة تصميم")} ${translate(side === "front" ? "الوجه الأمامي" : "الوجه الخلفي")}`} /><button type="button" className="cp-remove" aria-label={`${translate("إزالة تصميم")} ${translate(side === "front" ? "الوجه الأمامي" : "الوجه الخلفي")}`} onClick={() => removeImage(side)}><Trash2 size={15} /></button></> : <span className="cp-preview-empty">{translate("لا يوجد تصميم محفوظ")}</span>}</div>
                 {renderPrintColors(side)}
               </div>)}
