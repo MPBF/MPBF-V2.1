@@ -43,8 +43,10 @@ events.
 The owner clarified: "لايمكن ان يحتوي على اكثر من استراحة وغير ممسموح الا اخذ
 استراحة مره واحد فيه اليوم". Only one break is allowed per accounting day,
 including across separate shift sessions on that day. Correction displays employee
-name, date and shift name above exactly four time-only dropdowns: check-in /
-checkout, then break / break end. No date inputs or add-break action.
+name, date and shift name above four time-only movement fields: check-in /
+checkout, then break / break end. Each field has a separate hours dropdown and
+minutes dropdown, as explicitly requested after the owner approved the form.
+No date inputs or add-break action.
 
 **Why:** the user explicitly corrected the previous repeated-break assumption.
 **How to apply:** reject a second break in employee recording and HR correction
