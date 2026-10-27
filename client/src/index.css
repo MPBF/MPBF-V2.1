@@ -185,7 +185,6 @@ input[type="checkbox"] { accent-color:var(--teal); width:16px; height:16px; }
 .entity-category-error { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .entity-category-error .btn { flex-shrink:0; }
 @media(max-width:700px) {
-  .entity-tools-categories { flex-wrap:wrap; }
   .entity-tools-categories .search { min-width:0; }
   .entity-category-filter { width:100%; min-width:0; }
   .entity-category-filter select { min-height:44px; }
