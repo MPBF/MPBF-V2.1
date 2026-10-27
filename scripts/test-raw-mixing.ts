@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { RawMixingService } from "../server/production/mixing";
 import { ProductionError } from "../server/production/core";
-import type { ProductionUser } from "../shared/production";
+import { kgHundredths, type ProductionUser } from "../shared/production";
 
 const pool = new Pool({ host:"127.0.0.1",port:55439,user:"postgres",database:"postgres",max:10 });
 const schema=`mixing_test_${process.pid}`;
@@ -63,6 +63,7 @@ try {
   const ldpe=catalogue.materials.find(r=>r.item_id==="ITM002")!;
   check("only predefined raw-category items appear",catalogue.materials.map(r=>r.item_id),["ITM001","ITM002"]);
   check("catalogue provision starts at zero",catalogue.materials.every(r=>r.quantity_kg==="0.00"));
+  check("zero-history materials have exact zero warehouse totals",catalogue.materials.every(r=>r.total_received_kg==="0" && r.total_issued_kg==="0"));
   const initialReceipt=await service.movement(admin,{...key(),kind:"receipt",items:[{material_id:hdpe.id,quantity_kg:"10.00"}]});
   check("raw receipt stock and audit",await query("SELECT quantity_kg::text FROM factory_raw_materials ORDER BY id"),[{quantity_kg:"10.00"},{quantity_kg:"0.00"}]);
   check("receipt actor is server-authoritative",initialReceipt.created_by,1);
@@ -189,6 +190,43 @@ try {
   check("film gets no raw voucher history",(await service.state(film)).raw_vouchers,[]);
   check("combined movement ledger matches balances",await query(`SELECT r.id FROM factory_raw_materials r
     WHERE r.quantity_kg <> COALESCE((SELECT sum(quantity_kg) FROM factory_raw_movements m WHERE m.material_id=r.id),0)`),[]);
+  for (let i=0;i<51;i++) await service.movement(admin,{...key(),kind:"receipt",items:[{material_id:ldpe.id,quantity_kg:"0.01"}]});
+  const totalsBefore = await service.state(admin);
+  check("warehouse totals fixture exceeds the limited voucher feed",totalsBefore.raw_vouchers!.length,50);
+  const totalMap = (snapshot: typeof totalsBefore) => new Map(snapshot.materials.map(r => [r.id, {
+    received: kgHundredths(r.total_received_kg!), issued: kgHundredths(r.total_issued_kg!),
+  }]));
+  const baseTotals = totalMap(totalsBefore);
+  const signedWeight = (value: string) => value.startsWith("-") ? -kgHundredths(value.slice(1)) : kgHundredths(value);
+  check("all recorded receipt vouchers contribute, not only latest 50", totalsBefore.materials.every(r =>
+    kgHundredths(r.total_received_kg!) === signedWeight(r.quantity_kg) + kgHundredths(r.total_issued_kg!)));
+  check("mix-only operators do not receive warehouse aggregate fields", (await service.state(film)).materials.every(r =>
+    r.total_received_kg === undefined && r.total_issued_kg === undefined));
+  check("raw-only viewer receives the same totals", totalMap(await service.state({...film,permissions:["view_raw_inventory"]})),baseTotals);
+  await query("INSERT INTO factory_mix_activation VALUES(1,0) ON CONFLICT (id) DO UPDATE SET last_mix_id=0");
+  const correctionMix = await service.record(admin,{...key(),machine_id:"F1",items:[
+    {material_id:hdpe.id,quantity_kg:"1.23"},{material_id:ldpe.id,quantity_kg:"0.45"},
+  ]});
+  const checkDelta = async (label: string, high: bigint, low: bigint) => {
+    const actual=totalMap(await service.state(admin));
+    check(label,[actual.get(hdpe.id)!.issued-baseTotals.get(hdpe.id)!.issued,
+      actual.get(ldpe.id)!.issued-baseTotals.get(ldpe.id)!.issued],[high,low]);
+    check(`${label}: corrections are not receipts`,[actual.get(hdpe.id)!.received,actual.get(ldpe.id)!.received],
+      [baseTotals.get(hdpe.id)!.received,baseTotals.get(ldpe.id)!.received]);
+  };
+  await checkDelta("new mix contributes to total issued",123n,45n);
+  await service.update(admin,correctionMix.id,{...key(),expected_revision:0,contents:{
+    machine_id:"F1",screw:"A",items:[{material_id:hdpe.id,quantity_kg:"2.34"}],
+  }});
+  await checkDelta("increased mix and removed ingredient use net corrections",234n,0n);
+  await service.update(admin,correctionMix.id,{...key(),expected_revision:1,contents:{
+    machine_id:"F1",screw:"A",items:[{material_id:hdpe.id,quantity_kg:"0.10"},{material_id:ldpe.id,quantity_kg:"0.30"}],
+  }});
+  await checkDelta("decreased mix and re-added ingredient retain decimal totals",10n,30n);
+  const cancellation = {...key(),expected_revision:2};
+  await service.delete(admin,correctionMix.id,cancellation);
+  await service.delete(admin,correctionMix.id,cancellation);
+  await checkDelta("cancellation and lost-response retry restore outgoing totals exactly once",0n,0n);
   console.log(`Raw mixing PostgreSQL verification passed: ${passed} assertions.`);
 }finally{
   await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`).catch(()=>{});

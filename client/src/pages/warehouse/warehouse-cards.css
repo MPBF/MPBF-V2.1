@@ -341,6 +341,35 @@
 .raw-ops .raw-stock-quantity.negative {
   color: var(--theme-warehouse-cards-raw-ops-raw-stock-quantity-negative-text);
 }
+.raw-ops .raw-stock-balance-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.raw-ops .raw-stock-balance-row .raw-stock-quantity { min-width: 0; flex: 1 1 110px; }
+.raw-ops .raw-stock-totals { display: grid; min-width: 0; flex: 1 1 220px; gap: 5px; }
+.raw-ops .raw-stock-totals > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 5px;
+}
+.raw-ops .raw-stock-totals span {
+  color: var(--theme-warehouse-cards-raw-ops-raw-stock-card-foot-text);
+  font-size: 11px;
+  line-height: 1.25;
+  flex: none;
+}
+.raw-ops .raw-stock-totals bdi {
+  min-width: 0;
+  color: var(--theme-warehouse-cards-raw-ops-raw-stock-card-foot-bdi-text);
+  font: 650 11px "IBM Plex Mono", monospace;
+  direction: ltr;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
 .raw-ops .raw-negative-note {
   display: flex;
   align-items: flex-start;

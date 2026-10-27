@@ -24,6 +24,7 @@ const messages: Record<string, [string, string]> = {
   title: ["مخزون المواد الخام", "Raw material inventory"], intro: ["أرصدة المواد وحركات الاستلام والصرف من دليل المواد المعتمد.", "Balances and stock movements from the approved material catalog."],
   inventory: ["أرصدة المواد الخام", "Raw material balances"], receipt: ["إدخال مواد خام", "Receive raw materials"], issue: ["صرف مواد خام", "Issue raw materials"],
   material: ["المادة", "Material"], chooseMaterial: ["اختر مادة من الدليل", "Select a catalog material"], balance: ["الرصيد الحالي", "Current balance"],
+  totalReceived: ["مجموع الداخل", "Total received"], totalIssued: ["مجموع الخارج", "Total issued"],
   quantity: ["الكمية (كجم)", "Quantity (kg)"], notes: ["ملاحظات (اختياري)", "Notes (optional)"], addLine: ["إضافة مادة", "Add material"], removeLine: ["حذف السطر", "Remove line"],
   save: ["تأكيد الحركة", "Confirm movement"], cancel: ["إلغاء", "Cancel"], refresh: ["تحديث", "Refresh"], retry: ["إعادة المحاولة", "Retry"], loading: ["جارٍ التحميل", "Loading"],
   permission: ["لا تتوفر صلاحية لعرض مخزون المواد الخام.", "You do not have permission to view raw inventory."],
@@ -60,6 +61,10 @@ const timeLabel = (value: string, en: boolean) => {
 const localized = (ar: string | null | undefined, english: string | null | undefined, en: boolean, fallback: string) => {
   const safeEnglish = (english ?? "").trim();
   return (en ? (/[\u0600-\u06ff]/.test(safeEnglish) ? "" : safeEnglish) : (ar ?? "").trim() || safeEnglish) || fallback;
+};
+const englishMaterialName = (english: string | null | undefined, code: string) => {
+  const safeEnglish = (english ?? "").trim();
+  return safeEnglish && !/[\u0600-\u06ff]/.test(safeEnglish) ? safeEnglish : code;
 };
 const storageKey = (userId: number) => `mpbf:raw-movement:pending:${userId}`;
 const readPending = (key: string): PendingMovement | null => {
@@ -212,7 +217,10 @@ export default function RawInventoryPage({ user }: RawInventoryPageProps) {
     const quantity = quantityValue(row.quantity), material = materials.find(item => item.id === Number(row.materialId));
     return Boolean(quantity && material && Number(latin(material.quantity_kg)) - Number(quantity) < 0);
   });
-  const nameFor = (id: number) => { const material = materials.find(item => item.id === id); return material ? localized(material.name_ar, material.name, en, material.code) : `#${id}`; };
+  const nameFor = (id: number, code: string, english: string | null | undefined) => {
+    const material = materials.find(item => item.id === id);
+    return englishMaterialName(material?.name ?? english, material?.code ?? code);
+  };
   const closeDialog = () => setDialogOpen(false);
   const openMovement = (kind: MovementDraft["kind"], trigger: HTMLButtonElement) => {
     returnFocusRef.current = trigger;
@@ -244,11 +252,17 @@ export default function RawInventoryPage({ user }: RawInventoryPageProps) {
           {loading && !state ? <div className="raw-ops-skeleton" aria-label={tx("loading", en)}><i /><i /><i /></div> : materials.length ? <div className="warehouse-card-grid raw-stock-grid">
             {materials.map(material => {
               const negative = Number(latin(material.quantity_kg)) < 0;
-              const title = localized(material.name_ar, material.name, en, material.code);
+              const title = englishMaterialName(material.name, material.code);
               return <article className="warehouse-stock-card raw-stock-card" key={material.id}>
                 <div className="warehouse-stock-card-top"><span className="raw-ops-number">{material.code}</span><span className={`raw-stock-status${material.is_active ? "" : " inactive"}`}>{material.is_active ? tx("active", en) : tx("inactive", en)}</span></div>
                 <h3>{title}</h3>
-                <div className={`raw-stock-quantity${negative ? " negative" : ""}`}><bdi>{formatNumber(material.quantity_kg)}</bdi><span>kg</span></div>
+                <div className="raw-stock-balance-row">
+                  <div className={`raw-stock-quantity${negative ? " negative" : ""}`}><bdi>{formatNumber(material.quantity_kg)}</bdi><span>kg</span></div>
+                  <div className="raw-stock-totals" aria-label={en ? "Material movement totals" : "إجماليات حركة المادة"}>
+                    <div><span>{tx("totalReceived", en)}</span><bdi>{formatNumber(material.total_received_kg)} kg</bdi></div>
+                    <div><span>{tx("totalIssued", en)}</span><bdi>{formatNumber(material.total_issued_kg)} kg</bdi></div>
+                  </div>
+                </div>
                 {negative && <p className="raw-ops-helper raw-negative-note"><AlertTriangle size={14} />{tx("negativeDetail", en)}</p>}
                 <div className="raw-stock-card-foot"><span>{tx("material", en)} ID</span><bdi className="raw-ops-number">{formatWholeNumber(material.id)}</bdi></div>
               </article>;
@@ -262,7 +276,7 @@ export default function RawInventoryPage({ user }: RawInventoryPageProps) {
           {vouchers.map(voucher => <article className="raw-voucher-card" key={voucher.id}>
             <header><div><span className={`raw-voucher-kind ${voucher.kind}`}>{tx(voucher.kind === "receipt" ? "receiptKind" : "issueKind", en)}</span><strong>#{formatWholeNumber(voucher.id)}</strong></div><bdi className="raw-voucher-total">{formatNumber(voucher.total_kg)} kg</bdi></header>
             <div className="raw-voucher-meta"><span>{tx("actor", en)}: {localized(voucher.actor_name_ar, voucher.actor_name, en, `#${formatWholeNumber(voucher.created_by)}`)}</span><time>{timeLabel(voucher.created_at, en)}</time></div>
-            <ul>{voucher.items.map((item, index) => <li key={`${item.material_id}-${index}`}><span>{nameFor(item.material_id)} <small className="raw-ops-number">· {item.code}</small></span><bdi>{formatNumber(item.quantity_kg)} kg</bdi></li>)}</ul>
+            <ul>{voucher.items.map((item, index) => <li key={`${item.material_id}-${index}`}><span>{nameFor(item.material_id, item.code, item.name)} <small className="raw-ops-number">· {item.code}</small></span><bdi>{formatNumber(item.quantity_kg)} kg</bdi></li>)}</ul>
             {voucher.notes && <p className="raw-voucher-notes">{tx("notesLabel", en)}: {voucher.notes}</p>}
           </article>)}
         </div>}</div>
@@ -275,7 +289,7 @@ export default function RawInventoryPage({ user }: RawInventoryPageProps) {
           <div className="raw-movement-lines">{draft.rows.map((row, index) => <div className="raw-movement-line" key={index}>
             <div className="raw-ops-field"><label htmlFor={`raw-material-${index}`}>{tx("material", en)}</label><select id={`raw-material-${index}`} value={row.materialId} onChange={event => setLine(index, "materialId", event.target.value)} required disabled={pendingFailed}>
               <option value="">{tx("chooseMaterial", en)}</option>
-              {activeMaterials.filter(item => item.id === Number(row.materialId) || !draft.rows.some((other, otherIndex) => otherIndex !== index && Number(other.materialId) === item.id)).map(item => <option key={item.id} value={item.id}>{localized(item.name_ar, item.name, en, item.code)} · {item.code}</option>)}
+              {activeMaterials.filter(item => item.id === Number(row.materialId) || !draft.rows.some((other, otherIndex) => otherIndex !== index && Number(other.materialId) === item.id)).map(item => <option key={item.id} value={item.id}>{englishMaterialName(item.name, item.code)} · {item.code}</option>)}
             </select></div>
             <div className="raw-ops-field"><label htmlFor={`raw-quantity-${index}`}>{tx("quantity", en)}</label><input id={`raw-quantity-${index}`} inputMode="decimal" autoComplete="off" maxLength={15} value={row.quantity} onChange={event => setLine(index, "quantity", event.target.value)} placeholder="0.00" required disabled={pendingFailed} /></div>
             <button type="button" className="raw-icon-button raw-remove-line" aria-label={tx("removeLine", en)} onClick={() => setDraft(current => ({ ...current, rows: current.rows.filter((_, i) => i !== index) }))} disabled={pendingFailed || draft.rows.length === 1}><Trash2 /></button>

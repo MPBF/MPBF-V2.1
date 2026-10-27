@@ -24,6 +24,8 @@ export function canViewRawInventory(user: ProductionUser): boolean {
 }
 export type RawMaterial = {
   id: number; item_id: string; code: string; name: string; name_ar: string; quantity_kg: string; is_active: boolean;
+  /** All-time warehouse totals; returned only to raw-inventory viewers. */
+  total_received_kg?: string; total_issued_kg?: string;
 };
 export type MixingInput = {
   request_id: string; machine_id: string; screw?: "A" | "B"; notes?: string;

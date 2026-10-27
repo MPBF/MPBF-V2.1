@@ -65,8 +65,20 @@ export class RawMixingService {
       await tx.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const materials = await rows<RawMaterial>(tx, `SELECT r.id,i.id item_id,COALESCE(NULLIF(i.code,''),i.id) code,
         ${canViewMixing(actor) ? "COALESCE(i.name,'') name,COALESCE(i.name_ar,'') name_ar" : "COALESCE(NULLIF(i.name,''),i.id) name,COALESCE(NULLIF(i.name_ar,''),i.id) name_ar"},r.quantity_kg::text,
+        ${canViewRawInventory(actor) ? `COALESCE(movement_totals.received,0)::text total_received_kg,
+        (COALESCE(movement_totals.issued,0)-COALESCE(correction_totals.returned,0))::text total_issued_kg,` : ""}
         (r.is_active AND COALESCE(i.status,'active')='active') is_active
         FROM factory_raw_materials r JOIN items i ON i.id=r.item_id JOIN categories c ON c.id=i.category_id
+        ${canViewRawInventory(actor) ? `LEFT JOIN (
+          SELECT material_id,
+            SUM(quantity_kg) FILTER (WHERE kind='receipt') received,
+            -SUM(quantity_kg) FILTER (WHERE kind IN ('issue','mixing')) issued
+          FROM factory_raw_movements GROUP BY material_id
+        ) movement_totals ON movement_totals.material_id=r.id
+        LEFT JOIN (
+          SELECT material_id,SUM(quantity_kg) returned
+          FROM factory_mix_stock_adjustments GROUP BY material_id
+        ) correction_totals ON correction_totals.material_id=r.id` : ""}
         WHERE ${rawCategorySQL} ORDER BY i.code NULLS LAST,i.id`);
       const machines = canViewMixing(actor) ? await rows<MixingState["machines"][number]>(tx,
         "SELECT id,name,name_ar,status,screw_type FROM machines WHERE lower(type)=ANY($1::text[]) ORDER BY id", [filmTypes]) : [];
