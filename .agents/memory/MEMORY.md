@@ -1,3 +1,4 @@
+- [Workflow listener state](workflow-listener-state.md) — a failed workflow may leave its server alive; HTTP 200 alone does not confirm managed startup recovery.
 - [Unused-import detection](unused-import-detection.md) — tsc --noUnusedLocals sweeps must catch TS6192/6196/6198 too, not just TS6133, or whole unused import blocks slip through.
 - [Mechanical file split](mechanical-file-split.md) — storage/routes/pages split conventions: IStorage sigs must match textually, routes ctx mutable-state rules, page move import fixes.
 - [Security & authz patterns](security-fixes.md) — durable route/webhook/AI-tool authz patterns, private-knowledge leak control, doc owner-binding, order-number concurrency, type-safety gotchas.
