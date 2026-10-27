@@ -3,6 +3,17 @@ name: Prospective production mix accounting
 description: Approved accounting scope and limits of machine-wide FIFO mix traceability.
 ---
 
+Raw warehouse cards use English material names even in the Arabic interface.
+Their all-time outgoing total includes both manual issues and raw ingredients
+debited for mixing. Mix corrections and cancellations reduce or increase that
+net outgoing amount; returned ingredients are not new incoming receipts.
+
+**Why:** the user explicitly approved including manual issues and mixing
+together when adding per-material incoming/outgoing totals to the raw hall.
+**How to apply:** retain the current balance and independent stock workflows;
+do not derive all-time totals from a limited recent-voucher/history feed or
+change material-name presentation on unrelated mixing/operator pages.
+
 Production monitoring is administrator-only and consumption accounting is prospective only. Do not reconstruct historical consumption or opening stock; historical production may remain visible without tracked balances.
 
 **Why:** the user explicitly chose new-only accounting instead of historical reconstruction.
