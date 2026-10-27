@@ -450,6 +450,8 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         permissions = ["admin"]; productionBinding = undefined;
         const body = () => evaluate("document.body.innerText");
         await open("/production/mixing");
+        await wait("!!document.querySelector('.raw-mix-history > summary')");
+        await click(".raw-mix-history > summary");
         await wait("document.body.innerText.includes('لا توجد خلطات مسجلة بعد.')");
         check("Arabic mixing title and empty materials", (await body()).includes("خلط مواد الخام") && (await body()).includes("لا توجد مواد خام في الدليل."));
         await open("/warehouse/raw-materials");
@@ -478,6 +480,8 @@ const { makeReceiptFixture, checkReceiptPagination } = require("./lib/receipt-pa
         const body = () => evaluate("document.body.innerText");
         const englishOnly = async name => check(name, !/[\u0600-\u06ff]/.test(await body()));
         await open("/production/mixing");
+        await wait("!!document.querySelector('.raw-mix-history > summary')");
+        await click(".raw-mix-history > summary");
         await wait("document.body.innerText.includes('No mixes have been recorded yet.') && document.body.innerText.includes('There are no raw materials in the catalog.')");
         check("English mixing empty materials", (await body()).includes("There are no raw materials in the catalog."));
         check("English mixing empty machines", (await body()).includes("No film machines are available."));

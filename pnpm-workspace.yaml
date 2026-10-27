@@ -16,13 +16,17 @@ overrides:
   brace-expansion@5: 5.0.12
   picomatch: 4.0.5
   ip-address: 10.7.4
-  'ajv>fast-uri': 3.1.8
+  'ajv>fast-uri': 3.1.9
+  body-parser@1: 1.20.9
+  body-parser@2: 2.4.0
+  '@azure/identity': 4.14.0
+  '@azure/identity>@azure/msal-node': 7.1.0
   hono: 4.13.13
   dompurify: 3.4.17
   '@xmldom/xmldom@0.8': 0.8.15
   browserslist: 4.28.9
   baseline-browser-mapping: 2.11.21
-  qs: 6.16.0
+  qs: 6.16.1
   'three-stdlib>fflate': 0.6.11
   '@types/three>fflate': 0.6.11
   'jspdf>fflate': 0.8.3
