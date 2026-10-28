@@ -57,6 +57,7 @@ const messages: Record<string, [string, string]> = {
   planning: ["التخطيط والمراقبة", "Planning and monitoring"],
   mixing: ["خلط مواد الخام", "Raw material mixing"],
   raw: ["صالة الخام", "Raw materials hall"],
+  deliveries: ["تسليم العملاء", "Customer deliveries"],
   title: ["تشغيل الإنتاج", "Production operations"], intro: ["كل رول يسير في مساره؛ والدفعات تصل للمخزون عند استلامها.", "Each roll moves on its own; batches enter stock when received."],
   management: ["إدارة الإنتاج", "Production management"], film: ["تشغيل الفيلم", "Film operations"], printing: ["تشغيل الطباعة", "Printing operations"], cutting: ["تشغيل القص", "Cutting operations"], hall: ["صالة الإنتاج", "Production hall"], warehouse: ["المنتجات التامة", "Finished products"], roll: ["سجل الرول", "Roll record"],
   reload: ["تحديث البيانات", "Refresh data"], retry: ["إعادة المحاولة", "Retry"], failedLoad: ["تعذر تحميل بيانات الإنتاج.", "Production data could not be loaded."], loading: ["جارٍ تحميل بيانات الإنتاج", "Loading production data"], noRows: ["لا توجد سجلات لعرضها الآن", "There are no records to show right now"], unrecorded: ["غير مسجل", "Unrecorded"], ready: ["جاهز", "Ready"], running: ["قيد التشغيل", "In progress"], started: ["بدأ الإنتاج", "Production started"], start: ["بدء الإنتاج", "Start production"], noEligible: ["لا توجد أوامر مؤهلة لهذه المرحلة.", "No orders are eligible for this stage."],

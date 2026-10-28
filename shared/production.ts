@@ -124,6 +124,12 @@ export type FinishedDelivery = {
   items: { id: number; inventory_id: number; production_order_id: number;
     production_order_number: string; item_id: string; product: ProductSnapshot; quantity_kg: string }[];
 };
+export type CustomerDeliveryRecord = {
+  production_order_id: number; production_order_number: string; order_number: string;
+  customer_id: string; customer_name: string; customer_name_ar: string | null;
+  item_id: string; product: ProductSnapshot; delivered_kg: string; last_delivered_at: string;
+  deliveries: { id: number; voucher_number: string; created_at: string; quantity_kg: string }[];
+};
 export type InventoryMovement = {
   id: number; receipt_id: number; receipt_item_id: number; quantity_kg: string; created_at: string;
   voucher_number: string; production_order_id: number; location_id: number;

@@ -1,4 +1,4 @@
-import type { DeliveryInput, DeliveryStock, FinishedDelivery, ProductionUser } from "../../shared/production";
+import type { CustomerDeliveryRecord, DeliveryInput, DeliveryStock, FinishedDelivery, ProductionUser } from "../../shared/production";
 import { kgHundredths, kgString } from "../../shared/production";
 import { execution, lockOrders, mutate, one, permission, ProductionError, rows, type Connection, type ConnectionPool } from "./core";
 
@@ -108,6 +108,57 @@ export class FinishedDeliveryService {
         ${where.length?`WHERE ${where.join(" AND ")}`:""} ORDER BY d.id DESC LIMIT ${bind(limit+1)}`,params);
       const more=records.length>limit;if(more)records.pop();
       return {records,next:more?records.at(-1)!.id:null};
+    });
+  }
+  async customerDeliveries(actor: ProductionUser, filter: {before?:number;search?:string;limit?:number} = {}) {
+    permission(actor, "view_finished_inventory", "manage_finished_warehouse");
+    return this.read(async tx => {
+      const params: unknown[] = [];
+      const bind = (value: unknown) => { params.push(value); return `$${params.length}`; };
+      const where: string[] = [];
+      if (filter.before) where.push(`g.production_order_id < ${bind(filter.before)}`);
+      if (filter.search) {
+        const search = bind(`%${filter.search.replace(/[\\%_]/g, "\\$&")}%`);
+        // Filter the complete group, never the lines used to calculate its total.
+        where.push(`(g.production_order_number ILIKE ${search} OR o.order_number ILIKE ${search}
+          OR g.customer_name ILIKE ${search} OR g.customer_name_ar ILIKE ${search}
+          OR g.item_id ILIKE ${search} OR g.product->>'name' ILIKE ${search}
+          OR g.product->>'name_ar' ILIKE ${search}
+          OR EXISTS (SELECT 1 FROM voucher_lines v WHERE v.production_order_id=g.production_order_id
+            AND v.voucher_number ILIKE ${search}))`);
+      }
+      const limit = Math.min(Math.max(filter.limit ?? 30, 1), 100);
+      const records = await rows<CustomerDeliveryRecord>(tx, `
+        WITH voucher_lines AS (
+          SELECT i.production_order_id,d.id,d.voucher_number,d.created_at,
+            d.customer_id,d.customer_name,d.customer_name_ar,
+            (array_agg(i.production_order_number ORDER BY i.id DESC))[1] production_order_number,
+            (array_agg(i.item_id ORDER BY i.id DESC))[1] item_id,
+            (array_agg(i.product ORDER BY i.id DESC))[1] product,
+            sum(i.quantity_kg) quantity_kg
+          FROM factory_delivery_items i JOIN factory_deliveries d ON d.id=i.delivery_id
+          GROUP BY i.production_order_id,d.id
+        ), grouped AS (
+          SELECT production_order_id,
+            (array_agg(production_order_number ORDER BY id DESC))[1] production_order_number,
+            (array_agg(customer_id ORDER BY id DESC))[1] customer_id,
+            (array_agg(customer_name ORDER BY id DESC))[1] customer_name,
+            (array_agg(customer_name_ar ORDER BY id DESC))[1] customer_name_ar,
+            (array_agg(item_id ORDER BY id DESC))[1] item_id,
+            (array_agg(product ORDER BY id DESC))[1] product,
+            sum(quantity_kg)::text delivered_kg,max(created_at) last_delivered_at,
+            jsonb_agg(jsonb_build_object('id',id,'voucher_number',voucher_number,
+              'created_at',created_at,'quantity_kg',quantity_kg::text)
+              ORDER BY created_at DESC,id DESC) deliveries
+          FROM voucher_lines GROUP BY production_order_id
+        )
+        SELECT g.*,o.order_number FROM grouped g
+        JOIN production_orders p ON p.id=g.production_order_id JOIN orders o ON o.id=p.order_id
+        ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+        ORDER BY g.production_order_id DESC LIMIT ${bind(limit + 1)}`, params);
+      const more = records.length > limit;
+      if (more) records.pop();
+      return { records, next: more ? records.at(-1)!.production_order_id : null };
     });
   }
   private async read<T>(action:(tx:Connection)=>Promise<T>){

@@ -211,6 +211,10 @@ router.get("/deliveries", handler(async (req, res) => {
   res.setHeader("Cache-Control", "private, no-store");
   res.json(await delivery.history(req.user!, deliveryFilters.parse(req.query)));
 }));
+router.get("/customer-deliveries", handler(async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(await delivery.customerDeliveries(req.user!, deliveryFilters.parse(req.query)));
+}));
 router.post("/deliveries", handler(async (req, res) => {
   const input = request.extend({ notes: safeText(2000).optional(), items: z.array(z.object({
     inventory_id: id, quantity_kg: weight,
