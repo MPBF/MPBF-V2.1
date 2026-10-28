@@ -26,7 +26,7 @@ describe("warehouse keeper's two-page boundary", () => {
     }
     expect(warehouseKeeperPermissions(permissions)).toEqual(permissions);
     expect(isWarehouseOnlyAccount(account)).toBe(true);
-    expect(availableWarehouseViews(account).map(view => view.view)).toEqual(["hall", "warehouse", "raw"]);
+    expect(availableWarehouseViews(account).map(view => view.view)).toEqual(["hall", "warehouse", "deliveries", "raw"]);
     expect(availableProductionViews(account)).toEqual([]);
     expect(availablePlanningViews(account)).toEqual([]);
     expect(canRecordMixing(account)).toBe(false);

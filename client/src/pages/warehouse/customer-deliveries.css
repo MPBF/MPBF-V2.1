@@ -1,0 +1,228 @@
+.customer-deliveries .customer-deliveries-refresh-mark {
+  display: inline-block;
+  font-size: 18px;
+  line-height: 1;
+}
+.customer-deliveries-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 18px 0;
+  padding: 15px 17px;
+  border-inline-start: 3px solid var(--theme-warehouse-cards-production-warehouse-order-card-border-2);
+}
+.customer-deliveries .customer-deliveries-search {
+  display: grid;
+  flex: 1 1 420px;
+  gap: 6px;
+  min-width: 0;
+  color: var(--theme-warehouse-cards-production-warehouse-section-heading-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.customer-deliveries-search input {
+  width: 100%;
+  min-height: 46px;
+  padding: 9px 12px;
+  border: 1px solid var(--theme-warehouse-cards-raw-ops-raw-icon-button-border);
+  border-radius: 0;
+  background: var(--theme-warehouse-cards-production-warehouse-order-card-surface);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  outline-offset: 2px;
+}
+.customer-deliveries-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 4px 5px;
+  color: var(--theme-warehouse-cards-production-warehouse-order-card-header-small-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.customer-deliveries-total strong {
+  color: var(--theme-warehouse-cards-production-warehouse-order-number-text);
+  font: 750 20px "IBM Plex Mono", monospace;
+}
+.customer-delivery-section { margin-top: 18px; }
+.customer-delivery-list { display: grid; gap: 11px; }
+.customer-delivery-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--theme-warehouse-cards-raw-ops-raw-voucher-card-border);
+  border-top: 3px solid var(--theme-warehouse-cards-production-warehouse-order-card-border-2);
+  background: var(--theme-warehouse-cards-production-warehouse-order-card-surface);
+  box-shadow: 0 5px 18px var(--theme-warehouse-cards-raw-ops-raw-stock-card-shadow);
+}
+.customer-delivery-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 16px 13px;
+  background: var(--theme-warehouse-cards-production-warehouse-balance-spec-surface);
+}
+.customer-delivery-identifiers { display: grid; gap: 5px; min-width: 0; }
+.customer-delivery-eyebrow {
+  color: var(--theme-warehouse-cards-production-warehouse-section-kicker-text);
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.customer-delivery-po {
+  color: var(--theme-warehouse-cards-production-warehouse-order-number-text);
+  font: 750 clamp(14px, 2vw, 17px) "IBM Plex Mono", monospace;
+  direction: ltr;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.customer-delivery-identifiers small {
+  color: var(--theme-warehouse-cards-production-warehouse-order-card-header-small-text);
+  font-size: 10px;
+}
+.customer-delivery-amount {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  text-align: end;
+}
+.customer-delivery-amount > span {
+  color: var(--theme-warehouse-cards-production-warehouse-order-metrics-span-text);
+  font-size: 10px;
+}
+.customer-delivery-amount bdi {
+  color: var(--theme-warehouse-cards-production-warehouse-order-number-text);
+  font: 750 clamp(19px, 3vw, 25px) "IBM Plex Mono", monospace;
+  direction: ltr;
+  overflow-wrap: anywhere;
+}
+.customer-delivery-amount small {
+  color: var(--theme-warehouse-cards-production-warehouse-order-card-header-small-text);
+  font: 600 10px sans-serif;
+}
+.customer-delivery-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 13px 16px;
+}
+.customer-delivery-details > div { display: grid; align-content: start; gap: 5px; min-width: 0; }
+.customer-delivery-details span {
+  color: var(--theme-warehouse-cards-production-warehouse-order-metrics-span-text);
+  font-size: 10px;
+}
+.customer-delivery-details strong {
+  color: var(--theme-warehouse-cards-production-warehouse-order-product-strong-text);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.customer-delivery-details small {
+  color: var(--theme-warehouse-cards-raw-ops-raw-voucher-card-li-small-text);
+  font: 10px "IBM Plex Mono", monospace;
+}
+.customer-delivery-vouchers {
+  border-top: 1px solid var(--theme-warehouse-cards-raw-ops-raw-voucher-card-ul-border);
+}
+.customer-delivery-vouchers summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 10px 16px;
+  color: var(--theme-warehouse-cards-production-warehouse-order-number-text);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+  list-style-position: inside;
+}
+.customer-delivery-vouchers summary::marker { color: var(--theme-warehouse-cards-production-warehouse-section-kicker-text); }
+.customer-delivery-vouchers summary bdi {
+  margin-inline-start: auto;
+  font: 700 11px "IBM Plex Mono", monospace;
+}
+.customer-delivery-voucher-table { padding: 0 16px 12px; }
+.customer-delivery-voucher-row {
+  display: grid;
+  grid-template-columns: minmax(90px, .8fr) minmax(130px, 1.4fr) minmax(90px, .7fr);
+  align-items: baseline;
+  gap: 9px;
+  padding: 9px 0;
+  border-top: 1px solid var(--theme-warehouse-cards-raw-ops-raw-voucher-card-ul-border);
+  color: var(--theme-warehouse-cards-production-warehouse-order-product-strong-text);
+  font-size: 10px;
+}
+.customer-delivery-voucher-row > :first-child { overflow-wrap: anywhere; }
+.customer-delivery-voucher-row strong,
+.customer-delivery-voucher-row > bdi {
+  color: var(--theme-warehouse-cards-production-warehouse-order-number-text);
+  font: 650 10px "IBM Plex Mono", monospace;
+  direction: ltr;
+  text-align: start;
+}
+.customer-delivery-voucher-row > bdi { white-space: nowrap; }
+.customer-delivery-voucher-row time {
+  color: var(--theme-warehouse-cards-production-warehouse-order-card-header-small-text);
+  font-size: 10px;
+}
+.customer-delivery-voucher-labels {
+  color: var(--theme-warehouse-cards-production-warehouse-order-metrics-span-text);
+  font-size: 9px;
+  font-weight: 700;
+}
+.customer-delivery-voucher-labels > span:last-child { text-align: start; }
+.customer-delivery-empty {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-height: 176px;
+  align-content: center;
+  padding: 24px;
+  border: 1px dashed var(--theme-warehouse-cards-raw-ops-raw-icon-button-border);
+  background: var(--theme-warehouse-cards-production-warehouse-balance-spec-surface);
+}
+.customer-delivery-empty-index {
+  color: var(--theme-warehouse-cards-production-warehouse-section-kicker-text);
+  font: 700 10px "IBM Plex Mono", monospace;
+  letter-spacing: 1px;
+}
+.customer-delivery-empty strong { color: var(--theme-warehouse-cards-production-warehouse-order-number-text); font-size: 14px; }
+.customer-delivery-empty p {
+  margin: 0;
+  color: var(--theme-warehouse-cards-production-warehouse-order-card-header-small-text);
+  font-size: 11px;
+}
+.customer-delivery-skeleton { display: grid; gap: 10px; }
+.customer-delivery-skeleton i {
+  display: block;
+  height: 120px;
+  background: linear-gradient(90deg, var(--theme-warehouse-cards-production-warehouse-balance-spec-surface), var(--theme-warehouse-cards-production-warehouse-order-card-surface), var(--theme-warehouse-cards-production-warehouse-balance-spec-surface));
+  background-size: 200% 100%;
+  animation: delivery-skeleton 1.5s ease-in-out infinite;
+}
+.customer-delivery-load-more { display: flex; justify-content: center; padding-top: 14px; }
+.customer-delivery-load-more .raw-btn { min-width: 190px; min-height: 46px; justify-content: center; }
+@keyframes delivery-skeleton {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+@media (max-width: 767px) {
+  .customer-deliveries-toolbar { align-items: stretch; flex-direction: column; gap: 12px; padding: 13px; }
+  .customer-deliveries .customer-deliveries-search { flex: none; }
+  .customer-deliveries-total { justify-content: flex-end; }
+  .customer-delivery-card-head { padding: 13px 12px 11px; }
+  .customer-delivery-details { padding: 12px; }
+  .customer-delivery-vouchers summary { padding-inline: 12px; }
+  .customer-delivery-voucher-table { padding-inline: 12px; }
+  .customer-delivery-voucher-row { grid-template-columns: minmax(70px, .8fr) minmax(95px, 1fr) minmax(72px, .7fr); gap: 6px; font-size: 9px; }
+  .customer-delivery-voucher-row time { font-size: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .customer-delivery-skeleton i { animation: none; }
+}

@@ -3,6 +3,7 @@ import { hasProductionPermission, type ProductionUser } from "../../../shared/pr
 export const warehouseViews = [
   { view: "hall", href: "/warehouse/hall", permissions: ["view_production_hall", "receive_production"] },
   { view: "warehouse", href: "/warehouse/finished-inventory", permissions: ["view_finished_inventory", "receive_production", "manage_finished_warehouse"] },
+  { view: "deliveries", href: "/warehouse/customer-deliveries", permissions: ["view_finished_inventory", "manage_finished_warehouse"] },
   { view: "raw", href: "/warehouse/raw-materials", permissions: ["view_raw_inventory", "manage_raw_materials"] },
 ] as const;
 export type WarehouseTab = typeof warehouseViews[number]["view"];

@@ -8,14 +8,14 @@ const tabs = (account: ProductionUser) => availableWarehouseViews(account).map(t
 describe("separate warehouse navigation with existing access boundaries", () => {
   it("gives administrators production/mixing and finished/raw warehouse tabs", () => {
     expect(availableProductionViews(user("admin")).map(tab => tab.view)).toEqual(["film", "printing", "cutting", "mixing"]);
-    expect(tabs(user("admin"))).toEqual(["hall", "warehouse", "raw"]);
+    expect(tabs(user("admin"))).toEqual(["hall", "warehouse", "deliveries", "raw"]);
     expect(initialWarehousePath(user("admin"))).toBe("/warehouse/hall");
   });
   it.each([
     ["view_production_hall", ["hall"], "/warehouse/hall"],
     ["receive_production", ["hall", "warehouse"], "/warehouse/hall"],
-    ["view_finished_inventory", ["warehouse"], "/warehouse/finished-inventory"],
-    ["manage_finished_warehouse", ["warehouse"], "/warehouse/finished-inventory"],
+    ["view_finished_inventory", ["warehouse", "deliveries"], "/warehouse/finished-inventory"],
+    ["manage_finished_warehouse", ["warehouse", "deliveries"], "/warehouse/finished-inventory"],
   ] as const)("keeps the exact %s module permission", (permission, expected, path) => {
     const account = user(permission);
     expect(tabs(account)).toEqual(expected);
@@ -27,6 +27,7 @@ describe("separate warehouse navigation with existing access boundaries", () => 
     expect(canOpenWarehouseView(account, "roll")).toBe(true);
     expect(canOpenWarehouseView(account, "hall")).toBe(expected.some(view => view === "hall"));
     expect(canOpenWarehouseView(account, "warehouse")).toBe(expected.some(view => view === "warehouse"));
+    expect(canOpenWarehouseView(account, "deliveries")).toBe(expected.some(view => view === "deliveries"));
   });
   it.each(["operate_film", "operate_printing", "operate_cutting", "manage_production", "view_production"])(
     "does not grant warehouse access through %s", permission => {
@@ -48,5 +49,10 @@ describe("separate warehouse navigation with existing access boundaries", () => 
     expect(tabs(user("view_home"))).toEqual([]);
     expect(initialProductionPath(user("view_home"))).toBeNull();
     expect(initialWarehousePath(user("view_home"))).toBeNull();
+  });
+  it("does not grant customer delivery history through raw inventory or receiving alone", () => {
+    for (const permission of ["view_raw_inventory", "manage_raw_materials", "receive_production"]) {
+      expect(canOpenWarehouseView(user(permission), "deliveries")).toBe(false);
+    }
   });
 });
