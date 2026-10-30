@@ -183,14 +183,14 @@ export default function CustomerDeliveriesPage({ user }: CustomerDeliveriesPageP
             <i /><i /><i />
           </div> : !hasLoaded && error ? <div className="customer-delivery-empty" role="status">
             <strong>{tx("loadFail", en)}</strong>
-          </div> : records.length ? <div className="customer-delivery-list">
+          </div> : records.length ? <div className="warehouse-hall-grid customer-delivery-grid">
             {records.map(record => {
               const customer = en ? englishValue(record.customer_name) : (record.customer_name_ar?.trim() || record.customer_name?.trim() || "—");
               const productName = en
                 ? englishValue(record.product?.name, englishValue(record.item_id))
                 : (record.product?.name_ar?.trim() || record.product?.name?.trim() || record.item_id || "—");
               const detailsId = `delivery-vouchers-${record.production_order_id}`;
-              return <article className="customer-delivery-card" key={record.production_order_id}>
+              return <article className="warehouse-order-card customer-delivery-card" key={record.production_order_id}>
                 <header className="customer-delivery-card-head">
                   <div className="customer-delivery-identifiers">
                     <span className="customer-delivery-eyebrow">{tx("productionOrder", en)}</span>

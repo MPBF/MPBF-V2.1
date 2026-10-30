@@ -1,4 +1,14 @@
 .production .finished-inventory-page { min-width: 0; }
+.production .finished-delivery-history-toggle {
+  cursor: pointer;
+  list-style: none;
+  min-height: 44px;
+}
+.production .finished-delivery-history-toggle::-webkit-details-marker { display: none; }
+.production .finished-delivery-history-toggle > span { display: grid; gap: 4px; }
+.production .finished-delivery-history-toggle strong { font-size: 15px; }
+.production .finished-delivery-history-toggle > svg { width: 18px; height: 18px; flex: none; }
+.production .finished-delivery-history[open] > summary > svg { transform: rotate(180deg); }
 .production .finished-inventory-actions,
 .production .finished-inventory-selection,
 .production .finished-inventory-selection > div {

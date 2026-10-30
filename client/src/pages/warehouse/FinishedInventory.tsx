@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Printer, RefreshCw, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Printer, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MutableRefObject } from "react";
 import { createPortal } from "react-dom";
 
@@ -462,8 +462,11 @@ export default function FinishedInventory({ user, language, refresh, reload }: P
       {!canWrite && <p className="finished-inventory-readonly">{t.permission}</p>}
     </section>
 
-    <section className="warehouse-receipt-history finished-delivery-history">
-      <div className="warehouse-section-heading"><div><span className="warehouse-section-kicker">DELIVERY / AUDIT TRAIL</span><h3>{t.history}</h3></div></div>
+    <details className="warehouse-receipt-history finished-delivery-history">
+      <summary className="warehouse-section-heading finished-delivery-history-toggle">
+        <span><span className="warehouse-section-kicker">DELIVERY / AUDIT TRAIL</span><strong>{t.history}</strong></span>
+        <ChevronDown aria-hidden="true" />
+      </summary>
       <form className="finished-inventory-search" onSubmit={event => { event.preventDefault(); setHistoryQuery(historySearch.trim()); }}>
         <label><Search /><span className="sr-only">{t.searchHistory}</span><input value={historySearch} onChange={event => setHistorySearch(event.target.value)} placeholder={t.searchHistory} /></label>
         <button className="prod-btn secondary" type="submit">{t.search}</button>
@@ -487,7 +490,7 @@ export default function FinishedInventory({ user, language, refresh, reload }: P
           </article>)}
         </div> : !historyError ? <div className="prod-empty"><strong>{t.noHistory}</strong><span>{t.noHistoryDetail}</span></div> : null}
       {historyMore !== null && <div className="finished-inventory-more"><button className="prod-btn secondary" type="button" disabled={historyMoreLoading} onClick={() => void loadHistory(historyQuery, historyMore, true)}>{historyMoreLoading ? "…" : t.more}</button></div>}
-    </section>
+    </details>
     {modalOpen && <VoucherDialog language={language} rows={rows} stock={stock} customerId={selectedCustomerId} customerName={selectedCustomerName}
       onRows={setRows} notes={notes} onNotes={setNotes} pending={saving || Boolean(pending)} error={formError} saved={saved}
       onSubmit={submit} onRetry={retry} onClose={closeModal} openerRef={openerRef} />}

@@ -5,6 +5,16 @@ description: Avoid false failures when checking focus-dependent controls in mult
 
 Run focus-dependent interaction checks sequentially across responsive iframe viewports, not concurrently.
 
+For native `<details>`, verify the `open` state and descendant `checkVisibility()`,
+not the presence of layout rectangles, when asserting that collapsed content is hidden.
+
+**Why:** Chromium may retain descendant layout rectangles while the closed
+disclosure suppresses their rendering through content visibility.
+
+**How to apply:** assert collapsed visibility first, activate the summary, and
+assert visibility again; keep focusability and actual keyboard activation as
+separate checks rather than claiming one establishes the other.
+
 **Why:** Iframes share the browser's active focus. Focusing a combobox in one frame can blur and close a dropdown in another, producing false failures even though each viewport works on its own.
 
 **How to apply:** Finish one frame's search, keyboard, selection, and blur checks before starting the next. Hidden or transparent frames still compete for focus.

@@ -14,6 +14,7 @@ const WebSocket = require("ws");
       stdin: { contents: `
         import React from 'react';import {createRoot} from 'react-dom/client';
         import Page from './client/src/pages/warehouse/CustomerDeliveriesPage';
+        import FinishedInventory from './client/src/pages/warehouse/FinishedInventory';
         import i18n from './client/src/i18n';import './client/src/styles/theme-tokens.css';
         const mode=new URLSearchParams(location.search);
         await i18n.changeLanguage(mode.has('en')?'en':'ar');
@@ -28,12 +29,17 @@ const WebSocket = require("ws");
         window.fetch=async(path,options={})=>{
           if(options.method!=='GET')throw Error('Unexpected mutation');
           const url=new URL(path,location.origin);window.calls.push(url.pathname+url.search);
+          if(mode.has('finished')&&url.pathname==='/api/production/delivery-stock')return {ok:true,json:async()=>({records:[],next:null})};
+          if(mode.has('finished')&&url.pathname==='/api/production/deliveries')return {ok:true,json:async()=>({records:[{id:1,voucher_number:'FP-Del0001',customer_name:'Customer',customer_name_ar:'عميل',created_at:'2026-10-15T09:00:00Z',items:[{id:1,production_order_number:'PO-20',product:{name:'Product',name_ar:'منتج'},quantity_kg:'345.55'}]}],next:null})};
           if(url.pathname!=='/api/production/customer-deliveries')throw Error('Unexpected API');
           if(window.fail)return {ok:false,status:500,json:async()=>({message:'خطأ تجريبي',message_en:'Fixture failure'})};
           const before=url.searchParams.get('before');
           return {ok:true,json:async()=>({records:window.empty?[]:[before?{...record,production_order_id:10,production_order_number:'PO-10'}:record],next:window.empty||before?null:20})};
         };
-        createRoot(document.getElementById('root')).render(<Page user={{id:7,permissions:[mode.has('denied')?'view_raw_inventory':'view_finished_inventory']}}/>);
+        const user={id:7,permissions:[mode.has('denied')?'view_raw_inventory':'view_finished_inventory']};
+        createRoot(document.getElementById('root')).render(mode.has('finished')
+          ? <main className="production"><FinishedInventory user={user} language={mode.has('en')?'en':'ar'} refresh={{}} reload={async()=>{}}/></main>
+          : <Page user={user}/>);
       `, resolveDir: process.cwd(), loader: "tsx" },
       bundle: true, platform: "browser", format: "esm", jsx: "automatic", outfile: `${temp}/check.js`, logLevel: "silent",
     });
@@ -93,6 +99,7 @@ const WebSocket = require("ws");
       assert.equal(await evaluate("document.querySelectorAll('.customer-delivery-voucher-row').length"), 3);
       assert.ok(await evaluate("document.querySelector('time').textContent.includes('17')"), "Riyadh day rolls over");
       assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth"), `page overflow ${width}`);
+      assert.equal(await evaluate("getComputedStyle(document.querySelector('.customer-delivery-grid')).gridTemplateColumns.split(' ').length"), width>=1100?6:width>=768?3:1, "same responsive grid as other halls");
       assert.deepEqual(await evaluate("[...document.querySelectorAll('.customer-delivery-card,.customer-delivery-voucher-table')].filter(e=>e.scrollWidth>e.clientWidth+1).map(e=>e.className)"), [], `card overflow ${width}`);
       assert.ok(await evaluate("document.querySelector('.customer-deliveries-toolbar').getBoundingClientRect().height<200"), "compact mobile search");
       if (english) assert.ok(!/[\u0600-\u06ff]/.test(await evaluate("document.querySelector('.customer-delivery-card').textContent")));
@@ -110,6 +117,23 @@ const WebSocket = require("ws");
       await evaluate("window.dispatchEvent(new Event('focus'))");
       await wait(`window.calls.length>${count}`);
       console.log(`PASS ${width}px ${english ? "English" : "Arabic"} cards, vouchers, dates, decimals, navigation, search, pagination, refresh`);
+    }
+    for (const english of [false, true]) {
+      await navigate(`finished=1${english ? "&en=1" : ""}`);
+      await wait("!!document.querySelector('.finished-delivery-history-card')");
+      assert.equal(await evaluate("document.querySelector('.finished-delivery-history').open"), false);
+      assert.equal(await evaluate("document.querySelector('.finished-delivery-history-card').checkVisibility()"), false, "saved vouchers hidden initially");
+      await send("Page.bringToFront");
+      await evaluate("document.querySelector('.finished-delivery-history-toggle').focus()");
+      await wait("document.activeElement===document.querySelector('.finished-delivery-history-toggle')");
+      await evaluate("document.querySelector('.finished-delivery-history-toggle').click()");
+      await wait("document.querySelector('.finished-delivery-history').open");
+      assert.ok(await evaluate("document.querySelector('.finished-delivery-history-card').checkVisibility()"));
+      assert.ok(await evaluate("!!document.querySelector('.finished-delivery-history-card button')"), "printing retained");
+      assert.ok(await evaluate("!!document.querySelector('.finished-delivery-history input')"), "search retained");
+      await evaluate("document.querySelector('.finished-delivery-history-toggle').click()");
+      assert.equal(await evaluate("document.querySelector('.finished-delivery-history').open"), false);
+      console.log(`PASS saved vouchers collapsed initially, focusable expand, print/search retained, re-collapse ${english ? "English" : "Arabic"}`);
     }
     await navigate("denied=1");
     await wait("!!document.querySelector('[role=alert]')");
