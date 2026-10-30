@@ -67,6 +67,7 @@ describe("HR audit month read contract", () => {
     expect(joined).toContain(shift_definitions);
     expect(selected).toHaveProperty("shift_name_ar");
     expect(selected).toHaveProperty("shift_name_en");
+    expect(selected.expected_minutes).toBe(attendance_sessions.expected_minutes);
   });
 
   test("retains employee and section filters", async () => {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import i18n, { intlLocale, translate } from "../i18n";
 import { hrApi } from "../lib/hr-api";
 import { groupAttendanceEvents, type AttendanceAction, type AttendanceAuditGroup } from "../lib/hr-audit-grouping";
+import { auditWorkMinutes } from "../lib/hr-audit-hours";
 import { resolveCorrectionTimes, type CorrectionAction } from "../lib/hr-correction-time";
 import "./hr-audit.css";
 import { riyadhDateTimeInput, riyadhDateTimeToIso } from "../lib/riyadh-time";
@@ -26,6 +27,7 @@ type AttendanceEvent = HrEmployee & {
   shift_id?: string | null;
   shift_name_ar?: string | null;
   shift_name_en?: string | null;
+  expected_minutes?: number | null;
   action: AttendanceAction;
   occurred_at: string;
   source: "employee" | "manual";
@@ -97,6 +99,8 @@ const formatDateTime = (value: string) => new Intl.DateTimeFormat(intlLocale(), 
 const formatMinutes = (minutes: number) => i18n.language === "en"
   ? `${Math.floor(minutes / 60).toLocaleString(intlLocale())} h ${String(minutes % 60).padStart(2, "0")} min`
   : `${Math.floor(minutes / 60).toLocaleString(intlLocale())} س ${String(minutes % 60).padStart(2, "0")} د`;
+const formatAuditMinutes = (minutes: number | null) => minutes === null
+  ? "—" : `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 const query = (values: Record<string, string>) => new URLSearchParams(Object.entries(values).filter(([, value]) => value)).toString();
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character]!);
 const auditTranslate = (source: string, english: string, values?: Record<string, unknown>) => translate(source, i18n.language === "en" ? { ...values, defaultValue: english } : values);
@@ -332,7 +336,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     {error && <div className="hr-alert error"><AlertTriangle size={16} />{error}</div>}
     {notice && <div className="hr-alert success"><Check size={16} />{notice}</div>}
 
-    <section className="hr-ops-section">
+    <section className={`hr-ops-section${tab === "audit" ? " hr-audit-section" : ""}`}>
       <div className="hr-filters">
         <div className="hr-filter-title"><Search size={17} /><div><strong>{translate("تصفية النتائج")}</strong><small>{translate("تتحدث النتائج تلقائياً")}</small></div></div>
         {tab === "audit" && <label><span>{translate("الشهر")}</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}
@@ -344,7 +348,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
 
       {tab === "audit" && <>
         <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{auditTranslate("عرض كل موظف مرة واحدة لكل وردية، مع ترتيب الورديات من الأحدث إلى الأقدم.", "One row per employee per shift, newest shifts first.")}</p></div><button className="hr-primary" type="button" onClick={() => setEventDraft({ user_id: filters.user, action: "break_end", occurred_at: riyadhDateTimeInput() })}><Plus size={17} />{" "}{translate("إنهاء استراحة يدويًا")}</button></div>
-        <div className="hr-table-wrap" role="region" aria-label={auditTranslate("سجل تدقيق الحضور", "Attendance audit log")} tabIndex={0}><table className="hr-data-table hr-audit-table"><thead><tr><th>{i18n.language === "en" ? "Serial" : "م"}</th><th>{auditTranslate("التاريخ", "Date")}</th><th>{translate("الموظف")}</th><th>{auditTranslate("وقت الحضور", "Check-in")}</th><th>{auditTranslate("وقت الاستراحة", "Break start")}</th><th>{auditTranslate("وقت العودة من الاستراحة", "Break end")}</th><th>{auditTranslate("وقت المغادرة", "Check-out")}</th><th>{auditTranslate("اسم الوردية", "Shift name")}</th><th>{auditTranslate("الإجراءات", "Actions")}</th></tr></thead><tbody>{auditGroups.map((group, index) => {
+        <div className="hr-table-wrap" role="region" aria-label={auditTranslate("سجل تدقيق الحضور", "Attendance audit log")} tabIndex={0}><table className="hr-data-table hr-audit-table"><thead><tr><th>{i18n.language === "en" ? "Serial" : "م"}</th><th>{auditTranslate("التاريخ", "Date")}</th><th>{translate("الموظف")}</th><th>{auditTranslate("وقت الحضور", "Check-in")}</th><th>{auditTranslate("وقت الاستراحة", "Break start")}</th><th>{auditTranslate("وقت العودة من الاستراحة", "Break end")}</th><th>{auditTranslate("وقت المغادرة", "Check-out")}</th><th>{auditTranslate("اسم الوردية", "Shift name")}</th><th>{auditTranslate("ساعات العمل", "Work hours")}</th><th>{auditTranslate("الإضافي", "Overtime")}</th><th>{auditTranslate("الإجراءات", "Actions")}</th></tr></thead><tbody>{auditGroups.map((group, index) => {
           const person = group.employee;
           const shiftName = i18n.language === "en"
             ? (person.shift_name_en && !/[\u0600-\u06ff]/.test(person.shift_name_en)
@@ -390,10 +394,14 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
             breaksOutsideShift
           );
           const incomplete = !hasCheckIn || !hasCheckOut || malformedClosed;
+          const { workedMinutes, overtimeMinutes } = auditWorkMinutes(group, incomplete);
           const overdueOpen = Boolean(incompleteSession && Date.now() > Date.parse(incompleteSession.shift_end_at));
           const redRow = overdueOpen || malformedClosed;
           return <tr key={group.key} className={redRow ? "hr-audit-overdue" : undefined}>
-            <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small></td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td><td><button className={`hr-audit-status ${incomplete ? "incomplete" : "complete"}`} type="button" aria-label={auditTranslate("تصحيح حالة حضور {{employee}} بتاريخ {{date}}", "Correct attendance status for {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onClick={() => setCorrection(correctionFromGroup(group))}>{incomplete ? auditTranslate("غير مكتمل", "Incomplete") : auditTranslate("مكتمل", "Complete")}</button></td>
+            <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small></td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td>
+            <td className="hr-audit-minutes" dir="ltr">{formatAuditMinutes(workedMinutes)}</td>
+            <td className="hr-audit-minutes" dir="ltr">{formatAuditMinutes(overtimeMinutes)}</td>
+            <td><button className={`hr-audit-status ${incomplete ? "incomplete" : "complete"}`} type="button" aria-label={auditTranslate("تصحيح حالة حضور {{employee}} بتاريخ {{date}}", "Correct attendance status for {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onClick={() => setCorrection(correctionFromGroup(group))}>{incomplete ? auditTranslate("غير مكتمل", "Incomplete") : auditTranslate("مكتمل", "Complete")}</button></td>
           </tr>;
         })}</tbody></table>{loading && <div className="hr-empty" aria-live="polite">{translate("جارٍ التحميل…")}</div>}{!loading && !auditGroups.length && <div className="hr-empty">{auditTranslate("لا توجد سجلات مطابقة لهذا الشهر.", "No matching records for this month.")}</div>}</div>
       </>}
