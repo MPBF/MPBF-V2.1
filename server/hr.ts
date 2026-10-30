@@ -159,6 +159,7 @@ router.get("/attendance-events", handle(async (req, res) => {
     shift_id: attendance_sessions.shift_id,
     shift_name_ar: shift_definitions.name_ar,
     shift_name_en: shift_definitions.name_en,
+    expected_minutes: attendance_sessions.expected_minutes,
     source: attendance_events.source,
     created_by: attendance_events.created_by,
     updated_by: attendance_events.updated_by,

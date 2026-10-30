@@ -1,5 +1,9 @@
+.hr-audit-section {
+  min-width: 0;
+}
+
 .hr-table-wrap .hr-audit-table {
-  min-width: 1080px;
+  min-width: 1220px;
 }
 
 .hr-audit-table th,
@@ -10,6 +14,13 @@
 .hr-table-wrap .hr-audit-table td:nth-child(2) {
   text-align: center;
   white-space: nowrap;
+}
+
+.hr-audit-table .hr-audit-minutes {
+  direction: ltr;
+  text-align: end;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .hr-audit-table .hr-employee-cell strong,

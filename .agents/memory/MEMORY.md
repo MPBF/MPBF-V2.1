@@ -27,6 +27,7 @@
 - [Vite @/ alias fragility](vite-at-alias-resolution.md) — `@/` imports can break dev server during Vite dep re-optimization after lockfile churn; use relative imports in client code.
 - [Approved leave and absence](approved-requests-attendance.md) — show absence only after assigned shifts end; exempt dated approved leave, never infer legacy leave dates or change attendance/pay.
 - [Incomplete attendance and pay](wage-computation.md) — treat shifts with no verified checkout as non-payable pending correction; do not assume a payroll engine currently exists.
+- [HR audit hours](hr-audit-hours.md) — approved net work and overtime columns in hours:minutes; incomplete records show unknown, not estimated work.
 - [Number display formatting](number-formatting.md) — displayed numbers group thousands via central helpers (formatNumber / formatNumberAr); never group GPS coords/CSS/payloads/percentages, and never re-parse grouped output.
 - [Attendance engine aggregation](attendance-engine-aggregation.md) — self check-in writes many rows per shift-day; coalesce stamps to one record, MAX cumulative withdrawn, compute break once (never per-row sum).
 - [Legacy→new product prefill guard](legacy-map-prefill.md) — prefilling the reactive customer-product form needs a ref that preserves cutting_length through category select, releases on cylinder/length edit, resets on dialog close.
