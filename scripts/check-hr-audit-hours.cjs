@@ -25,9 +25,13 @@ const WebSocket=require("ws");
       const actions=['check_in','break_start','break_end','check_out'];
       const events=sessions.flatMap(s=>s.times.flatMap((time,i)=>time?[{...employee,id:s.id*10+i,user_id:7,session_id:s.id,
         shift_date:s.date,expected_minutes:s.expected,shift_id:'N',shift_name_ar:'وردية تجريبية',shift_name_en:'Test shift',
-        action:actions[i],occurred_at:(s.id===3&&i===3?'2026-10-19':s.date)+'T'+time+':00+03:00'}]:[]));
-      window.calls=[];window.fetch=async(path,options={})=>{
-        if(options.method&&options.method!=='GET')throw Error('Unexpected write');
+        action:actions[i],updated_at:'2026-10-20T00:00:00.000Z',occurred_at:(s.id===3&&i===3?'2026-10-19':s.date)+'T'+time+':00+03:00'}]:[]));
+      window.calls=[];window.writes=[];window.failBulk=false;window.fetch=async(path,options={})=>{
+        if(options.method&&options.method!=='GET'){
+          if(!String(path).endsWith('/attendance-corrections/bulk'))throw Error('Unexpected write');
+          window.writes.push(JSON.parse(options.body));
+          return window.failBulk?{ok:false,status:409,json:async()=>({message:'تغير سجل الحضور'})}:{ok:true,json:async()=>({success:true,corrected:JSON.parse(options.body).corrections.length})};
+        }
         window.calls.push(String(path));
         return{ok:true,json:async()=>String(path).includes('/attendance-events?')?events:[]};
       };
@@ -55,7 +59,7 @@ const WebSocket=require("ws");
       await wait("document.querySelectorAll('.hr-audit-table tbody tr').length===4");
       const headers=await evaluate("[...document.querySelectorAll('.hr-audit-table th')].map(e=>e.textContent)");
       assert.deepEqual(headers.slice(-3),en?["Working hours","Overtime","Actions"]:["ساعات العمل","الإضافي","الإجراءات"]);
-      const rows=await evaluate("[...document.querySelectorAll('.hr-audit-table tbody tr')].map(e=>({date:e.children[1].textContent,totals:[...e.querySelectorAll('.hr-audit-minutes')].map(t=>t.textContent),status:!!e.querySelector('button.hr-audit-status')}))");
+      const rows=await evaluate("[...document.querySelectorAll('.hr-audit-table tbody tr')].map(e=>({date:e.children[2].textContent,totals:[...e.querySelectorAll('.hr-audit-minutes')].map(t=>t.textContent),status:!!e.querySelector('button.hr-audit-status')}))");
       assert.deepEqual(rows.map(r=>r.totals),[["07:00","—"],["08:30","01:00"],["—","—"],["08:30","01:00"]]);
       assert.ok(rows.every(r=>r.status));
       assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth"),`page overflow ${width}`);
@@ -90,6 +94,39 @@ const WebSocket=require("ws");
       assert.equal(await evaluate("document.querySelector('.hr-correction-modal footer button').disabled"),false);
       await evaluate(`(() => {const s=document.querySelector('#correction-check_out-hour');s.value='';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
       await wait("document.querySelector('.field-2').classList.contains('needs-correction')");
+      await evaluate("document.querySelector('.hr-correction-modal header button').click()");
+      await wait("!document.querySelector('.hr-correction-modal')");
+      await evaluate("document.querySelectorAll('.hr-audit-table tbody input[type=checkbox]')[0].click()");
+      await evaluate("document.querySelectorAll('.hr-audit-table tbody input[type=checkbox]')[3].click()");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody input:checked').length"),2);
+      await evaluate("document.querySelector('.hr-audit-selection-toolbar .hr-primary').click()");
+      await wait("!!document.querySelector('.hr-bulk-correction-warning')");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-bulk-correction-targets li').length"),2);
+      assert.equal(await evaluate("document.querySelector('.hr-correction-modal footer button').disabled"),true);
+      for(const [action,hour] of [["check_in","08"],["break_start","12"],["break_end","13"],["check_out","17"]]){
+        await evaluate(`(() => {const s=document.querySelector('#correction-${action}-hour');s.value='${hour}';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+        await wait(`document.querySelector('#correction-${action}-hour').value==='${hour}'`);
+      }
+      assert.equal(await evaluate("document.querySelector('.hr-correction-modal footer button').disabled"),true,"explicit replacement confirmation required");
+      await evaluate("document.querySelector('.hr-bulk-correction-confirm input').click()");
+      await wait("!document.querySelector('.hr-correction-modal footer button').disabled");
+      assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth"),"bulk modal fits phone");
+      await evaluate("window.failBulk=true;document.querySelector('.hr-correction-modal footer button').click()");
+      await wait("!!document.querySelector('.hr-correction-modal .hr-alert')?.textContent.trim() && !document.querySelector('.hr-correction-modal footer button').disabled");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody input:checked').length"),2,"failure retains selection");
+      await evaluate("window.failBulk=false;document.querySelector('.hr-correction-modal footer button').click()");
+      await wait("!document.querySelector('.hr-correction-modal')");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody input:checked').length"),0,"success clears selection");
+      const batch=await evaluate("window.writes[1].corrections");
+      assert.equal(batch.length,2);
+      assert.deepEqual(batch.map(e=>e.shift_date),["2026-10-19","2026-10-16"]);
+      assert.deepEqual(batch.map(e=>e.events.length),[4,4]);
+      assert.equal(batch[0].events[3].occurred_at,"2026-10-19T14:00:00.000Z");
+      assert.equal(Date.parse(batch[1].events[3].occurred_at),Date.parse("2026-10-16T14:00:00.000Z"));
+      await evaluate("document.querySelector('.hr-audit-table thead input').click()");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody input:checked').length"),4,"select all visible records");
+      await evaluate("document.querySelector('.hr-audit-selection-toolbar button:not(.hr-primary)').click()");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody input:checked').length"),0,"clear selection");
       console.log(`PASS ${width}px ${en?"English":"Arabic"} headers, net time, overtime, overnight, incomplete, missing duration, status controls, responsive scroll`);
     }
     assert.deepEqual(errors,[]);
