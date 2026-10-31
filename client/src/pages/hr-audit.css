@@ -66,14 +66,14 @@
 }
 
 .hr-audit-status.incomplete {
-  border-color: #d6b775;
-  background: #fbf5e8;
-  color: #795a1f;
+  border-color: #c97970;
+  background: #fff0ed;
+  color: #7e302b;
 }
 
 .hr-audit-overdue .hr-audit-status.incomplete {
-  border-color: #c97970;
-  background: #fff8f6;
+  border-color: #b85b51;
+  background: #ffe7e2;
   color: #7e302b;
 }
 
@@ -83,8 +83,15 @@
 }
 
 .hr-audit-status.incomplete:hover {
-  border-color: #a77b32;
-  background: #f5ebd3;
+  border-color: #a8443c;
+  background: #ffe0da;
+  color: #702c27;
+}
+
+.hr-audit-overdue .hr-audit-status.incomplete:hover {
+  border-color: #923a34;
+  background: #ffd7cf;
+  color: #702c27;
 }
 
 .hr-audit-status:focus-visible,
@@ -93,8 +100,10 @@
   outline-offset: 2px;
 }
 
-.hr-correction-modal {
-  width: min(720px, calc(100vw - 28px));
+.hr-modal.hr-correction-modal {
+  width: min(380px, calc(100vw - 28px));
+  max-width: 100%;
+  box-sizing: border-box;
   max-height: min(88dvh, 900px);
   overflow: auto;
 }
@@ -171,8 +180,8 @@
 .hr-correction-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: 50%;
-  min-width: min(100%, 320px);
+  width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   gap: 15px 18px;
   padding: 16px 18px;
@@ -226,7 +235,7 @@
   color: #697a71;
   font-size: 0.72rem;
   font-weight: 700;
-  text-align: start;
+  text-align: right;
 }
 
 .hr-correction-time-controls select {
@@ -285,8 +294,8 @@
     margin-inline: 14px;
   }
 
-  .hr-correction-modal {
-    width: calc(100vw - 20px);
+  .hr-modal.hr-correction-modal {
+    width: min(380px, calc(100vw - 20px));
     max-height: 92dvh;
   }
 }
