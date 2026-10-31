@@ -1,4 +1,4 @@
-import { attendance_events, attendance_sessions, sections, shift_definitions, user_shift_assignments, user_violations, users } from "@shared/schema";
+import { administrative_requests, attendance_events, attendance_sessions, sections, shift_definitions, user_shift_assignments, user_violations, users } from "@shared/schema";
 import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
@@ -282,6 +282,34 @@ router.delete("/attendance-events/:id", handle(async (req, res) => {
     .returning({ id: attendance_events.id });
   if (!removed) return res.status(404).json({ message: "سجل الحضور غير موجود" });
   res.json({ success: true, id: removed.id });
+}));
+
+router.get("/attendance-calendar", handle(async (req, res) => {
+  const month = textFilter(req.query.month, 20);
+  const range = monthRange(month);
+  const userId = positiveId(req.query.user_id, "الموظف");
+  const sectionId = textFilter(req.query.section_id, 20);
+  const start = `${month}-01`;
+  const end = new Date(range.end.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const conditions: SQL[] = [
+    eq(administrative_requests.type, "leave"),
+    eq(administrative_requests.status, "approved"),
+    or(
+      isNull(administrative_requests.leave_start_date),
+      isNull(administrative_requests.leave_end_date),
+      and(lt(administrative_requests.leave_start_date, end), gte(administrative_requests.leave_end_date, start)),
+    )!,
+  ];
+  if (userId) conditions.push(eq(administrative_requests.user_id, userId));
+  if (sectionId) conditions.push(eq(users.section_id, sectionId));
+  const leaves = await db.select({
+    user_id: administrative_requests.user_id,
+    start: administrative_requests.leave_start_date,
+    end: administrative_requests.leave_end_date,
+  }).from(administrative_requests).innerJoin(users, eq(administrative_requests.user_id, users.id))
+    .where(and(...conditions));
+  res.set("Cache-Control", "private, no-store");
+  res.json({ leaves });
 }));
 
 router.get("/attendance-sessions/open", handle(async (req, res) => {

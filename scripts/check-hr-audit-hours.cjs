@@ -26,14 +26,15 @@ const WebSocket=require("ws");
       const events=sessions.flatMap(s=>s.times.flatMap((time,i)=>time?[{...employee,id:s.id*10+i,user_id:7,session_id:s.id,
         shift_date:s.date,expected_minutes:s.expected,shift_id:'N',shift_name_ar:'وردية تجريبية',shift_name_en:'Test shift',
         action:actions[i],updated_at:'2026-10-20T00:00:00.000Z',occurred_at:(s.id===3&&i===3?'2026-10-19':s.date)+'T'+time+':00+03:00'}]:[]));
-      window.calls=[];window.writes=[];window.failBulk=false;window.fetch=async(path,options={})=>{
+      window.calls=[];window.writes=[];window.failBulk=false;window.emptyAudit=false;window.failCalendar=false;window.fetch=async(path,options={})=>{
         if(options.method&&options.method!=='GET'){
           if(!String(path).endsWith('/attendance-corrections/bulk'))throw Error('Unexpected write');
           window.writes.push(JSON.parse(options.body));
           return window.failBulk?{ok:false,status:409,json:async()=>({message:'تغير سجل الحضور'})}:{ok:true,json:async()=>({success:true,corrected:JSON.parse(options.body).corrections.length})};
         }
         window.calls.push(String(path));
-        return{ok:true,json:async()=>String(path).includes('/attendance-events?')?events:[]};
+        if(String(path).includes('/attendance-calendar?')&&window.failCalendar)return{ok:false,status:500,json:async()=>({message:'Calendar read failed'})};
+        return{ok:true,json:async()=>String(path).includes('/attendance-events?')?(window.emptyAudit?[]:events):String(path).includes('/attendance-calendar?')?{leaves:[{user_id:7,start:'2026-10-20',end:'2026-10-21'},{user_id:7,start:null,end:null},{user_id:7,start:'2026-10-16',end:'2026-10-16'}]}:[]};
       };
       createRoot(document.getElementById('root')).render(<main className="hr-page"><Page tab="audit" employees={[employee]}/></main>);
     `,resolveDir:process.cwd(),loader:"tsx"},bundle:true,platform:"browser",format:"esm",jsx:"automatic",outfile:temp+"/check.js",logLevel:"silent"});
@@ -56,10 +57,17 @@ const WebSocket=require("ws");
     for(const width of [390,768,1280])for(const en of [false,true]){
       await send("Emulation.setDeviceMetricsOverride",{width,height:1000,deviceScaleFactor:1,mobile:false});
       await send("Page.navigate",{url:`http://127.0.0.1:${server.address().port}/?${en?"en=1":""}`});
-      await wait("document.querySelectorAll('.hr-audit-table tbody tr').length===4");
+      await wait("document.querySelectorAll('.hr-audit-table tbody tr').length===31");
       const headers=await evaluate("[...document.querySelectorAll('.hr-audit-table th')].map(e=>e.textContent)");
       assert.deepEqual(headers.slice(-3),en?["Working hours","Overtime","Actions"]:["ساعات العمل","الإضافي","الإجراءات"]);
-      const rows=await evaluate("[...document.querySelectorAll('.hr-audit-table tbody tr')].map(e=>({date:e.children[2].textContent,totals:[...e.querySelectorAll('.hr-audit-minutes')].map(t=>t.textContent),status:!!e.querySelector('button.hr-audit-status')}))");
+      const rows=await evaluate("[...document.querySelectorAll('.hr-audit-table tbody tr:not(.hr-audit-calendar-row)')].map(e=>({date:e.children[2].textContent,totals:[...e.querySelectorAll('.hr-audit-minutes')].map(t=>t.textContent),status:!!e.querySelector('button.hr-audit-status')}))");
+      const dates=await evaluate("[...document.querySelectorAll('.hr-audit-table tbody tr')].map(e=>e.children[2].childNodes[0].textContent)");
+      assert.deepEqual(dates,Array.from({length:31},(_,i)=>'2026-10-'+String(31-i).padStart(2,'0')),"whole month including empty and future days, descending");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-calendar-row .approved-leave').length"),2);
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-calendar-row .no-events').length"),25,"no invented weekly holidays or absence");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-calendar-row input:disabled').length"),27,"calendar placeholders cannot be bulk correction targets");
+      assert.equal(await evaluate("!!document.querySelector('.hr-audit-calendar-note')"),true,"undated approved leave remains explicit");
+      assert.ok(await evaluate("[...document.querySelectorAll('.hr-audit-table tbody tr')].every(e=>e.children.length===12)"),"placeholder columns match actual rows");
       assert.deepEqual(rows.map(r=>r.totals),[["07:00","—"],["08:30","01:00"],["—","—"],["08:30","01:00"]]);
       assert.ok(rows.every(r=>r.status));
       assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth"),`page overflow ${width}`);
@@ -96,8 +104,8 @@ const WebSocket=require("ws");
       await wait("document.querySelector('.field-2').classList.contains('needs-correction')");
       await evaluate("document.querySelector('.hr-correction-modal header button').click()");
       await wait("!document.querySelector('.hr-correction-modal')");
-      await evaluate("document.querySelectorAll('.hr-audit-table tbody input[type=checkbox]')[0].click()");
-      await evaluate("document.querySelectorAll('.hr-audit-table tbody input[type=checkbox]')[3].click()");
+      await evaluate("document.querySelectorAll('.hr-audit-table tbody tr:not(.hr-audit-calendar-row) input[type=checkbox]')[0].click()");
+      await evaluate("document.querySelectorAll('.hr-audit-table tbody tr:not(.hr-audit-calendar-row) input[type=checkbox]')[3].click()");
       assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody input:checked').length"),2);
       await evaluate("document.querySelector('.hr-audit-selection-toolbar .hr-primary').click()");
       await wait("!!document.querySelector('.hr-bulk-correction-warning')");
@@ -127,6 +135,16 @@ const WebSocket=require("ws");
       assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody input:checked').length"),4,"select all visible records");
       await evaluate("document.querySelector('.hr-audit-selection-toolbar button:not(.hr-primary)').click()");
       assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody input:checked').length"),0,"clear selection");
+      await evaluate("window.emptyAudit=true;document.querySelector('.hr-filter-refresh').click()");
+      await wait("document.querySelectorAll('.hr-audit-calendar-row').length===31");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-status').length"),0,"a completely empty attendance month is still visible");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-calendar-row .approved-leave').length"),3);
+      assert.equal(await evaluate("document.querySelector('.hr-audit-table thead input').disabled"),true);
+      await evaluate("window.failCalendar=true;document.querySelector('.hr-filter-refresh').click()");
+      await wait("!!document.querySelector('.hr-alert.error') && !document.querySelector('.hr-filter-refresh').disabled");
+      assert.equal(await evaluate("document.querySelectorAll('.hr-audit-table tbody tr').length"),0,"failed calendar fetch must not invent no-events days or reuse stale leave");
+      await evaluate("window.failCalendar=false;document.querySelector('.hr-filter-refresh').click()");
+      await wait("document.querySelectorAll('.hr-audit-calendar-row').length===31");
       console.log(`PASS ${width}px ${en?"English":"Arabic"} headers, net time, overtime, overnight, incomplete, missing duration, status controls, responsive scroll`);
     }
     assert.deepEqual(errors,[]);

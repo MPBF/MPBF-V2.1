@@ -41,3 +41,14 @@ cannot be safely reconstructed.
 **How to apply:** require valid complete ranges for new leave and approvals.
 Only admins may correct old periods. Keep real punch times and the existing
 attendance calculation independent of these display changes.
+
+في تبويب سجل التدقيق بالموارد البشرية، اعرض جميع أيام الشهر لكل موظف
+حتى دون حركات حضور. الإجازة هنا تعني الإجازة المعتمدة فقط، وليست عطلة
+أسبوعية مفترضة. حافظ على الورديات المتعددة والحركات الحقيقية إن وُجدت.
+
+**Why:** طلب المستخدم عرض جميع أيام الشهر والأيام بلا سجلات، ثم اختار
+صراحة «الإجازات المعتمدة فقط» عند الاستفسار عن العطلة الأسبوعية.
+
+**How to apply:** الأيام الخالية عرض تقويمي وليست دليل غياب أو إذنًا
+لإنشاء حضور تلقائي. لا تملأ ساعاتها بصفر مؤكد، ولا تستنتج إجازة من
+طلب معتمد لا توجد له فترة موثوقة.

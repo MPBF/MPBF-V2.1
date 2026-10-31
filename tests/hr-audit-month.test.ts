@@ -76,6 +76,26 @@ describe("HR audit month read contract", () => {
     expect(compiled().params).toEqual(expect.arrayContaining(["2026-12-01", "2027-01-01", 12, "film"]));
   });
 
+  test("calendar reads only approved leave ranges, preserving month/user/section filters and undated warnings", async () => {
+    const response = await fetch(`${url.replace("/attendance-events", "/attendance-calendar")}?month=2026-12&user_id=12&section_id=film`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ leaves: rows });
+    const { sql, params } = compiled();
+    expect(params).toEqual(expect.arrayContaining(["leave", "approved", "2026-12-01", "2027-01-01", 12, "film"]));
+    expect(sql).toContain('"administrative_requests"."leave_start_date" is null');
+    expect(sql).toContain('"administrative_requests"."leave_end_date" is null');
+    expect(Object.keys(selected).sort()).toEqual(["end", "start", "user_id"]);
+    expect(limitCalls).toBe(0);
+  });
+
+  test("calendar rejects invalid months before querying", async () => {
+    const calendarUrl = url.replace("/attendance-events", "/attendance-calendar");
+    expect((await fetch(`${calendarUrl}?month=2026-13`)).status).toBe(400);
+    expect((await fetch(`${calendarUrl}?month=2026-10invalid`)).status).toBe(400);
+    expect((await fetch(calendarUrl)).status).toBe(400);
+  });
+
   test("keeps daily callers compatible", async () => {
     expect((await fetch(`${url}?day=2026-10-15`)).status).toBe(200);
     expect(compiled().params).toEqual(expect.arrayContaining(["2026-10-15", "2026-10-14T21:00:00.000Z", "2026-10-15T21:00:00.000Z"]));
