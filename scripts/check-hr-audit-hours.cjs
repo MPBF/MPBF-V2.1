@@ -66,7 +66,13 @@ const WebSocket=require("ws");
       assert.equal(await evaluate("document.querySelector('#correction-check_out-hour').value"),"");
       assert.equal(await evaluate("document.querySelector('#correction-check_in-hour').value"),"08");
       assert.equal(await evaluate("document.querySelector('.hr-correction-modal').textContent.includes('أدخل وقت الرياض فقط.')"),false);
-      assert.ok(await evaluate("document.querySelector('.hr-correction-fields').getBoundingClientRect().width<=Math.max(320,document.querySelector('.hr-correction-modal').clientWidth/2)+1"));
+      assert.ok(await evaluate("document.querySelector('.hr-correction-modal').getBoundingClientRect().width<=380"),"modal fits compact time fields");
+      assert.ok(await evaluate("Math.abs(document.querySelector('.hr-correction-fields').getBoundingClientRect().width-document.querySelector('.hr-correction-modal').clientWidth)<=2"),"fields fill modal without an empty half");
+      assert.ok(await evaluate("[...document.querySelectorAll('.hr-correction-time-controls > label')].every(e=>getComputedStyle(e).textAlign==='right')"),"hour and minute labels align right");
+      assert.ok(await evaluate(`(() => {
+        const color=getComputedStyle(document.querySelector('.hr-audit-status.incomplete')).color.match(/\\d+/g).map(Number);
+        return color[0]>color[1]*1.5&&color[0]>color[2]*1.5;
+      })()`),"incomplete status is red");
       await evaluate(`(() => {const s=document.querySelector('#correction-check_out-hour');s.value='17';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
       await wait("document.querySelector('#correction-check_out-hour').value==='17'");
       assert.equal(await evaluate("document.querySelector('#correction-check_out-minute').value"),"00");
