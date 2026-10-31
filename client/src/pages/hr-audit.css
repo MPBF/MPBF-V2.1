@@ -203,6 +203,24 @@
   font-weight: 700;
 }
 
+.hr-correction-time-field.needs-correction {
+  border-color: #c97970;
+  background: #fff0ed;
+}
+
+.hr-correction-time-field.needs-correction > span {
+  color: #7e302b;
+}
+
+.hr-correction-time-field.is-complete {
+  border-color: #8db5a2;
+  background: #eff7f3;
+}
+
+.hr-correction-time-field.is-complete > span {
+  color: #23604d;
+}
+
 .hr-correction-time-field select {
   box-sizing: border-box;
   width: 100%;
