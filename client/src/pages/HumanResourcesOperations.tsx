@@ -5,6 +5,7 @@ import i18n, { intlLocale, translate } from "../i18n";
 import { hrApi } from "../lib/hr-api";
 import { groupAttendanceEvents, type AttendanceAction, type AttendanceAuditGroup } from "../lib/hr-audit-grouping";
 import { auditWorkMinutes } from "../lib/hr-audit-hours";
+import { buildBulkCorrections } from "../lib/hr-bulk-correction";
 import { resolveCorrectionTimes, type CorrectionAction } from "../lib/hr-correction-time";
 import "./hr-audit.css";
 import { riyadhDateTimeInput, riyadhDateTimeToIso } from "../lib/riyadh-time";
@@ -58,6 +59,7 @@ type ViolationDraft = { user_id: string; title: string; details: string };
 type CorrectionEventDraft = { id?: number; action: AttendanceAction; occurred_at: string };
 type AttendanceCorrection = {
   group: AuditGroup;
+  bulkGroups?: AuditGroup[];
   checkIn: CorrectionEventDraft;
   breakStart: CorrectionEventDraft;
   breakEnd: CorrectionEventDraft;
@@ -148,6 +150,8 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
   const [openSessions, setOpenSessions] = useState<OpenSession[]>([]);
   const [correction, setCorrection] = useState<AttendanceCorrection | null>(null);
+  const [selectedAuditKeys, setSelectedAuditKeys] = useState<string[]>([]);
+  const [bulkConfirmed, setBulkConfirmed] = useState(false);
   const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [violations, setViolations] = useState<Violation[]>([]);
   const [eventDraft, setEventDraft] = useState<EventDraft | null>(null);
@@ -161,10 +165,14 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const sections = useMemo(() => Array.from(new Map(employees.filter((employee) => employee.section_id).map((employee) => [employee.section_id!, sectionName(employee)])).entries()), [employees]);
   const filteredEmployees = useMemo(() => employees.filter((employee) => !filters.section || employee.section_id === filters.section), [employees, filters.section]);
   const auditGroups = useMemo(() => groupAttendanceEvents(events), [events]);
+  const selectedAuditGroups = auditGroups.filter((group) => selectedAuditKeys.includes(group.key));
+  const selectableAuditGroups = auditGroups.filter((group) => !correctionFromGroup(group).duplicateActions.length);
+  const allSelected = selectableAuditGroups.length > 0 && selectableAuditGroups.slice(0, 100).every((group) => selectedAuditKeys.includes(group.key));
   const correctionRows = correction ? [correction.checkIn, correction.breakStart, correction.breakEnd, correction.checkOut] : [];
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
+    setSelectedAuditKeys([]);
     try {
       const common = { section_id: filters.section, user_id: filters.user };
       if (tab === "audit") {
@@ -204,6 +212,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     event.preventDefault();
     if (!correction) return;
     if (correction.duplicateActions.length) return;
+    if (correction.bulkGroups && (!bulkConfirmed || correctionRows.some((entry) => !isCompleteCorrectionTime(entry.occurred_at)))) return;
     if (correctionRows.some((entry) => entry.occurred_at && !isCompleteCorrectionTime(entry.occurred_at))) {
       setError(auditTranslate("أكمل اختيار الساعة والدقيقة لكل وقت تم تغييره.", "Choose both an hour and minute for every time you edit."));
       return;
@@ -218,6 +227,15 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     }
     setBusy("correction"); setError(""); setNotice("");
     try {
+      if (correction.bulkGroups) {
+        const times = Object.fromEntries(correctionRows.map((entry) => [entry.action, entry.occurred_at])) as Record<CorrectionAction, string>;
+        const corrections = buildBulkCorrections(correction.bulkGroups, times);
+        await hrApi("/attendance-corrections/bulk", { method: "POST", body: JSON.stringify({ corrections }) });
+        setCorrection(null); setSelectedAuditKeys([]);
+        await load();
+        setNotice(auditTranslate("تم تصحيح {{count}} سجلًا.", "Corrected {{count}} records.", { count: corrections.length }));
+        return;
+      }
       const group = correction.group;
       const resolved = resolveCorrectionTimes(
         correctionRows.map((entry) => ({ id: entry.id, action: entry.action as CorrectionAction, time: entry.occurred_at })),
@@ -244,6 +262,19 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       await load();
     } catch (cause) { setError((cause as Error).message); }
     finally { setBusy(""); }
+  };
+
+  const openBulkCorrection = () => {
+    if (!selectedAuditGroups.length || selectedAuditGroups.length > 100 || loading) return;
+    const draft = correctionFromGroup(selectedAuditGroups[0]);
+    setBulkConfirmed(false); setError(""); setNotice("");
+    setCorrection({
+      ...draft, bulkGroups: selectedAuditGroups, duplicateActions: [],
+      checkIn: { action: "check_in", occurred_at: "" },
+      checkOut: { action: "check_out", occurred_at: "" },
+      breakStart: { action: "break_start", occurred_at: "" },
+      breakEnd: { action: "break_end", occurred_at: "" },
+    });
   };
 
   const updateCorrectionEvent = (action: AttendanceAction, part: "hour" | "minute", value: string) => {
@@ -348,7 +379,14 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
 
       {tab === "audit" && <>
         <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{auditTranslate("عرض كل موظف مرة واحدة لكل وردية، مع ترتيب الورديات من الأحدث إلى الأقدم.", "One row per employee per shift, newest shifts first.")}</p></div><button className="hr-primary" type="button" onClick={() => setEventDraft({ user_id: filters.user, action: "break_end", occurred_at: riyadhDateTimeInput() })}><Plus size={17} />{" "}{translate("إنهاء استراحة يدويًا")}</button></div>
-        <div className="hr-table-wrap" role="region" aria-label={auditTranslate("سجل تدقيق الحضور", "Attendance audit log")} tabIndex={0}><table className="hr-data-table hr-audit-table"><thead><tr><th>{i18n.language === "en" ? "Serial" : "م"}</th><th>{auditTranslate("التاريخ", "Date")}</th><th>{translate("الموظف")}</th><th>{auditTranslate("وقت الحضور", "Check-in")}</th><th>{auditTranslate("وقت الاستراحة", "Break start")}</th><th>{auditTranslate("وقت العودة من الاستراحة", "Break end")}</th><th>{auditTranslate("وقت المغادرة", "Check-out")}</th><th>{auditTranslate("اسم الوردية", "Shift name")}</th><th>{auditTranslate("ساعات العمل", "Work hours")}</th><th>{auditTranslate("الإضافي", "Overtime")}</th><th>{auditTranslate("الإجراءات", "Actions")}</th></tr></thead><tbody>{auditGroups.map((group, index) => {
+        <div className="hr-audit-selection-toolbar">
+          <span aria-live="polite">{auditTranslate("المحدد: {{count}} · الحد الأقصى 100 سجل", "Selected: {{count}} · Maximum 100 records", { count: selectedAuditGroups.length })}</span>
+          <button type="button" className="hr-primary" disabled={loading || busy !== "" || !selectedAuditGroups.length} onClick={openBulkCorrection}>{auditTranslate("تصحيح جماعي", "Bulk correction")}</button>
+          <button type="button" disabled={!selectedAuditKeys.length || busy !== ""} onClick={() => setSelectedAuditKeys([])}>{auditTranslate("إلغاء التحديد", "Clear selection")}</button>
+        </div>
+        <div className="hr-table-wrap" role="region" aria-label={auditTranslate("سجل تدقيق الحضور", "Attendance audit log")} tabIndex={0}><table className="hr-data-table hr-audit-table"><thead><tr>
+          <th className="hr-audit-select-cell"><label className="hr-audit-select-label"><input className="hr-audit-select-checkbox" type="checkbox" checked={allSelected} ref={(node) => { if (node) node.indeterminate = selectedAuditGroups.length > 0 && !allSelected; }} disabled={loading || busy !== "" || !selectableAuditGroups.length} aria-label={auditTranslate("تحديد الكل حتى 100 سجل", "Select all up to 100 records")} onChange={(event) => setSelectedAuditKeys(event.target.checked ? selectableAuditGroups.slice(0, 100).map((group) => group.key) : [])} /></label></th>
+          <th>{i18n.language === "en" ? "Serial" : "م"}</th><th>{auditTranslate("التاريخ", "Date")}</th><th>{translate("الموظف")}</th><th>{auditTranslate("وقت الحضور", "Check-in")}</th><th>{auditTranslate("وقت الاستراحة", "Break start")}</th><th>{auditTranslate("وقت العودة من الاستراحة", "Break end")}</th><th>{auditTranslate("وقت المغادرة", "Check-out")}</th><th>{auditTranslate("اسم الوردية", "Shift name")}</th><th>{auditTranslate("ساعات العمل", "Work hours")}</th><th>{auditTranslate("الإضافي", "Overtime")}</th><th>{auditTranslate("الإجراءات", "Actions")}</th></tr></thead><tbody>{auditGroups.map((group, index) => {
           const person = group.employee;
           const shiftName = i18n.language === "en"
             ? (person.shift_name_en && !/[\u0600-\u06ff]/.test(person.shift_name_en)
@@ -398,6 +436,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
           const overdueOpen = Boolean(incompleteSession && Date.now() > Date.parse(incompleteSession.shift_end_at));
           const redRow = overdueOpen || malformedClosed;
           return <tr key={group.key} className={redRow ? "hr-audit-overdue" : undefined}>
+            <td className="hr-audit-select-cell"><label className="hr-audit-select-label" title={correctionFromGroup(group).duplicateActions.length ? auditTranslate("راجع الحركات المكررة قبل التصحيح الجماعي.", "Review duplicate events before bulk correction.") : undefined}><input type="checkbox" className="hr-audit-select-checkbox" checked={selectedAuditKeys.includes(group.key)} disabled={loading || busy !== "" || correctionFromGroup(group).duplicateActions.length > 0 || (selectedAuditKeys.length >= 100 && !selectedAuditKeys.includes(group.key))} aria-label={auditTranslate("تحديد {{employee}} بتاريخ {{date}}", "Select {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onChange={(event) => setSelectedAuditKeys((current) => event.target.checked ? [...current, group.key] : current.filter((key) => key !== group.key))} /></label></td>
             <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small></td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td>
             <td className="hr-audit-minutes" dir="ltr">{formatAuditMinutes(workedMinutes)}</td>
             <td className="hr-audit-minutes" dir="ltr">{formatAuditMinutes(overtimeMinutes)}</td>
@@ -417,10 +456,13 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       </>}
     </section>
 
-    {correction && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && busy !== "correction" && setCorrection(null)}><form className="hr-modal hr-compact-modal hr-correction-modal" onSubmit={correctAttendance}><header><div><span>{auditTranslate("تصحيح سجل الوردية", "SHIFT ATTENDANCE CORRECTION")}</span><h3>{employeeName(correction.group.employee)}</h3></div><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)} aria-label={translate("إغلاق")}><X /></button></header>
-      <div className="hr-correction-employee" aria-label={auditTranslate("بيانات الموظف والوردية", "Employee and shift details")}><div><span>{auditTranslate("التاريخ المحاسبي", "Accounting date")}</span><strong>{correction.group.shift_date}</strong></div><div><span>{auditTranslate("اسم الوردية", "Shift name")}</span><strong>{i18n.language === "en"
+    {correction && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && busy !== "correction" && setCorrection(null)}><form className="hr-modal hr-compact-modal hr-correction-modal" onSubmit={correctAttendance}><header><div><span>{correction.bulkGroups ? auditTranslate("تصحيح جماعي", "BULK CORRECTION") : auditTranslate("تصحيح سجل الوردية", "SHIFT ATTENDANCE CORRECTION")}</span><h3>{correction.bulkGroups ? auditTranslate("{{count}} سجلًا محددًا", "{{count}} selected records", { count: correction.bulkGroups.length }) : employeeName(correction.group.employee)}</h3></div><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)} aria-label={translate("إغلاق")}><X /></button></header>
+      {correction.bulkGroups ? <div className="hr-bulk-correction-warning">
+        <p>{auditTranslate("ستُستبدل الأوقات الأربعة لجميع السجلات المحددة، بما فيها الأوقات السابقة. أدخل الأوقات الأربعة، مع الحفاظ على تاريخ كل وردية. إذا تعذر تصحيح أي سجل فلن يُحفظ أي تغيير.", "All four times will replace existing times for every selected record, keeping each shift date. Enter all four times. If any record fails, no changes will be saved.")}</p>
+        <ul className="hr-bulk-correction-targets">{correction.bulkGroups.map((group) => <li key={group.key}>{employeeName(group.employee)} · {group.shift_date} · {i18n.language === "en" ? group.employee.shift_name_en || group.employee.shift_id || "—" : group.employee.shift_name_ar || group.employee.shift_name_en || group.employee.shift_id || "—"}</li>)}</ul>
+      </div> : <div className="hr-correction-employee" aria-label={auditTranslate("بيانات الموظف والوردية", "Employee and shift details")}><div><span>{auditTranslate("التاريخ المحاسبي", "Accounting date")}</span><strong>{correction.group.shift_date}</strong></div><div><span>{auditTranslate("اسم الوردية", "Shift name")}</span><strong>{i18n.language === "en"
         ? (correction.group.employee.shift_name_en && !/[\u0600-\u06ff]/.test(correction.group.employee.shift_name_en) ? correction.group.employee.shift_name_en : correction.group.employee.shift_id || "—")
-        : correction.group.employee.shift_name_ar || correction.group.employee.shift_name_en || correction.group.employee.shift_id || "—"}</strong></div></div>
+        : correction.group.employee.shift_name_ar || correction.group.employee.shift_name_en || correction.group.employee.shift_id || "—"}</strong></div></div>}
       {error && <div className="hr-alert error" role="alert"><AlertTriangle size={16} />{error}</div>}
       {correction.duplicateActions.length > 0 && <div className="hr-correction-blocking" role="alert"><AlertTriangle size={18} /><div><strong>{auditTranslate("لا يمكن تصحيح هذه الوردية من هذه الشاشة.", "This shift cannot be corrected here.")}</strong><p>{auditTranslate("تحتوي السجلات التاريخية على حركات مكررة. تم الاحتفاظ بكل الحركات، ويجب مراجعة السجل كاملًا قبل أي تصحيح.", "Historical records contain duplicate actions. Every event is preserved; review the complete audit history before making a correction.")}</p><ul>{correction.group.events.map((entry) => <li key={entry.id}><span>{actionLabels[entry.action]}</span><time>{auditTime(entry.occurred_at, correction.group.shift_date)}</time></li>)}</ul></div></div>}
       <div className="hr-correction-fields">
@@ -431,7 +473,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
             auditTranslate("استراحة", "Break start"),
             auditTranslate("انتهاء استراحة", "Break end"),
           ];
-          const required = entry.action === "check_in" || entry.action === "check_out";
+          const required = Boolean(correction.bulkGroups) || entry.action === "check_in" || entry.action === "check_out";
           const parts = correctionTimeParts(entry.occurred_at);
           const partial = Boolean(entry.occurred_at) && !isCompleteCorrectionTime(entry.occurred_at);
           const requiredPart = required || partial;
@@ -453,7 +495,8 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       </div>
       {correctionRows.some((entry) => entry.occurred_at && !isCompleteCorrectionTime(entry.occurred_at)) && <p className="hr-correction-pair-error" role="alert">{auditTranslate("أكمل اختيار الساعة والدقيقة لكل وقت تم تغييره.", "Choose both an hour and minute for every time you edit.")}</p>}
       {Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at) && <p className="hr-correction-pair-error" role="alert">{auditTranslate("يجب إدخال وقتي بدء الاستراحة وانتهائها معًا، أو تركهما فارغين.", "Enter both break times, or leave both blank.")}</p>}
-      <footer><button className="hr-primary" disabled={busy === "correction" || correction.duplicateActions.length > 0 || !isCompleteCorrectionTime(correction.checkIn.occurred_at) || !isCompleteCorrectionTime(correction.checkOut.occurred_at) || correctionRows.some((entry) => entry.occurred_at && !isCompleteCorrectionTime(entry.occurred_at)) || (Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at))}>{busy === "correction" ? translate("جارٍ الحفظ…") : translate("حفظ التصحيح")}</button><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
+      {correction.bulkGroups && <label className="hr-bulk-correction-confirm"><input type="checkbox" checked={bulkConfirmed} disabled={busy === "correction"} onChange={(event) => setBulkConfirmed(event.target.checked)} />{auditTranslate("أؤكد استبدال أوقات {{count}} سجلًا بالأوقات المدخلة.", "I confirm replacing times for {{count}} records with the entered times.", { count: correction.bulkGroups.length })}</label>}
+      <footer><button className="hr-primary" disabled={busy === "correction" || correction.duplicateActions.length > 0 || !isCompleteCorrectionTime(correction.checkIn.occurred_at) || !isCompleteCorrectionTime(correction.checkOut.occurred_at) || correctionRows.some((entry) => entry.occurred_at && !isCompleteCorrectionTime(entry.occurred_at)) || (Boolean(correction.breakStart.occurred_at) !== Boolean(correction.breakEnd.occurred_at)) || Boolean(correction.bulkGroups && (!bulkConfirmed || correctionRows.some((entry) => !isCompleteCorrectionTime(entry.occurred_at))))}>{busy === "correction" ? translate("جارٍ الحفظ…") : correction.bulkGroups ? auditTranslate("حفظ التصحيح الجماعي", "Save bulk correction") : translate("حفظ التصحيح")}</button><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)}>{translate("إلغاء")}</button></footer></form></div>}
     {eventDraft && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEventDraft(null)}><form className="hr-modal hr-compact-modal" onSubmit={saveEvent}><header><div><span>{translate("سجل الحضور")}</span><h3>{eventDraft.id ? translate("تعديل سجل الحضور") : translate("إضافة سجل يدوي")}</h3></div><button type="button" onClick={() => setEventDraft(null)} aria-label={translate("إغلاق")}><X /></button></header><div className="hr-form-grid">
       <label><span>{translate("الموظف")}</span><select required value={eventDraft.user_id} onChange={(event) => setEventDraft({ ...eventDraft, user_id: event.target.value })}><option value="">{translate("اختر الموظف")}</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employeeName(employee)} — {sectionName(employee)}</option>)}</select></label>
       <label><span>{translate("الحركة")}</span><select disabled={!eventDraft.id} value={eventDraft.action} onChange={(event) => setEventDraft({ ...eventDraft, action: event.target.value as AttendanceAction })}>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{translate(label)}</option>)}</select></label>

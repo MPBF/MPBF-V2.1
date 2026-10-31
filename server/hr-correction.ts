@@ -22,6 +22,15 @@ export const correctionInput = z.object({
 }).strict();
 
 type Correction = z.infer<typeof correctionInput>;
+export const bulkCorrectionInput = z.object({
+  corrections: z.array(correctionInput).min(1).max(100),
+}).strict().superRefine(({ corrections }, ctx) => {
+  const keys = corrections.map((entry) => `${entry.user_id}:${entry.session_id == null ? entry.shift_date : `session:${entry.session_id}`}`);
+  if (new Set(keys).size !== keys.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["corrections"], message: "لا يمكن تكرار السجل ضمن التصحيح الجماعي" });
+  }
+});
+type CorrectionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type StoredEvent = { id: number; action: string; occurred_at: Date; updated_at: Date };
 const conflict = (message: string): never => { throw Object.assign(new Error(message), { status: 409 }); };
 
@@ -66,8 +75,28 @@ export function validateCorrection(input: Correction, current: StoredEvent[], no
 }
 
 export async function correctAttendance(input: Correction, actorId: number) {
-  const range = dayRange(input.shift_date);
+  return db.transaction((tx) => correctAttendanceInTransaction(tx, input, actorId));
+}
+
+/** Lock every employee in a stable order; any rejected record rolls back the whole batch. */
+export async function correctAttendanceBulk(input: z.infer<typeof bulkCorrectionInput>, actorId: number) {
   return db.transaction(async (tx) => {
+    const userIds = [...new Set(input.corrections.map((entry) => entry.user_id))].sort((a, b) => a - b);
+    for (const userId of userIds) await tx.execute(sql`SELECT pg_advisory_xact_lock(${18497}, ${userId})`);
+    for (const correction of input.corrections) {
+      try {
+        await correctAttendanceInTransaction(tx, correction, actorId);
+      } catch (error) {
+        const cause = error as Error & { status?: number };
+        throw Object.assign(new Error(`الموظف ${correction.user_id} · ${correction.shift_date}: ${cause.message}`), { status: cause.status ?? 500 });
+      }
+    }
+    return { success: true, corrected: input.corrections.length };
+  });
+}
+
+async function correctAttendanceInTransaction(tx: CorrectionTransaction, input: Correction, actorId: number) {
+  const range = dayRange(input.shift_date);
     // Same per-employee lock as self-attendance and the existing checkout correction.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${18497}, ${input.user_id})`);
     const [session] = input.session_id == null ? [] : await tx.select()
@@ -147,5 +176,4 @@ export async function correctAttendance(input: Correction, actorId: number) {
       }).where(eq(attendance_sessions.id, session.id));
     }
     return { success: true };
-  });
 }

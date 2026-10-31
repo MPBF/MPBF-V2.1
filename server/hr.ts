@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireAnyPermission } from "./auth";
 import { db } from "./db";
 import { dayRange, monthRange, summarizeAttendance } from "./hr-report";
-import { correctAttendance, correctionInput } from "./hr-correction";
+import { correctAttendance, correctionInput, correctAttendanceBulk, bulkCorrectionInput } from "./hr-correction";
 
 const router = Router();
 const hrAdmin = requireAnyPermission("manage_hr", "manage_attendance", "admin");
@@ -325,6 +325,10 @@ router.get("/attendance-sessions/open", handle(async (req, res) => {
 
 router.post("/attendance-corrections", handle(async (req, res) => {
   res.json(await correctAttendance(correctionInput.parse(req.body), req.user!.id));
+}));
+
+router.post("/attendance-corrections/bulk", handle(async (req, res) => {
+  res.json(await correctAttendanceBulk(bulkCorrectionInput.parse(req.body), req.user!.id));
 }));
 
 router.post("/attendance-sessions/:id/checkout", handle(async (req, res) => {
