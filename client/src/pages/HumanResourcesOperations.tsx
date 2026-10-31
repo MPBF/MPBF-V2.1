@@ -130,7 +130,7 @@ const correctionMinuteOptions = Array.from({ length: 60 }, (_, minute) => String
 const isCompleteCorrectionTime = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 const correctionTimeParts = (value: string) => ({
   hour: value.match(/^(\d{2}):/)?.[1] ?? "",
-  minute: value.match(/:(\d{2})$/)?.[1] ?? "",
+  minute: value.match(/:(\d{2})$/)?.[1] ?? (value ? "" : "00"),
 });
 
 function printDocument(title: string, body: string) {
@@ -254,7 +254,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       if (!current) return current;
       const parts = correctionTimeParts(current[field].occurred_at);
       const next = { ...parts, [part]: value };
-      const occurred_at = next.hour && next.minute ? `${next.hour}:${next.minute}` : next.hour ? `${next.hour}:` : next.minute ? `:${next.minute}` : "";
+      const occurred_at = next.hour && next.minute ? `${next.hour}:${next.minute}` : next.hour ? `${next.hour}:` : next.minute && next.minute !== "00" ? `:${next.minute}` : "";
       return { ...current, [field]: { ...current[field], occurred_at } };
     });
   };
@@ -420,7 +420,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     {correction && <div className="hr-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && busy !== "correction" && setCorrection(null)}><form className="hr-modal hr-compact-modal hr-correction-modal" onSubmit={correctAttendance}><header><div><span>{auditTranslate("تصحيح سجل الوردية", "SHIFT ATTENDANCE CORRECTION")}</span><h3>{employeeName(correction.group.employee)}</h3></div><button type="button" disabled={busy === "correction"} onClick={() => setCorrection(null)} aria-label={translate("إغلاق")}><X /></button></header>
       <div className="hr-correction-employee" aria-label={auditTranslate("بيانات الموظف والوردية", "Employee and shift details")}><div><span>{auditTranslate("التاريخ المحاسبي", "Accounting date")}</span><strong>{correction.group.shift_date}</strong></div><div><span>{auditTranslate("اسم الوردية", "Shift name")}</span><strong>{i18n.language === "en"
         ? (correction.group.employee.shift_name_en && !/[\u0600-\u06ff]/.test(correction.group.employee.shift_name_en) ? correction.group.employee.shift_name_en : correction.group.employee.shift_id || "—")
-        : correction.group.employee.shift_name_ar || correction.group.employee.shift_name_en || correction.group.employee.shift_id || "—"}</strong></div><small>{auditTranslate("أدخل وقت الرياض فقط. يمكن إدخال استراحة واحدة كحد أقصى.", "Riyadh time only. One break pair is allowed per day.")}</small></div>
+        : correction.group.employee.shift_name_ar || correction.group.employee.shift_name_en || correction.group.employee.shift_id || "—"}</strong></div></div>
       {error && <div className="hr-alert error" role="alert"><AlertTriangle size={16} />{error}</div>}
       {correction.duplicateActions.length > 0 && <div className="hr-correction-blocking" role="alert"><AlertTriangle size={18} /><div><strong>{auditTranslate("لا يمكن تصحيح هذه الوردية من هذه الشاشة.", "This shift cannot be corrected here.")}</strong><p>{auditTranslate("تحتوي السجلات التاريخية على حركات مكررة. تم الاحتفاظ بكل الحركات، ويجب مراجعة السجل كاملًا قبل أي تصحيح.", "Historical records contain duplicate actions. Every event is preserved; review the complete audit history before making a correction.")}</p><ul>{correction.group.events.map((entry) => <li key={entry.id}><span>{actionLabels[entry.action]}</span><time>{auditTime(entry.occurred_at, correction.group.shift_date)}</time></li>)}</ul></div></div>}
       <div className="hr-correction-fields">
