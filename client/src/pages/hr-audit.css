@@ -155,6 +155,56 @@
   font-variant-numeric: tabular-nums;
 }
 
+.hr-table-wrap .hr-audit-table .hr-audit-calendar-row > td {
+  padding-block: 7px;
+  background-color: #f7f8f6;
+  color: #46564f;
+}
+
+.hr-table-wrap .hr-audit-table .hr-audit-calendar-row:hover > td {
+  background-color: #f0f3f0;
+  color: #36483f;
+}
+
+.hr-audit-calendar-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid #9ab9bd;
+  border-radius: 999px;
+  background: #e9f3f4;
+  color: #285960;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.hr-audit-calendar-status.approved-leave {
+  border-color: #91b6bd;
+  background: #e5f1f3;
+  color: #245b63;
+}
+
+.hr-audit-calendar-status.no-events {
+  border-color: #d2d9d5;
+  background: #edf0ee;
+  color: #58655f;
+}
+
+.hr-audit-calendar-note {
+  margin: 8px 0 0;
+  color: #68776f;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .hr-audit-table .hr-employee-cell strong,
 .hr-audit-table .hr-employee-cell small {
   display: block;

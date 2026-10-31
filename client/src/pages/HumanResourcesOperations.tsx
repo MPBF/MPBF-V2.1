@@ -6,6 +6,7 @@ import { hrApi } from "../lib/hr-api";
 import { groupAttendanceEvents, type AttendanceAction, type AttendanceAuditGroup } from "../lib/hr-audit-grouping";
 import { auditWorkMinutes } from "../lib/hr-audit-hours";
 import { buildBulkCorrections } from "../lib/hr-bulk-correction";
+import { buildAuditCalendar, isDatedAuditLeave, type AuditApprovedLeave } from "../lib/hr-audit-calendar";
 import { resolveCorrectionTimes, type CorrectionAction } from "../lib/hr-correction-time";
 import "./hr-audit.css";
 import { riyadhDateTimeInput, riyadhDateTimeToIso } from "../lib/riyadh-time";
@@ -148,6 +149,7 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const [filters, setFilters] = useState<Filters>({ section: "", user: "" });
   const [month, setMonth] = useState(riyadhMonth);
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
+  const [calendarLeaves, setCalendarLeaves] = useState<AuditApprovedLeave[] | null>(null);
   const [openSessions, setOpenSessions] = useState<OpenSession[]>([]);
   const [correction, setCorrection] = useState<AttendanceCorrection | null>(null);
   const [selectedAuditKeys, setSelectedAuditKeys] = useState<string[]>([]);
@@ -161,32 +163,50 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const reportRef = useRef<HTMLDivElement>(null);
+  const loadSequence = useRef(0);
 
   const sections = useMemo(() => Array.from(new Map(employees.filter((employee) => employee.section_id).map((employee) => [employee.section_id!, sectionName(employee)])).entries()), [employees]);
   const filteredEmployees = useMemo(() => employees.filter((employee) => !filters.section || employee.section_id === filters.section), [employees, filters.section]);
   const auditGroups = useMemo(() => groupAttendanceEvents(events), [events]);
-  const selectedAuditGroups = auditGroups.filter((group) => selectedAuditKeys.includes(group.key));
-  const selectableAuditGroups = auditGroups.filter((group) => !correctionFromGroup(group).duplicateActions.length);
+  const calendarEmployees = useMemo(() => filteredEmployees.filter((employee) => !filters.user || String(employee.id) === filters.user), [filteredEmployees, filters.user]);
+  const auditCalendarRows = useMemo(() => calendarLeaves == null ? [] : buildAuditCalendar(
+    month, calendarEmployees, auditGroups, calendarLeaves,
+  ), [month, calendarEmployees, auditGroups, calendarLeaves]);
+  const hasUndatedLeave = calendarLeaves?.some((leave) => !isDatedAuditLeave(leave)
+    && auditCalendarRows.some((row) => row.user_id === leave.user_id));
+  const selectedAuditGroups = calendarLeaves == null ? [] : auditGroups.filter((group) => selectedAuditKeys.includes(group.key));
+  const selectableAuditGroups = calendarLeaves == null ? [] : auditGroups.filter((group) => !correctionFromGroup(group).duplicateActions.length);
   const allSelected = selectableAuditGroups.length > 0 && selectableAuditGroups.slice(0, 100).every((group) => selectedAuditKeys.includes(group.key));
   const correctionRows = correction ? [correction.checkIn, correction.breakStart, correction.breakEnd, correction.checkOut] : [];
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     setLoading(true); setError("");
     setSelectedAuditKeys([]);
+    setCalendarLeaves(null);
     try {
       const common = { section_id: filters.section, user_id: filters.user };
       if (tab === "audit") {
-        const [audit, open] = await Promise.all([
+        const [audit, open, calendar] = await Promise.all([
           hrApi<AttendanceEvent[]>(`/attendance-events?${query({ ...common, month })}`),
           hrApi<OpenSession[]>(`/attendance-sessions/open?${query({ ...common, month })}`),
+          hrApi<{ leaves: AuditApprovedLeave[] }>(`/attendance-calendar?${query({ ...common, month })}`),
         ]);
+        if (sequence !== loadSequence.current) return;
         setEvents(audit);
         setOpenSessions(open);
+        setCalendarLeaves(calendar.leaves);
       }
-      if (tab === "report") setSummary((await hrApi<{ rows: SummaryRow[] }>(`/attendance-summary?${query({ ...common, month })}`)).rows);
-      if (tab === "violations") setViolations(await hrApi<Violation[]>(`/violations?${query(common)}`));
-    } catch (cause) { setError((cause as Error).message); }
-    finally { setLoading(false); }
+      if (tab === "report") {
+        const data = await hrApi<{ rows: SummaryRow[] }>(`/attendance-summary?${query({ ...common, month })}`);
+        if (sequence === loadSequence.current) setSummary(data.rows);
+      }
+      if (tab === "violations") {
+        const data = await hrApi<Violation[]>(`/violations?${query(common)}`);
+        if (sequence === loadSequence.current) setViolations(data);
+      }
+    } catch (cause) { if (sequence === loadSequence.current) setError((cause as Error).message); }
+    finally { if (sequence === loadSequence.current) setLoading(false); }
   }, [filters.section, filters.user, month, tab]);
 
   useEffect(() => { void load(); }, [load, refreshToken]);
@@ -378,7 +398,8 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       </div>
 
       {tab === "audit" && <>
-        <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{auditTranslate("عرض كل موظف مرة واحدة لكل وردية، مع ترتيب الورديات من الأحدث إلى الأقدم.", "One row per employee per shift, newest shifts first.")}</p></div><button className="hr-primary" type="button" onClick={() => setEventDraft({ user_id: filters.user, action: "break_end", occurred_at: riyadhDateTimeInput() })}><Plus size={17} />{" "}{translate("إنهاء استراحة يدويًا")}</button></div>
+        <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{auditTranslate("جميع أيام الشهر لكل موظف من الأحدث إلى الأقدم، مع بيان الإجازات المعتمدة والحفاظ على كل وردية مسجلة.", "All calendar days for each employee, newest first, showing approved leave and preserving each recorded shift.")}</p></div><button className="hr-primary" type="button" onClick={() => setEventDraft({ user_id: filters.user, action: "break_end", occurred_at: riyadhDateTimeInput() })}><Plus size={17} />{" "}{translate("إنهاء استراحة يدويًا")}</button></div>
+        {hasUndatedLeave && <p className="hr-audit-calendar-note" role="status">{auditTranslate("توجد إجازة معتمدة دون فترة صالحة ومكتملة؛ لا يمكن تحديد أيامها حتى استكمال تاريخ البداية والنهاية في طلب الإجازة.", "An approved leave has no valid complete date range. Its days cannot be identified until the leave request dates are completed.")}</p>}
         <div className="hr-audit-selection-toolbar">
           <span aria-live="polite">{auditTranslate("المحدد: {{count}} · الحد الأقصى 100 سجل", "Selected: {{count}} · Maximum 100 records", { count: selectedAuditGroups.length })}</span>
           <button type="button" className="hr-primary" disabled={loading || busy !== "" || !selectedAuditGroups.length} onClick={openBulkCorrection}>{auditTranslate("تصحيح جماعي", "Bulk correction")}</button>
@@ -386,7 +407,16 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
         </div>
         <div className="hr-table-wrap" role="region" aria-label={auditTranslate("سجل تدقيق الحضور", "Attendance audit log")} tabIndex={0}><table className="hr-data-table hr-audit-table"><thead><tr>
           <th className="hr-audit-select-cell"><label className="hr-audit-select-label"><input className="hr-audit-select-checkbox" type="checkbox" checked={allSelected} ref={(node) => { if (node) node.indeterminate = selectedAuditGroups.length > 0 && !allSelected; }} disabled={loading || busy !== "" || !selectableAuditGroups.length} aria-label={auditTranslate("تحديد الكل حتى 100 سجل", "Select all up to 100 records")} onChange={(event) => setSelectedAuditKeys(event.target.checked ? selectableAuditGroups.slice(0, 100).map((group) => group.key) : [])} /></label></th>
-          <th>{i18n.language === "en" ? "Serial" : "م"}</th><th>{auditTranslate("التاريخ", "Date")}</th><th>{translate("الموظف")}</th><th>{auditTranslate("وقت الحضور", "Check-in")}</th><th>{auditTranslate("وقت الاستراحة", "Break start")}</th><th>{auditTranslate("وقت العودة من الاستراحة", "Break end")}</th><th>{auditTranslate("وقت المغادرة", "Check-out")}</th><th>{auditTranslate("اسم الوردية", "Shift name")}</th><th>{auditTranslate("ساعات العمل", "Work hours")}</th><th>{auditTranslate("الإضافي", "Overtime")}</th><th>{auditTranslate("الإجراءات", "Actions")}</th></tr></thead><tbody>{auditGroups.map((group, index) => {
+          <th>{i18n.language === "en" ? "Serial" : "م"}</th><th>{auditTranslate("التاريخ", "Date")}</th><th>{translate("الموظف")}</th><th>{auditTranslate("وقت الحضور", "Check-in")}</th><th>{auditTranslate("وقت الاستراحة", "Break start")}</th><th>{auditTranslate("وقت العودة من الاستراحة", "Break end")}</th><th>{auditTranslate("وقت المغادرة", "Check-out")}</th><th>{auditTranslate("اسم الوردية", "Shift name")}</th><th>{auditTranslate("ساعات العمل", "Work hours")}</th><th>{auditTranslate("الإضافي", "Overtime")}</th><th>{auditTranslate("الإجراءات", "Actions")}</th></tr></thead><tbody>{auditCalendarRows.map((calendarRow, index) => {
+          const group = calendarRow.group;
+          const leaveBadge = calendarRow.approvedLeave ? <span className="hr-audit-calendar-status approved-leave">{auditTranslate("إجازة معتمدة", "Approved leave")}</span> : null;
+          if (!group) return <tr key={calendarRow.key} className="hr-audit-calendar-row">
+            <td className="hr-audit-select-cell"><label className="hr-audit-select-label"><input className="hr-audit-select-checkbox" type="checkbox" checked={false} disabled aria-label={auditTranslate("لا توجد حركات لتصحيحها بتاريخ {{date}}", "No events to correct on {{date}}", { date: calendarRow.shift_date })} /></label></td>
+            <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{calendarRow.shift_date}</td>
+            <td className="hr-employee-cell"><strong>{reportArabicName(calendarRow.employee)}</strong><small>{reportEnglishName(calendarRow.employee)}</small></td>
+            {Array.from({ length: 7 }, (_, cell) => <td key={cell}>—</td>)}
+            <td>{leaveBadge || <span className="hr-audit-calendar-status no-events">{auditTranslate("لا توجد حركات", "No events")}</span>}</td>
+          </tr>;
           const person = group.employee;
           const shiftName = i18n.language === "en"
             ? (person.shift_name_en && !/[\u0600-\u06ff]/.test(person.shift_name_en)
@@ -437,12 +467,12 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
           const redRow = overdueOpen || malformedClosed;
           return <tr key={group.key} className={redRow ? "hr-audit-overdue" : undefined}>
             <td className="hr-audit-select-cell"><label className="hr-audit-select-label" title={correctionFromGroup(group).duplicateActions.length ? auditTranslate("راجع الحركات المكررة قبل التصحيح الجماعي.", "Review duplicate events before bulk correction.") : undefined}><input type="checkbox" className="hr-audit-select-checkbox" checked={selectedAuditKeys.includes(group.key)} disabled={loading || busy !== "" || correctionFromGroup(group).duplicateActions.length > 0 || (selectedAuditKeys.length >= 100 && !selectedAuditKeys.includes(group.key))} aria-label={auditTranslate("تحديد {{employee}} بتاريخ {{date}}", "Select {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onChange={(event) => setSelectedAuditKeys((current) => event.target.checked ? [...current, group.key] : current.filter((key) => key !== group.key))} /></label></td>
-            <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small></td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td>
+            <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{group.shift_date}{leaveBadge}</td><td className="hr-employee-cell"><strong>{reportArabicName(person)}</strong><small>{reportEnglishName(person)}</small></td><td>{timeCell(group.checkIns)}</td><td>{timeCell(group.breakStarts)}</td><td>{timeCell(group.breakEnds)}</td><td>{timeCell(group.checkOuts)}</td><td>{shiftName}</td>
             <td className="hr-audit-minutes" dir="ltr">{formatAuditMinutes(workedMinutes)}</td>
             <td className="hr-audit-minutes" dir="ltr">{formatAuditMinutes(overtimeMinutes)}</td>
             <td><button className={`hr-audit-status ${incomplete ? "incomplete" : "complete"}`} type="button" aria-label={auditTranslate("تصحيح حالة حضور {{employee}} بتاريخ {{date}}", "Correct attendance status for {{employee}} on {{date}}", { employee: employeeName(person), date: group.shift_date })} onClick={() => setCorrection(correctionFromGroup(group))}>{incomplete ? auditTranslate("غير مكتمل", "Incomplete") : auditTranslate("مكتمل", "Complete")}</button></td>
           </tr>;
-        })}</tbody></table>{loading && <div className="hr-empty" aria-live="polite">{translate("جارٍ التحميل…")}</div>}{!loading && !auditGroups.length && <div className="hr-empty">{auditTranslate("لا توجد سجلات مطابقة لهذا الشهر.", "No matching records for this month.")}</div>}</div>
+        })}</tbody></table>{loading && <div className="hr-empty" aria-live="polite">{translate("جارٍ التحميل…")}</div>}{!loading && !error && !auditCalendarRows.length && <div className="hr-empty">{auditTranslate("لا يوجد موظفون مطابقون للفلاتر.", "No employees match the filters.")}</div>}</div>
       </>}
 
       {tab === "report" && <>
