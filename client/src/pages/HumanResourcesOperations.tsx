@@ -435,7 +435,10 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
           const parts = correctionTimeParts(entry.occurred_at);
           const partial = Boolean(entry.occurred_at) && !isCompleteCorrectionTime(entry.occurred_at);
           const requiredPart = required || partial;
-          return <div className={`hr-correction-time-field field-${fieldIndex + 1}`} key={entry.action}>
+          const breakPairIncomplete = (entry.action === "break_start" || entry.action === "break_end")
+            && (!isCompleteCorrectionTime(correction.breakStart.occurred_at) || !isCompleteCorrectionTime(correction.breakEnd.occurred_at));
+          const needsCorrection = !isCompleteCorrectionTime(entry.occurred_at) || breakPairIncomplete || correction.duplicateActions.includes(entry.action);
+          return <div className={`hr-correction-time-field field-${fieldIndex + 1} ${needsCorrection ? "needs-correction" : "is-complete"}`} key={entry.action} role="group" aria-label={`${labels[fieldIndex]} — ${needsCorrection ? auditTranslate("يحتاج إدخالًا أو تصحيحًا", "Needs entry or correction") : auditTranslate("مكتمل", "Complete")}`}>
             <span>{labels[fieldIndex]}{required ? <b aria-hidden="true"> *</b> : null}</span>
             <div className="hr-correction-time-controls">
               <label htmlFor={`correction-${entry.action}-hour`}><span>{auditTranslate("س", "Hr")}</span><select id={`correction-${entry.action}-hour`} dir="ltr" required={requiredPart} value={parts.hour} aria-label={`${labels[fieldIndex]} — ${auditTranslate("الساعة", "hour")}`} aria-invalid={partial || (entry.action === "break_start" && Boolean(entry.occurred_at) !== Boolean(correction.breakEnd.occurred_at)) || (entry.action === "break_end" && Boolean(entry.occurred_at) !== Boolean(correction.breakStart.occurred_at))} disabled={correction.duplicateActions.length > 0 || busy === "correction"} onChange={(event) => updateCorrectionEvent(entry.action, "hour", event.target.value)}>
