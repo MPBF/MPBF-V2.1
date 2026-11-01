@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeftRight, Check, CheckCircle2, ChevronDown, Clock3
 import type { TransferApproval, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferSchema, TransferTable, TransferTemplate } from "../../../../shared/data-transfer";
 import "./DataTransferAdmin.css";
 import DatabaseBackupsPanel from "./DatabaseBackupsPanel";
+import { clearableMappingColumns, mappedNullColumns } from "../../lib/data-transfer-mapping";
 
 type Props = { refreshToken?: number };
 type ErrorInfo = { message: string; detail: string };
@@ -24,6 +25,7 @@ const groups: Record<string, [string, string]> = {
   discovered: ["جداول البيانات الأخرى", "Other data tables"],
 };
 const knownErrors: Record<string, [string, string]> = {
+  "Invalid explicit empty-value choice": ["خيار مسح القيم الفارغة غير صالح. اربط العمود بالملف أولاً، واختر فقط الحقول التي تقبل قيمة فارغة.", "Invalid blank-value clearing choice. Map the column first and select only nullable fields."],
   "Unsafe identifier": ["اسم حقل غير آمن", "Unsafe field identifier"],
   "Invalid ISO timestamp": ["التاريخ والوقت غير صالحين. استخدم تاريخًا مثل 2026-01-22T18:12:57.076Z.", "Invalid date and time. Use a timestamp such as 2026-01-22T18:12:57.076Z."],
   "Invalid ISO date": ["التاريخ غير صالح. استخدم الصيغة سنة-شهر-يوم، مثل 2026-01-22.", "Invalid date. Use year-month-day, such as 2026-01-22."],
@@ -206,7 +208,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     if (stored?.table === targetTable.name) {
       setMappingColumns(stored.columns);
       setMatchKey(stored.matchKey);
-      setNullColumns(stored.nullColumns);
+      setNullColumns(mappedNullColumns(targetTable, stored.columns, stored.nullColumns));
     } else {
       setMappingColumns(exactSuggestions(selectedFileTable.headers, targetTable));
       setMatchKey(targetTable.keys[0] || []);
@@ -306,7 +308,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
 
   const currentMapping = (): TransferMapping | null => {
     if (!selectedFileTable || !targetTable) return null;
-    return { table: targetTable.name, fileTable: selectedFileTable.name, columns: mappingColumns, matchKey, nullColumns };
+    return { table: targetTable.name, fileTable: selectedFileTable.name, columns: mappingColumns, matchKey, nullColumns: mappedNullColumns(targetTable, mappingColumns, nullColumns) };
   };
 
   const rememberCurrentMapping = () => {
@@ -357,9 +359,10 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     }
     const targetColumns = new Set(targetTable?.columns.map((column) => column.name) || []);
     clearWorkflow();
-    setMappingColumns(Object.fromEntries(Object.entries(mapping.columns).filter(([source, target]) => selectedFileTable?.headers.includes(source) && (!target || targetColumns.has(target)))));
+    const columns = Object.fromEntries(Object.entries(mapping.columns).filter(([source, target]) => selectedFileTable?.headers.includes(source) && (!target || targetColumns.has(target))));
+    setMappingColumns(columns);
     setMatchKey(mapping.matchKey.filter((column) => targetTable?.keys.flat().includes(column)));
-    setNullColumns(mapping.nullColumns.filter((column) => targetColumns.has(column)));
+    setNullColumns(mappedNullColumns(targetTable, columns, mapping.nullColumns));
     setError(null);
   };
 
@@ -577,7 +580,12 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
               <div className="transfer-mapping-list">
                 {selectedFileTable.headers.map((header) => <div className="transfer-mapping-row" key={header}>
                   <code>{header}</code><ArrowLeftRight className="transfer-map-arrow" size={15} />
-                  <select aria-label={`${tr("وجهة العمود", "Column target")} ${header}`} value={mappingColumns[header] || ""} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => { clearWorkflow(); setMappingColumns((current) => ({ ...current, [header]: event.target.value })); }}>
+                  <select aria-label={`${tr("وجهة العمود", "Column target")} ${header}`} value={mappingColumns[header] || ""} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => {
+                    clearWorkflow();
+                    const columns = { ...mappingColumns, [header]: event.target.value };
+                    setMappingColumns(columns);
+                    setNullColumns(current => mappedNullColumns(targetTable, columns, current));
+                  }}>
                     <option value="">{tr("تجاوز هذا العمود", "Skip this column")}</option>
                     {targetTable.columns.filter((column) => column.writable && !column.generated).map((column) => {
                       const foreignNumeric = file.source === "external" && targetTable.relations.some((relation) => relation.columns.includes(column.name)) && /int|numeric|serial|bigint/i.test(column.type);
@@ -596,11 +604,11 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
                   <small>{targetTable.keys.length ? tr("تُطابق السجلات الموجودة بهذا المفتاح؛ يمكن ترك المعرّفات المولّدة تلقائياً فارغة للصفوف الجديدة.", "This key matches existing rows; autogenerated IDs may be omitted for new rows.") : tr("هذا الجدول للإدراج فقط لأن ليس له مفتاح فريد؛ يمكن ترك المعرّفات المولّدة تلقائياً فارغة للصفوف الجديدة.", "This table is insert-only because it has no unique key; autogenerated IDs may be omitted for new rows.")}</small>
                 </div>
                 <div className="transfer-field"><label>{tr("السماح بمسح قيمة صراحةً", "Explicitly allow clearing values")}</label>
-                  <div className="transfer-null-box">{targetTable.columns.filter((column) => column.writable && column.nullable && !column.generated).map((column) => <label className="transfer-null-option" key={column.name}>
+                  <div className="transfer-null-box">{clearableMappingColumns(targetTable, mappingColumns).map((column) => <label className="transfer-null-option" key={column.name}>
                     <input type="checkbox" checked={nullColumns.includes(column.name)} disabled={busy !== "" || Boolean(pendingApply.current)} onChange={(event) => { clearWorkflow(); setNullColumns((current) => event.target.checked ? [...current, column.name] : current.filter((name) => name !== column.name)); }} />
                     {language === "ar" ? column.labelAr : column.labelEn} <code>{column.name}</code>
                   </label>)}</div>
-                  <small>{tr("القيم الفارغة تتجاوز افتراضياً؛ المسح ممكن فقط للأعمدة المختارة هنا.", "Blank values are skipped by default; clearing is possible only for columns selected here.")}</small>
+                  <small>{tr("القيم الفارغة تتجاوز افتراضياً؛ تظهر هنا الأعمدة المربوطة التي تقبل المسح فقط، ولا يتم المسح إلا بعد اختيارها والموافقة على التحديث في المعاينة.", "Blank values are skipped by default; only mapped nullable columns appear here. Clearing requires selection here and update approval in the preview.")}</small>
                 </div>
               </div>
               <div className="transfer-template-row">
