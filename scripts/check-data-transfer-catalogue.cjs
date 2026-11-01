@@ -19,7 +19,7 @@ const WebSocket = require("ws");
     default:null,generated:false,writable:true,maxLength:200,precision:null,scale:null});
   const tables = ["customers","customer_products","users","readonly_table"].map(name=>({
     name,labelAr:name,labelEn:name,group:name==="customers"?"discovered":"catalogue",approved:true,exportable:true,importable:name!=="readonly_table",
-    reasonAr:"",reasonEn:"",keys:[["id"]],relations:[],columns:[column("id"),column("name")],
+    reasonAr:"",reasonEn:"",keys:[["id"]],relations:[],columns:[column("id"),column("name"),column("unmapped")],
   }));
   try {
     await build({stdin:{contents:`import React from "react";import{createRoot}from"react-dom/client";import i18n from "i18next";import{initReactI18next}from"react-i18next";import Panel from "./client/src/pages/admin/DataTransferAdmin";import "./client/src/index.css";const lang=new URL(location.href).searchParams.get("lang")||"ar";i18n.use(initReactI18next).init({lng:lang,resources:{ar:{translation:{}},en:{translation:{}}},initImmediate:false});document.documentElement.dir=lang==="ar"?"rtl":"ltr";createRoot(document.getElementById("root")).render(<main style={{padding:16,maxWidth:1200,margin:"auto"}}><Panel/></main>);`,resolveDir:process.cwd(),loader:"tsx"},
@@ -88,12 +88,23 @@ const WebSocket = require("ws");
       await wait("!!document.querySelector('.transfer-import-workflow')");
       check(`${lang} clicked target wins over file table name`,await evaluate("document.querySelector('.transfer-import-workflow .panel-head code').textContent==='customer_products'"));
       check(`${lang} file selection cannot apply without preview`,!requests.some(r=>r.path.endsWith("/apply")));
+      await wait("document.querySelectorAll('.transfer-null-option').length===1");
+      check(`${lang} clearing offers only the mapped nullable name, not unmapped or required columns`,await evaluate("document.querySelector('.transfer-null-option code').textContent==='name'"));
+      await click(".transfer-null-option input");
+      const setNameMapping=async value=>evaluate(`(()=>{const select=document.querySelectorAll('.transfer-mapping-row select')[1];Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(value)});select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await setNameMapping("");
+      await wait("document.querySelectorAll('.transfer-null-option').length===0");
+      check(`${lang} unmapping removes the stale clearing choice`,await evaluate("document.querySelectorAll('.transfer-null-option').length===0"));
+      await setNameMapping("name");
+      await wait("document.querySelectorAll('.transfer-null-option').length===1");
+      check(`${lang} remapping does not silently restore consent to clear`,await evaluate("!document.querySelector('.transfer-null-option input').checked"));
       for(const width of [390,768,1280]){await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<481});check(`${lang} ${width}px page has no horizontal overflow`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));const shot=await send("Page.captureScreenshot",{format:"jpeg",quality:65});await fs.writeFile(path.join(temp,`${lang}-${width}.jpg`),Buffer.from(shot.data,"base64"));}
       await click(".transfer-import-workflow .transfer-safety-check input");
       await click(".transfer-import-workflow button.btn-primary");
       await wait("document.body.textContent.includes(" + JSON.stringify(lang==="ar"?"مراجعة الصفوف والتغييرات":"Review rows and changes") + ")");
       const preview=requests.find(r=>r.path.endsWith("/preview"));
       check(`${lang} preview maps file to clicked table`,preview?.body?.mappings?.[0]?.table==="customer_products");
+      check(`${lang} preview excludes stale empty-value choices`,preview?.body?.mappings?.[0]?.nullColumns?.length===0);
       const applySelector="document.querySelector('.transfer-preview-list').closest('section').querySelector('button.btn-primary')";
       check(`${lang} new rows still require confirmation`,await evaluate(`${applySelector}.disabled===true`));
       await evaluate("document.querySelector('.transfer-preview-list').closest('section').querySelector('input[type=checkbox]').click()");
