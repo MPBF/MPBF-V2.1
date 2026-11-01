@@ -11,7 +11,7 @@ const WebSocket = require("ws");
 
 (async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "transfer-catalogue-"));
-  let chrome, server, ws, session, chooser = null, assertions = 0, failExport = false, uncertain = false, commits = 0;
+  let chrome, server, ws, session, chooser = null, assertions = 0, failExport = false, uncertain = false, commits = 0, previewCase = "new";
   const requests = [], exceptions = [];
   const id = "00000000-0000-4000-8000-000000000001";
   const check = (name, value) => { assert.ok(value, name); assertions++; console.log(`PASS ${name}`); };
@@ -40,7 +40,11 @@ const WebSocket = require("ws");
           res.setHeader("Content-Disposition",'attachment; filename="fixture.xlsx"');return res.end(Buffer.from("isolated-download-fixture"));
         }
         if(url.pathname.endsWith("/read-file"))return res.end(JSON.stringify({receipt:id,source:"external",tables:[{name:"customers",headers:["id","name"],rows:[{id:"100",name:"Fixture"}]}]}));
-        if(url.pathname.endsWith("/preview"))return res.end(JSON.stringify({id,version:"fixture",expiresAt:"2099-01-01T00:00:00Z",kind:"import",rows:[{index:0,table:body.mappings[0].table,status:"new",values:{id:"100",name:"Fixture"},old:null,changes:[],errors:[]}]}));
+        if(url.pathname.endsWith("/preview")){
+          const row={index:0,table:body.mappings[0].table,status:"new",values:{id:"100",name:"Fixture"},old:null,changes:[],errors:[]};
+          const rows=previewCase==="existing"?[]:previewCase==="invalid"?[row,{...row,index:2,status:"invalid",values:{id:"102"},errors:[{column:"name",message:"Required field missing for new row"}]}]:[row];
+          return res.end(JSON.stringify({id,version:"fixture",expiresAt:"2099-01-01T00:00:00Z",kind:"import",importMode:"new-only",rows}));
+        }
         if(url.pathname.endsWith("/apply")){
           if(!commits)commits++;
           if(uncertain){uncertain=false;res.writeHead(503);return res.end('{"message":"HTTP_503"}');}
@@ -106,12 +110,27 @@ const WebSocket = require("ws");
       check(`${lang} preview maps file to clicked table`,preview?.body?.mappings?.[0]?.table==="customer_products");
       check(`${lang} preview excludes stale empty-value choices`,preview?.body?.mappings?.[0]?.nullColumns?.length===0);
       const applySelector="document.querySelector('.transfer-preview-list').closest('section').querySelector('button.btn-primary')";
+      check(`${lang} import does not offer existing-row status or update approvals`,await evaluate("!document.querySelector('.transfer-status--existing')&&!document.querySelector('.transfer-row-approval')"));
+      previewCase="invalid";
+      await click(".transfer-import-workflow button.btn-primary");
+      await wait("document.querySelectorAll('.transfer-preview-row').length===2");
+      await evaluate("document.querySelector('.transfer-preview-list').closest('section').querySelector('input[type=checkbox]').click()");
+      check(`${lang} invalid record blocks valid new additions even after confirmation`,await evaluate(`${applySelector}.disabled&&document.querySelector('.transfer-row-errors').textContent.includes('name')`));
+      check(`${lang} invalid preview has never applied`,!requests.some(r=>r.path.endsWith("/apply")));
+      previewCase="existing";
+      await click(".transfer-import-workflow button.btn-primary");
+      await wait("document.querySelector('.transfer-preview-list .transfer-empty')!==null");
+      check(`${lang} all-existing import is empty and cannot apply`,await evaluate(`${applySelector}.disabled&&document.querySelectorAll('.transfer-preview-row').length===0&&document.body.textContent.includes(${JSON.stringify(lang==="ar"?"لا توجد سجلات جديدة للاستيراد":"No new records to import")})`));
+      previewCase="new";
+      await click(".transfer-import-workflow button.btn-primary");
+      await wait("document.querySelectorAll('.transfer-preview-row').length===1");
       check(`${lang} new rows still require confirmation`,await evaluate(`${applySelector}.disabled===true`));
       await evaluate("document.querySelector('.transfer-preview-list').closest('section').querySelector('input[type=checkbox]').click()");
       uncertain=true;await evaluate(`${applySelector}.click()`);
       await wait("!!document.querySelector('[role=alert]')&&!"+applySelector+".disabled");
       check(`${lang} unresolved apply blocks catalogue target changes`,await evaluate("[...document.querySelectorAll('[data-transfer-import],[data-transfer-export]')].every(b=>b.disabled)"));
       const first=requests.filter(r=>r.path.endsWith("/apply"))[0].body;
+      check(`${lang} import submits no existing-row approvals`,first.approvals.length===0&&first.confirmNew===true);
       await evaluate(`${applySelector}.click()`);
       await wait("!document.querySelector('.transfer-import-workflow')&&!document.querySelector('[data-transfer-import=customers]').disabled");
       const applied=requests.filter(r=>r.path.endsWith("/apply"));
