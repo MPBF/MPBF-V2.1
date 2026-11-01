@@ -157,8 +157,9 @@ export class DataTransferService {
       const projected = project(graph, rows);
       try { guardAdministrator(actor, rows, projected); }
       catch (e) { for (const row of rows.filter(r => ["users", "roles"].includes(r.table))) { row.status = "invalid"; row.errors.push({ column: "", message: (e as Error).message }); } }
-      if (!rows.length || rows.length > MAX_ROWS) fail("File must contain 1–2000 rows");
+      if (!file.tables.some(t => mappings.some(m => m.fileTable === t.name) && t.rows.length) || rows.length > MAX_ROWS) fail("File must contain 1–2000 rows");
       document = { preview: { id: randomUUID(), version, expiresAt: new Date(Date.now() + 1800000).toISOString(), rows, kind: "import",
+        importMode: "new-only",
         requiresAdminConfirmation: grantsAdministrator(rows, graph, projected) },
         graph, guard, mappings };
       await q.query("COMMIT");
@@ -171,6 +172,11 @@ export class DataTransferService {
   private selected(document: Document, approvals: TransferApproval[], confirmNew: boolean) {
     if (!Array.isArray(approvals) || approvals.length > MAX_ROWS || new Set(approvals.map(a => a.index)).size !== approvals.length) fail("Invalid approval list");
     const rows = document.preview.rows;
+    if (document.preview.kind === "import") {
+      if (document.preview.importMode !== "new-only" || rows.some(row => row.old || row.status === "existing"))
+        fail("Import policy changed; create a new preview", 409);
+      if (approvals.length) fail("Table imports only allow new records; updates are not permitted", 400);
+    }
     if (rows.some(r => r.errors.length || ["invalid", "conflict"].includes(r.status))) fail("Entire batch rejected; resolve all preview errors", 409);
     const allowed = new Map<number, string[]>();
     for (const approval of approvals) {

@@ -82,6 +82,7 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
     new Set(mappings.map(m => m.table)).size !== mappings.length) fail("Choose one mapping per unique table");
   if (file.tables.reduce((n, t) => n + t.rows.length, 0) > MAX_ROWS) fail("Row limit");
   const rows: TransferPreviewRow[] = [];
+  let sourceIndex = 0;
   for (const mapping of mappings) {
     const table = approved(schema, mapping.table, true);
     const input = file.tables.find(t => t.name === mapping.fileTable);
@@ -97,7 +98,7 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
     if (!Array.isArray(mapping.nullColumns) || mapping.nullColumns.some(c => !targets.includes(c) || !table.columns.find(x => x.name === c)?.nullable)) fail("Invalid explicit empty-value choice");
     const seen = new Set<string>();
     for (const raw of input.rows) {
-      const row: TransferPreviewRow = { index: rows.length, table: table.name, status: "new", values: {}, old: null, changes: [], errors: [] };
+      const row: TransferPreviewRow = { index: sourceIndex++, table: table.name, status: "new", values: {}, old: null, changes: [], errors: [] };
       for (const [source, target] of Object.entries(mapping.columns)) {
         if (!target) continue;
         const rawValue = raw[source];
@@ -119,23 +120,23 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
           row.errors.push({ column:key,message:"Numeric IDs from another source are not trusted; use a stable business code or a verified local JSON package" });
       }
       const key = automaticKey || !mapping.matchKey.length ? `new-row-${row.index}` : hash(mapping.matchKey.map(k => row.values[k]));
+      const matches = automaticKey || !mapping.matchKey.length ? [] : (graph[table.name] ?? []).filter(r => mapping.matchKey.every(k => same(r[k], row.values[k])));
+      if (matches.length === 1) {
+        // An existing record is never a proposed update, even if the file's
+        // non-key cells differ or are malformed. Identity must still be trusted.
+        const identityErrors = row.errors.filter(error => mapping.matchKey.includes(error.column));
+        if (!identityErrors.length) continue;
+        row.values = {};
+        row.errors = identityErrors;
+        row.status = "invalid";
+        rows.push(row);
+        continue;
+      }
       if (seen.has(key)) { row.status = "conflict"; row.errors.push({ column: mapping.matchKey.join(","), message: "Duplicate match key in file" }); }
       seen.add(key);
-      const matches = automaticKey || !mapping.matchKey.length ? [] : (graph[table.name] ?? []).filter(r => mapping.matchKey.every(k => same(r[k], row.values[k])));
       if (matches.length > 1) { row.status = "conflict"; row.errors.push({ column: "", message: "Ambiguous database match" }); }
-      if (matches.length === 1) {
-        row.old = matches[0];
-        if (row.status !== "conflict") row.status = "existing";
-        for (const [column, value] of Object.entries(row.values)) {
-          if (!same(row.old[column], value)) {
-            if (table.keys.some(k => k.includes(column))) row.errors.push({ column, message: "Existing identifiers cannot be changed" });
-            else row.changes.push({ column, old: row.old[column], new: value });
-          }
-        }
-      } else {
-        for (const c of table.columns.filter(c => !c.generated && !c.nullable && !c.default)) {
-          if (row.values[c.name] == null) row.errors.push({ column: c.name, message: "Required field missing for new row" });
-        }
+      for (const c of table.columns.filter(c => !c.generated && !c.nullable && !c.default)) {
+        if (row.values[c.name] == null) row.errors.push({ column: c.name, message: "Required field missing for new row" });
       }
       if (row.errors.length && row.status !== "conflict") row.status = "invalid";
       rows.push(row);

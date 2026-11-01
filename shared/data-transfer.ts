@@ -30,6 +30,7 @@ export type TransferPreviewRow = {
   errors: { column: string; message: string }[];
 };
 export type TransferPreview = {
+  importMode?: "new-only";
   id: string; version: string; expiresAt: string; rows: TransferPreviewRow[];
   kind: "import" | "restore"; retainedInserts?: number; requiresAdminConfirmation?: boolean;
 };

@@ -16,3 +16,13 @@ snapshot → paginated request → visible unit-count cards flow, including
 historical kg-only records. Scope lazy-history assertions by collection;
 primary stock loading must not be mistaken for eagerly opening optional
 production history.
+
+Disposable integration fixtures must also include the lookup dependencies of
+real warehouse queries, even when the scenario is primarily testing data transfer.
+
+**Why:** a transfer safety run reached receiving and failed on a stale identity
+lookup fixture, not on the import behavior under test.
+
+**How to apply:** inspect the complete failing lookup projection before fixing
+fixture drift; update the disposable fixture, never the live schema merely to
+make a test pass.

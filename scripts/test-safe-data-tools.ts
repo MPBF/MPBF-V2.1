@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { DataTransferService } from "../server/data-transfer/service";
-import { discover, hash, type TransferPool } from "../server/data-transfer/schema";
+import { discover, hash, snapshot, type TransferPool } from "../server/data-transfer/schema";
 import { makeBundle, parseFile, csvExport } from "../server/data-transfer/files";
 import { valueFor } from "../server/data-transfer/validation";
 import { FinishedDeliveryService } from "../server/production/delivery";
@@ -31,12 +31,28 @@ const preview=async(table:string,rows:Record<string,string|null>[],nullColumns:s
 };
 const counts=async()=>query(`SELECT (SELECT count(*) FROM customers)::int customers,
  (SELECT count(*) FROM categories)::int categories,(SELECT count(*) FROM items)::int items`);
+// Seed a pre-policy historical update in the disposable DB only. New table
+// imports cannot create updates, but existing backups must remain restorable.
+const historicalCustomerUpdate=async()=>{
+  const schema=await tools.schema();
+  const graph=await snapshot(pool,schema,"public");
+  const old=graph.customers.find(row=>row.id==="CID001")!;
+  await query("UPDATE customers SET name='Changed',phone=NULL WHERE id='CID001'");
+  const after=(await snapshot(pool,schema,"public")).customers.find(row=>row.id==="CID001")!;
+  const document={schemaVersion:schema.version,graph,
+    applied:[{table:"customers",old,after,columns:["name","phone"]}],
+    afterGuard:await (tools as any).guard(pool,Object.keys(graph))};
+  const id=randomUUID();
+  await query(`INSERT INTO data_transfer_backups(id,actor_id,document,checksum,expires_at)
+    VALUES($1,1,$2::jsonb,$3,clock_timestamp()+interval '1 day')`,[id,JSON.stringify(document),hash(document)]);
+  return {id};
+};
 try {
   await pool.query(`
     CREATE TABLE roles(id serial PRIMARY KEY,name text,permissions json);
     INSERT INTO roles(id,name,permissions) VALUES(1,'Administrator','["admin"]'),(2,'Operator','["view_production"]');
     CREATE TABLE users(id serial PRIMARY KEY,username text UNIQUE,password text,role_id integer REFERENCES roles(id),
-      display_name text,status text DEFAULT 'active',must_change_password boolean DEFAULT false);
+      display_name text,display_name_ar text,full_name text,status text DEFAULT 'active',must_change_password boolean DEFAULT false);
     INSERT INTO users(id,username,password,role_id) VALUES(1,'admin','never-export',1),(2,'operator','never-export',2);
     CREATE TABLE customers(id varchar(20) PRIMARY KEY,name varchar(200) NOT NULL,name_ar varchar(200),
       tax_number varchar(20),unified_number varchar(10),phone varchar(20),is_active boolean DEFAULT true,
@@ -168,10 +184,12 @@ try {
     await assert.rejects(()=>tools.export(1,["factory_execution"],"json",version));
     await query(`UPDATE factory_execution SET product=product-'api_key' WHERE production_order_id=1`);
   });
-  await test("preview old/new cells; default insert only and exact per-column approvals",async()=>{
+  await test("new-only preview skips existing records and inserts only new records idempotently",async()=>{
     const before=await counts();
     const p=await preview("customers",[{id:"CID001",name:"Changed",phone:""},{id:"CID003",name:"New",phone:"00012"}]);
-    assert.deepEqual(p.rows.map(r=>r.status),["existing","new"]);assert.equal(p.rows[0].changes.length,1);
+    assert.equal(p.importMode,"new-only");
+    assert.deepEqual(p.rows.map(r=>r.status),["new"]);assert.equal(p.rows[0].index,1);
+    await assert.rejects(()=>tools.apply(1,p.id,[{index:0,columns:["name"]}],true),/updates are not permitted/);
     const done=await tools.apply(1,p.id,[],true);
     assert.deepEqual(done.counts,{inserted:1,updated:0});
     assert.equal((await query("SELECT name,phone FROM customers WHERE id='CID001'"))[0].name,"Original");
@@ -179,20 +197,24 @@ try {
     assert.equal((await counts())[0].customers,before[0].customers+1);
     assert.deepEqual(await tools.apply(1,p.id,[],true),done);await assert.rejects(()=>tools.apply(1,p.id,[],false));
   });
-  await test("explicit null clearing and restore approved cells; insertions retained",async()=>{
+  await test("all-existing imports cannot clear values; historical approved-cell restore remains supported",async()=>{
     const p=await preview("customers",[{id:"CID001",name:"Changed",phone:""}],["phone"]);
-    assert.equal(p.rows[0].changes.length,2);
-    await tools.apply(1,p.id,[{index:0,columns:["name","phone"]}],false);
+    assert.deepEqual(p.rows,[]);
+    await assert.rejects(()=>tools.apply(1,p.id,[{index:0,columns:["name","phone"]}],false),/updates are not permitted/);
+    await assert.rejects(()=>tools.apply(1,p.id,[],true),/Select at least one change/);
+    assert.equal((await query("SELECT phone FROM customers WHERE id='CID001'"))[0].phone,"0500012345");
+    const historical=await historicalCustomerUpdate();
     assert.equal((await query("SELECT phone FROM customers WHERE id='CID001'"))[0].phone,null);
-    const restore=await tools.restorePreview(1,p.id);assert.equal(restore.rows[0].status,"existing");
+    const restore=await tools.restorePreview(1,historical.id);assert.equal(restore.rows[0].status,"existing");
     await tools.apply(1,restore.id,[{index:0,columns:["name","phone"]}],false);
     assert.deepEqual((await query("SELECT name,phone FROM customers WHERE id='CID001'"))[0],{name:"Original",phone:"0500012345"});
-    await assert.rejects(()=>tools.backup(2,p.id));assert((await tools.backup(1,p.id)).checksum);
+    await assert.rejects(()=>tools.backup(2,historical.id));assert((await tools.backup(1,historical.id)).checksum);
   });
   await test("duplicate keys, missing relations, invalid types, required fields and cycles reject full batch",async()=>{
     const before=await counts();
     for(const [table,rows] of [
       ["customers",[{id:"CID004",name:"Valid"},{id:"CID004",name:"Dup"}]],
+      ["customers",[{id:"CID004",name:"Valid"},{id:"CID008",name:""}]],
       ["customers",[{id:"CID004",name:""}]],
       ["customers",[{id:"CID004",name:"Bad",tax_number:"12"}]],
       ["categories",[{id:"CAT002",name:"Bad",parent_id:"missing"}]],
@@ -252,8 +274,7 @@ try {
     assert((await tools.backup(1,p2.id)).checksum);
   });
   await test("restore never overwrites later edits and cannot delete added rows",async()=>{
-    const p=await preview("customers",[{id:"CID001",name:"Changed"}]);
-    await tools.apply(1,p.id,[{index:0,columns:["name"]}],false);
+    const p=await historicalCustomerUpdate();
     await query("UPDATE customers SET phone='newer-edit' WHERE id='CID001'");
     const r=await tools.restorePreview(1,p.id);assert.equal(r.rows[0].status,"conflict");
     await assert.rejects(()=>tools.apply(1,r.id,[{index:0,columns:["name"]}],false));
@@ -318,7 +339,9 @@ try {
     const old=(await query("SELECT bag_weight_grams,cutting_length_cm FROM customer_products WHERE id=100"))[0];
     const note=await file("customer_products",["id","notes"],[{id:"100",notes:"changed"}]);
     const update=await tools.preview(1,version,note,[mapping("customer_products",["id","notes"])],true);
-    await tools.apply(1,update.id,[{index:0,columns:["notes"]}],false);
+    assert.deepEqual(update.rows,[]);
+    await assert.rejects(()=>tools.apply(1,update.id,[{index:0,columns:["notes"]}],false),/updates are not permitted/);
+    assert.equal((await query("SELECT notes FROM customer_products WHERE id=100"))[0].notes,"imported");
     assert.deepEqual((await query("SELECT bag_weight_grams,cutting_length_cm FROM customer_products WHERE id=100"))[0],old);
   });
   await test("users import without plaintext passwords; existing hashes stay unchanged and new accounts require password reset",async()=>{
@@ -327,7 +350,8 @@ try {
     const m={...mapping("users",headers),matchKey:["username"]};
     const p=await tools.preview(1,version,f,[m],true);assert(p.rows.every(r=>!r.errors.length));
     assert(!JSON.stringify(p).includes("never-export"));
-    await tools.apply(1,p.id,[{index:0,columns:["display_name"]}],true);
+    assert.equal(p.rows.length,1);assert.equal(p.rows[0].index,1);
+    await tools.apply(1,p.id,[],true);
     const old=(await query("SELECT password FROM users WHERE username='operator'"))[0];
     assert.equal(old.password,"never-export");
     const created=(await query("SELECT password,must_change_password FROM users WHERE username='new-user'"))[0];
@@ -338,11 +362,14 @@ try {
   await test("current administrator cannot be disabled or lose explicit admin permissions through import",async()=>{
     const f=await file("users",["username","status"],[{username:"admin",status:"inactive"}]);
     const p=await tools.preview(1,version,f,[{...mapping("users",["username","status"]),matchKey:["username"]}]);
-    assert(p.rows[0].errors.some(e=>e.message.includes("current administrator")));
+    assert.deepEqual(p.rows,[]);
     await assert.rejects(()=>tools.apply(1,p.id,[{index:0,columns:["status"]}],false));
     const roles=await file("roles",["id","permissions"],[{id:"1",permissions:'["*"]'}]);
     const rp=await tools.preview(1,version,roles,[mapping("roles",["id","permissions"])],true);
-    assert(rp.rows[0].errors.some(e=>e.message.includes("current administrator")));
+    assert.deepEqual(rp.rows,[]);
+    await assert.rejects(()=>tools.apply(1,rp.id,[{index:0,columns:["permissions"]}],false));
+    assert.equal((await query("SELECT status FROM users WHERE username='admin'"))[0].status,"active");
+    assert.deepEqual((await query("SELECT permissions FROM roles WHERE id=1"))[0].permissions,["admin"]);
   });
   await test("privilege grants require separate explicit approval and lost responses remain idempotent",async()=>{
     const f=await file("roles",["id","name","permissions"],[{id:"50",name:"Import-admin",permissions:'["admin"]'}]);
