@@ -5,8 +5,8 @@ export type BulkCorrectionTimes = Record<CorrectionAction, string>;
 const actions: CorrectionAction[] = ["check_in", "break_start", "break_end", "check_out"];
 
 /** Replace all four times, binding IDs and local dates independently for every selected shift. */
-export function buildBulkCorrections<T extends AttendanceAuditEvent & { updated_at: string }>(
-  groups: AttendanceAuditGroup<T>[], times: BulkCorrectionTimes,
+export function buildBulkCorrections<T extends AttendanceAuditEvent & { updated_at: string }, E>(
+  groups: AttendanceAuditGroup<T, E>[], times: BulkCorrectionTimes,
 ) {
   if (!groups.length || groups.length > 100) throw new Error("حدد من سجل واحد إلى 100 سجل.");
   if (actions.some((action) => !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(times[action]))) {
@@ -22,7 +22,7 @@ export function buildBulkCorrections<T extends AttendanceAuditEvent & { updated_
     });
     const resolved = resolveCorrectionTimes(rows, group.shift_date, group.events);
     return {
-      session_id: group.events[0].session_id,
+      session_id: group.events[0]?.session_id ?? null,
       user_id: group.user_id,
       shift_date: group.shift_date,
       expected_events: group.events.map(({ id, updated_at }) => ({ id, updated_at })),

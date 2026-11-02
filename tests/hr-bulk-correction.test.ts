@@ -4,6 +4,7 @@ import { db } from "../server/db";
 import { bulkCorrectionInput, correctAttendanceBulk } from "../server/hr-correction";
 import { buildBulkCorrections } from "../client/src/lib/hr-bulk-correction";
 import { groupAttendanceEvents, type AttendanceAction } from "../client/src/lib/hr-audit-grouping";
+import { calendarCorrectionGroup } from "../client/src/lib/hr-audit-calendar";
 
 jest.mock("../server/db", () => ({ db: { transaction: jest.fn() } }));
 const stamp = "2026-06-30T00:00:00.000Z";
@@ -72,6 +73,17 @@ test("resolves overnight dates separately without changing the accounting date",
   expect(payload[0].events[3].occurred_at).toBe("2026-06-29T02:00:00.000Z");
   expect(payload[1].events[3].occurred_at).toBe("2026-06-30T02:00:00.000Z");
   expect(payload.map((entry) => entry.shift_date)).toEqual(["2026-06-28", "2026-06-29"]);
+});
+test("empty calendar targets create four actions without fake originals or IDs", () => {
+  const empty = calendarCorrectionGroup<{ id: number }, typeof events[number]>({
+    key: "calendar:8:2026-06-29", user_id: 8, shift_date: "2026-06-29",
+    employee: { id: 8 }, approvedLeave: true, group: null,
+  });
+  const [payload] = buildBulkCorrections([empty], times);
+  expect(payload).toMatchObject({ session_id: null, user_id: 8, shift_date: "2026-06-29", expected_events: [] });
+  expect(payload.events).toHaveLength(4);
+  expect(payload.events.every(event => !("id" in event))).toBe(true);
+  expect(empty.events).toEqual([]);
 });
 test("rejects empty, oversized and duplicated batches", () => {
   expect(() => bulkCorrectionInput.parse({ corrections: [] })).toThrow();

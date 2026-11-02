@@ -6,7 +6,7 @@ import { hrApi } from "../lib/hr-api";
 import { groupAttendanceEvents, type AttendanceAction, type AttendanceAuditGroup } from "../lib/hr-audit-grouping";
 import { auditWorkMinutes } from "../lib/hr-audit-hours";
 import { buildBulkCorrections } from "../lib/hr-bulk-correction";
-import { buildAuditCalendar, isDatedAuditLeave, type AuditApprovedLeave } from "../lib/hr-audit-calendar";
+import { buildAuditCalendar, calendarCorrectionGroup, isDatedAuditLeave, type AuditApprovedLeave } from "../lib/hr-audit-calendar";
 import { resolveCorrectionTimes, type CorrectionAction } from "../lib/hr-correction-time";
 import "./hr-audit.css";
 import { riyadhDateTimeInput, riyadhDateTimeToIso } from "../lib/riyadh-time";
@@ -37,7 +37,7 @@ type AttendanceEvent = HrEmployee & {
   updated_by: number | null;
   updated_at: string;
 };
-type AuditGroup = AttendanceAuditGroup<AttendanceEvent>;
+type AuditGroup = AttendanceAuditGroup<AttendanceEvent, HrEmployee & Partial<Pick<AttendanceEvent, "shift_id" | "shift_name_ar" | "shift_name_en">>>;
 type OpenSession = HrEmployee & { id: number; user_id: number; shift_date: string; shift_id: string; check_in_at: string; shift_end_at: string; last_action: AttendanceAction | null };
 type SummaryRow = HrEmployee & {
   workedMinutes: number;
@@ -174,8 +174,9 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   ), [month, calendarEmployees, auditGroups, calendarLeaves]);
   const hasUndatedLeave = calendarLeaves?.some((leave) => !isDatedAuditLeave(leave)
     && auditCalendarRows.some((row) => row.user_id === leave.user_id));
-  const selectedAuditGroups = calendarLeaves == null ? [] : auditGroups.filter((group) => selectedAuditKeys.includes(group.key));
-  const selectableAuditGroups = calendarLeaves == null ? [] : auditGroups.filter((group) => !correctionFromGroup(group).duplicateActions.length);
+  const correctionGroups = useMemo(() => auditCalendarRows.map(calendarCorrectionGroup), [auditCalendarRows]);
+  const selectedAuditGroups = correctionGroups.filter((group) => selectedAuditKeys.includes(group.key));
+  const selectableAuditGroups = correctionGroups.filter((group) => !correctionFromGroup(group).duplicateActions.length);
   const allSelected = selectableAuditGroups.length > 0 && selectableAuditGroups.slice(0, 100).every((group) => selectedAuditKeys.includes(group.key));
   const correctionRows = correction ? [correction.checkIn, correction.breakStart, correction.breakEnd, correction.checkOut] : [];
 
@@ -398,11 +399,11 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       </div>
 
       {tab === "audit" && <>
-        <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{auditTranslate("جميع أيام الشهر لكل موظف من الأحدث إلى الأقدم، مع بيان الإجازات المعتمدة والحفاظ على كل وردية مسجلة.", "All calendar days for each employee, newest first, showing approved leave and preserving each recorded shift.")}</p></div><button className="hr-primary" type="button" onClick={() => setEventDraft({ user_id: filters.user, action: "break_end", occurred_at: riyadhDateTimeInput() })}><Plus size={17} />{" "}{translate("إنهاء استراحة يدويًا")}</button></div>
+        <div className="hr-ops-head"><div><span>{translate("تدقيق الحضور")}</span><h3>{translate("سجل التدقيق")}</h3><p>{auditTranslate("جميع أيام الشهر لكل موظف من الأحدث إلى الأقدم، مع بيان الإجازات المعتمدة والحفاظ على كل وردية مسجلة.", "All calendar days for each employee, newest first, showing approved leave and preserving each recorded shift.")}</p></div></div>
         {hasUndatedLeave && <p className="hr-audit-calendar-note" role="status">{auditTranslate("توجد إجازة معتمدة دون فترة صالحة ومكتملة؛ لا يمكن تحديد أيامها حتى استكمال تاريخ البداية والنهاية في طلب الإجازة.", "An approved leave has no valid complete date range. Its days cannot be identified until the leave request dates are completed.")}</p>}
         <div className="hr-audit-selection-toolbar">
           <span aria-live="polite">{auditTranslate("المحدد: {{count}} · الحد الأقصى 100 سجل", "Selected: {{count}} · Maximum 100 records", { count: selectedAuditGroups.length })}</span>
-          <button type="button" className="hr-primary" disabled={loading || busy !== "" || !selectedAuditGroups.length} onClick={openBulkCorrection}>{auditTranslate("تصحيح جماعي", "Bulk correction")}</button>
+          <button type="button" className="hr-primary" disabled={loading || busy !== "" || !selectedAuditGroups.length} onClick={openBulkCorrection}>{auditTranslate("تصحيح", "Correct")}</button>
           <button type="button" disabled={!selectedAuditKeys.length || busy !== ""} onClick={() => setSelectedAuditKeys([])}>{auditTranslate("إلغاء التحديد", "Clear selection")}</button>
         </div>
         <div className="hr-table-wrap" role="region" aria-label={auditTranslate("سجل تدقيق الحضور", "Attendance audit log")} tabIndex={0}><table className="hr-data-table hr-audit-table"><thead><tr>
@@ -411,11 +412,11 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
           const group = calendarRow.group;
           const leaveBadge = calendarRow.approvedLeave ? <span className="hr-audit-calendar-status approved-leave">{auditTranslate("إجازة معتمدة", "Approved leave")}</span> : null;
           if (!group) return <tr key={calendarRow.key} className="hr-audit-calendar-row">
-            <td className="hr-audit-select-cell"><label className="hr-audit-select-label"><input className="hr-audit-select-checkbox" type="checkbox" checked={false} disabled aria-label={auditTranslate("لا توجد حركات لتصحيحها بتاريخ {{date}}", "No events to correct on {{date}}", { date: calendarRow.shift_date })} /></label></td>
+            <td className="hr-audit-select-cell"><label className="hr-audit-select-label"><input className="hr-audit-select-checkbox" type="checkbox" checked={selectedAuditKeys.includes(calendarRow.key)} disabled={loading || busy !== "" || (selectedAuditKeys.length >= 100 && !selectedAuditKeys.includes(calendarRow.key))} aria-label={auditTranslate("تحديد {{employee}} بتاريخ {{date}}", "Select {{employee}} on {{date}}", { employee: employeeName(calendarRow.employee), date: calendarRow.shift_date })} onChange={(event) => setSelectedAuditKeys((current) => event.target.checked ? [...current, calendarRow.key] : current.filter((key) => key !== calendarRow.key))} /></label></td>
             <td>{(index + 1).toLocaleString(intlLocale())}</td><td>{calendarRow.shift_date}</td>
             <td className="hr-employee-cell"><strong>{reportArabicName(calendarRow.employee)}</strong><small>{reportEnglishName(calendarRow.employee)}</small></td>
             {Array.from({ length: 7 }, (_, cell) => <td key={cell}>—</td>)}
-            <td>{leaveBadge || <span className="hr-audit-calendar-status no-events">{auditTranslate("لا توجد حركات", "No events")}</span>}</td>
+            <td>{leaveBadge || <span className="hr-audit-calendar-status no-events">{auditTranslate("لا توجد حركات", "No events")}</span>}<button type="button" className="hr-audit-status incomplete" disabled={loading || busy !== ""} aria-label={auditTranslate("تصحيح حالة حضور {{employee}} بتاريخ {{date}}", "Correct attendance status for {{employee}} on {{date}}", { employee: employeeName(calendarRow.employee), date: calendarRow.shift_date })} onClick={() => { setError(""); setCorrection(correctionFromGroup(calendarCorrectionGroup(calendarRow))); }}>{auditTranslate("تصحيح", "Correct")}</button></td>
           </tr>;
           const person = group.employee;
           const shiftName = i18n.language === "en"

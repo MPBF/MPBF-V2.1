@@ -9,12 +9,12 @@ export type AttendanceAuditEvent = {
   occurred_at: string;
 };
 
-export type AttendanceAuditGroup<T extends AttendanceAuditEvent> = {
+export type AttendanceAuditGroup<T extends AttendanceAuditEvent, E = T> = {
   key: string;
   user_id: number;
   shift_date: string;
   sessionOrder: number;
-  employee: T;
+  employee: E;
   checkIns: T[];
   breakStarts: T[];
   breakEnds: T[];

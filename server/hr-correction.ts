@@ -1,9 +1,10 @@
-import { and, eq, gte, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNull, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { attendance_events, attendance_sessions } from "@shared/schema";
+import { attendance_events, attendance_sessions, shift_definitions, user_shift_assignments } from "@shared/schema";
 import { db } from "./db";
 import { dayRange } from "./hr-report";
 import { dailyBreakScope } from "./hr-single-break";
+import { currentShiftOccurrence } from "./shift-geofence";
 
 const action = z.enum(["check_in", "break_start", "break_end", "check_out"]);
 export const correctionInput = z.object({
@@ -13,13 +14,18 @@ export const correctionInput = z.object({
   expected_events: z.array(z.object({
     id: z.number().int().positive(),
     updated_at: z.string().datetime(),
-  }).strict()).min(1).max(500),
+  }).strict()).max(500),
   events: z.array(z.object({
     id: z.number().int().positive().optional(),
     action,
     occurred_at: z.string().datetime(),
   }).strict()).min(2).max(500),
-}).strict();
+}).strict().refine(input => input.session_id == null || input.expected_events.length > 0, {
+  message: "جلسة الحضور تتطلب الحركات الأصلية للتحقق من التعارض",
+}).refine(input => {
+  const date = new Date(`${input.shift_date}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === input.shift_date;
+}, { message: "تاريخ السجل غير صالح" });
 
 type Correction = z.infer<typeof correctionInput>;
 export const bulkCorrectionInput = z.object({
@@ -99,7 +105,7 @@ async function correctAttendanceInTransaction(tx: CorrectionTransaction, input: 
   const range = dayRange(input.shift_date);
     // Same per-employee lock as self-attendance and the existing checkout correction.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${18497}, ${input.user_id})`);
-    const [session] = input.session_id == null ? [] : await tx.select()
+    let [session] = input.session_id == null ? [] : await tx.select()
       .from(attendance_sessions).where(and(
         eq(attendance_sessions.id, input.session_id),
         eq(attendance_sessions.user_id, input.user_id),
@@ -120,6 +126,55 @@ async function correctAttendanceInTransaction(tx: CorrectionTransaction, input: 
     const timeline = validateCorrection(input, current);
     const checkIn = new Date(timeline[0].occurred_at);
     const checkOut = new Date(timeline[timeline.length - 1].occurred_at);
+    const creatingDay = input.session_id == null && input.expected_events.length === 0;
+    if (creatingDay) {
+      if (checkIn < range.start || checkIn >= range.end) conflict("وقت الحضور لا يطابق تاريخ السجل");
+      // An empty calendar row is an optimistic snapshot too. Check all sessions,
+      // including those without events, while holding the same employee lock.
+      const recorded = await tx.select({ id: attendance_events.id }).from(attendance_events)
+        .leftJoin(attendance_sessions, eq(attendance_events.session_id, attendance_sessions.id))
+        .where(and(eq(attendance_events.user_id, input.user_id), or(
+          eq(attendance_sessions.shift_date, input.shift_date),
+          and(isNull(attendance_events.session_id), gte(attendance_events.occurred_at, range.start), lt(attendance_events.occurred_at, range.end)),
+        ))).limit(1);
+      const recordedSessions = await tx.select({ id: attendance_sessions.id }).from(attendance_sessions)
+        .where(and(eq(attendance_sessions.user_id, input.user_id), eq(attendance_sessions.shift_date, input.shift_date))).limit(1);
+      if (recorded.length || recordedSessions.length) conflict("تغير سجل الحضور أثناء التصحيح؛ حدّث الصفحة ثم أعد المحاولة");
+      const overlapping = await tx.select({ id: attendance_sessions.id }).from(attendance_sessions)
+        .where(and(eq(attendance_sessions.user_id, input.user_id),
+          lt(attendance_sessions.check_in_at, checkOut),
+          or(isNull(attendance_sessions.check_out_at), gt(attendance_sessions.check_out_at, checkIn)),
+        )).limit(1);
+      if (overlapping.length) conflict("أوقات التصحيح تتداخل مع وردية أخرى");
+      const otherEvents = await tx.select({ id: attendance_events.id }).from(attendance_events)
+        .where(and(eq(attendance_events.user_id, input.user_id),
+          gte(attendance_events.occurred_at, checkIn), lte(attendance_events.occurred_at, checkOut),
+        )).limit(1);
+      if (otherEvents.length) conflict("أوقات التصحيح تتداخل مع حركات حضور أخرى");
+      const [assignment] = await tx.select({ id: user_shift_assignments.id, shift: shift_definitions })
+        .from(user_shift_assignments)
+        .innerJoin(shift_definitions, eq(user_shift_assignments.shift_id, shift_definitions.id))
+        .where(and(eq(user_shift_assignments.user_id, input.user_id),
+          lte(user_shift_assignments.assigned_at, checkIn),
+          or(isNull(user_shift_assignments.unassigned_at), gt(user_shift_assignments.unassigned_at, checkIn)),
+        )).orderBy(desc(user_shift_assignments.assigned_at)).limit(1);
+      if (assignment) {
+        const shift = assignment.shift;
+        const occurrence = currentShiftOccurrence({
+          id: shift.id, startTime: shift.start_time, endTime: shift.end_time,
+          earlyCheckinMinutes: shift.early_checkin_minutes, lateCheckoutMinutes: shift.late_checkout_minutes,
+          breakMinutes: shift.break_minutes, geofenceEnabled: false,
+        }, checkIn);
+        if (!occurrence || occurrence.shiftDate !== input.shift_date) return conflict("وقت الحضور خارج نافذة الوردية المحددة");
+        if (checkOut.getTime() > occurrence.shiftStartAt.getTime() + 86400000) conflict("تجاوزت الجلسة مهلة التصحيح البالغة 24 ساعة من بداية الوردية");
+        [session] = await tx.insert(attendance_sessions).values({
+          user_id: input.user_id, shift_assignment_id: assignment.id, shift_id: shift.id,
+          shift_date: input.shift_date, shift_start_at: occurrence.shiftStartAt, shift_end_at: occurrence.shiftEndAt,
+          window_start_at: occurrence.start, window_end_at: occurrence.end,
+          expected_minutes: occurrence.expectedMinutes, check_in_at: checkIn, check_out_at: checkOut,
+        }).returning();
+      }
+    }
     if (session) {
       if (checkIn < session.window_start_at || checkIn > session.window_end_at) {
         conflict("وقت الحضور خارج نافذة الوردية المحددة");
@@ -161,7 +216,7 @@ async function correctAttendanceInTransaction(tx: CorrectionTransaction, input: 
       } else {
         await tx.insert(attendance_events).values({
           user_id: input.user_id,
-          session_id: input.session_id,
+          session_id: session?.id ?? input.session_id,
           shift_assignment_id: session?.shift_assignment_id ?? null,
           action: event.action,
           occurred_at: new Date(event.occurred_at),
