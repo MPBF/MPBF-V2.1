@@ -1,0 +1,10 @@
+{
+  "name": "@mpbf/minimatch-legacy",
+  "version": "1.0.2",
+  "private": true,
+  "description": "Callable legacy API adapter around patched upstream minimatch; contains no legacy matcher",
+  "main": "index.cjs",
+  "dependencies": {
+    "minimatch": "11.0.4"
+  }
+}

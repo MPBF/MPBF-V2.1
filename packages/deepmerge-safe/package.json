@@ -1,0 +1,9 @@
+{
+  "name": "@mpbf/deepmerge-safe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MIT deepmerge 4.3.1 with own-property writes fixing GHSA-gcqx-w48m-w2h4",
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "license": "MIT"
+}
