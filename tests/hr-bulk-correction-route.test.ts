@@ -51,3 +51,8 @@ test("rejects empty or repeated targets before a transaction", async () => {
   expect((await send("manage_hr", [correction, correction])).status).toBe(400);
   expect(db.transaction).not.toHaveBeenCalled();
 });
+test("accepts an explicitly saved empty calendar day under HR authority", async () => {
+  const empty = { ...correction, expected_events: [], events: correction.events.map(({ action, occurred_at }) => ({ action, occurred_at })) };
+  expect((await send("manage_attendance", [empty])).status).toBe(200);
+  expect(db.transaction).toHaveBeenCalledTimes(1);
+});

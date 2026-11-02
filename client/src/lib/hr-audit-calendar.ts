@@ -18,7 +18,7 @@ const validDay = (day: string | null): day is string => Boolean(day
 export const isDatedAuditLeave = (leave: AuditApprovedLeave) =>
   validDay(leave.start) && validDay(leave.end) && leave.start <= leave.end;
 
-/** Read-only calendar placeholders never become attendance groups or correction targets. */
+/** Calendar rows remain read-only until an explicit correction is saved. */
 export function buildAuditCalendar<E extends AuditCalendarEmployee, T extends AttendanceAuditEvent>(
   month: string, employees: E[], groups: AttendanceAuditGroup<T>[], leaves: AuditApprovedLeave[],
 ): AuditCalendarRow<E, T>[] {
@@ -53,4 +53,15 @@ export function buildAuditCalendar<E extends AuditCalendarEmployee, T extends At
     }
   }
   return rows;
+}
+
+/** Empty correction targets carry identity/date, never invented attendance events. */
+export function calendarCorrectionGroup<E, T extends AttendanceAuditEvent>(
+  row: AuditCalendarRow<E, T>,
+): AttendanceAuditGroup<T, E | T> {
+  return row.group ?? {
+    key: row.key, user_id: row.user_id, shift_date: row.shift_date,
+    sessionOrder: 0, employee: row.employee,
+    checkIns: [], breakStarts: [], breakEnds: [], checkOuts: [], events: [],
+  };
 }
