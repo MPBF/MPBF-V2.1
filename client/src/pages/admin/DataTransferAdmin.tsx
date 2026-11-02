@@ -340,7 +340,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     try {
       const result = await api("/data-transfer/preview", {
         method: "POST",
-        body: JSON.stringify({ version: schema?.version, file: { ...file, tables: [selectedFileTable] }, mappings: [mapping], confirmLocalIds: file.source === "external" && confirmLocalIds }),
+        body: JSON.stringify({ version: schema?.version, file: { receipt: file.receipt }, mappings: [mapping], confirmLocalIds: file.source === "external" && confirmLocalIds }),
       }) as TransferPreview;
       setPreview(result);
     } catch (e) { setError(localError(e, tr)); }

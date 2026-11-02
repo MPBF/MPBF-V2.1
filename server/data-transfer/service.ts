@@ -1,6 +1,6 @@
 import { randomUUID, randomBytes } from "node:crypto";
 import bcrypt from "bcrypt";
-import type { TransferApproval, TransferCorrection, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferRow, TransferTemplate } from "../../shared/data-transfer";
+import type { TransferApproval, TransferCorrection, TransferFile, TransferFileReference, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferRow, TransferTemplate } from "../../shared/data-transfer";
 import { approved, discover, hash, readRows, snapshot, stable, type Queryable, type Snapshot, type TransferPool } from "./schema";
 import { fail, identifier, MAX_ROWS, RETENTION_DAYS, productDerived, protectedColumn } from "./policy";
 import { csvExport, csvZipExport, excelExport, makeBundle, parseFile, verifyBundleShape } from "./files";
@@ -138,15 +138,19 @@ export class DataTransferService {
         filename: `MPBF-data-${bundle.id}.${format==="csv"&&names.length>1?"zip":format}` };
     } catch (e) { await q.query("ROLLBACK"); throw e; } finally { q.release(); }
   }
-  async preview(actor: number, version: string, submitted: TransferFile, mappings: TransferMapping[], confirmLocalIds = false, corrections: TransferCorrection[] = []) {
+  async preview(actor: number, version: string, submitted: TransferFile | TransferFileReference, mappings: TransferMapping[], confirmLocalIds = false, corrections: TransferCorrection[] = []) {
     if (!submitted?.receipt) fail("Upload the file again; a server receipt is required");
     await this.ready(this.pool);
     const { rows: uploads } = await this.pool.query(`SELECT document FROM ${this.table("data_transfer_previews")}
       WHERE id=$1 AND actor_id=$2 AND expires_at>clock_timestamp()`, [submitted.receipt, actor]);
     const file: TransferFile | undefined = uploads[0]?.document.file;
     if (!file) fail("Uploaded file expired or unavailable", 409);
-    const { receipt: _receipt, ...clientFile } = submitted;
-    if (hash(clientFile) !== hash(file)) fail("Uploaded file was changed; upload again", 409);
+    // New clients send only the receipt. Legacy full-file requests must still
+    // match the stored upload exactly; neither mode trusts client cell values.
+    if ("tables" in submitted) {
+      const { receipt: _receipt, ...clientFile } = submitted;
+      if (hash(clientFile) !== hash(file)) fail("Uploaded file was changed; upload again", 409);
+    }
     const q = await this.pool.connect();
     let document: Document;
     try {
@@ -165,7 +169,7 @@ export class DataTransferService {
         importMode: "new-only",
         skippedExisting: file.tables.filter(t => mappings.some(m => m.fileTable === t.name)).reduce((n, t) => n + t.rows.length, 0) - rows.length,
         requiresAdminConfirmation: grantsAdministrator(candidates, graph, projected) },
-        graph, guard, mappings, file: submitted, confirmLocalIds, corrections };
+        graph, guard, mappings, file: { ...file, receipt: submitted.receipt }, confirmLocalIds, corrections };
       await q.query("COMMIT");
     } catch (e) { await q.query("ROLLBACK"); throw e; } finally { q.release(); }
     await this.cleanup();

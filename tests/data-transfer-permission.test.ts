@@ -4,7 +4,8 @@ import { createDataTransferRouter } from "../server/data-transfer/routes";
 jest.mock("../server/db",()=>({pool:{query:jest.fn()},db:{}}));
 describe("general data transfer uses effective explicit admin permission",()=>{
  let server:ReturnType<ReturnType<typeof express>["listen"]>,origin:string;
- const service:any={schema:jest.fn(async()=>({ready:true,tables:[]})),reject:jest.fn(async()=>{})};
+ const service:any={schema:jest.fn(async()=>({ready:true,tables:[]})),rejection:jest.fn(async()=>{}),
+   preview:jest.fn(async()=>({id:"preview",rows:[]}))};
  beforeAll(async()=>{
    const app=express();app.use(express.json());app.use((req,_res,next)=>{
      if(req.headers["x-grants"]!==undefined)req.user={id:1,role_id:Number(req.headers["x-role"]||1),
@@ -31,5 +32,27 @@ describe("general data transfer uses effective explicit admin permission",()=>{
  });
  it("does not give a role-preview user original administrator powers",async()=>{
    expect((await fetch(`${origin}/data/schema`,{headers:{"x-grants":"manage_orders","x-role":"10"}})).status).toBe(403);
+ });
+ it("accepts a receipt-only preview without client cell values",async()=>{
+   const receipt="12345678-1234-4234-8234-123456789abc";
+   const body={version:"a".repeat(64),file:{receipt},mappings:[{
+     table:"customers",fileTable:"file",columns:{name:"name"},matchKey:["id"],nullColumns:[],
+   }],confirmLocalIds:true};
+   const response=await fetch(`${origin}/data/preview`,{method:"POST",
+     headers:{"x-grants":"admin","Content-Type":"application/json"},body:JSON.stringify(body)});
+   expect(response.status).toBe(200);
+   expect(service.preview).toHaveBeenLastCalledWith(1,body.version,{receipt},body.mappings,true);
+ });
+ it("rejects unknown fields or invalid receipts rather than trusting client file data",async()=>{
+   const calls=service.preview.mock.calls.length;
+   for(const file of [{receipt:"invalid"},{receipt:"12345678-1234-4234-8234-123456789abc",source:"same-database"}]){
+     const response=await fetch(`${origin}/data/preview`,{method:"POST",
+       headers:{"x-grants":"admin","Content-Type":"application/json"},
+       body:JSON.stringify({version:"a".repeat(64),file,mappings:[{
+         table:"customers",fileTable:"file",columns:{name:"name"},matchKey:["id"],nullColumns:[],
+       }]})});
+     expect(response.status).toBe(400);
+   }
+   expect(service.preview.mock.calls.length).toBe(calls);
  });
 });

@@ -73,11 +73,11 @@ const mapping = z.object({
   nullColumns: z.array(z.string().max(100)).max(150),
 }).strict();
 router.post("/preview", asyncRoute("preview", async (req, res) => {
-  const input = z.object({ version, file: z.object({
+  const input = z.object({ version, file: z.union([z.object({ receipt: uuid }).strict(), z.object({
     receipt: uuid, source: z.enum(["external", "same-database"]), schemaVersion: z.string().optional(),
     tables: z.array(z.object({ name: z.string().max(100), headers: z.array(z.string().max(200)).max(150),
       rows: z.array(z.record(z.string().max(200), z.string().max(10000).nullable())).max(2000) }).strict()).max(10),
-  }).strict(), mappings: z.array(mapping).min(1).max(10), confirmLocalIds: z.boolean().optional() }).strict().parse(req.body);
+  }).strict()]), mappings: z.array(mapping).min(1).max(10), confirmLocalIds: z.boolean().optional() }).strict().parse(req.body);
   res.json(await service.preview(req.user!.id, input.version, input.file, input.mappings, input.confirmLocalIds));
 }));
 router.post("/apply", asyncRoute("apply", async (req, res) => {
