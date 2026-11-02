@@ -16,3 +16,9 @@ Keep npm lockfiles registry-portable: preserve exact versions and integrity hash
 **Why:** Clean installs under npm 12's remote-fetch restrictions can reject older firewall-host URLs as remote packages, even when the versions themselves are safe. Disabling the firewall or remote-fetch restrictions is not an acceptable fix.
 
 **How to apply:** Have npm omit registry-resolved URLs when refreshing locks, so clean installs use the environment's configured registry and retain integrity verification. Check nested tooling locks too; pnpm has its own overrides and must be kept consistent independently.
+
+Local transitive overrides require clean-install and real-consumer validation, not only direct replacement-module tests.
+
+**Why:** Incremental installs can hide broken nested links or vulnerable leftovers. A full dependency re-resolution can also update unrelated frontend packages and exceed the login bundle budget.
+
+**How to apply:** Preserve unrelated locked versions, verify clean installation and dependency-tree validity, exercise actual consumers, and retain the initial-load budget. Check local security archives against their reviewed source.
