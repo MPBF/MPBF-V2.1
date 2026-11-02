@@ -25,18 +25,24 @@ export type TransferMapping = {
 };
 export type TransferDiff = { column: string; old: string | null; new: string | null };
 export type TransferPreviewRow = {
+  sourceValues?: TransferRow;
   index: number; table: string; status: "new" | "existing" | "conflict" | "invalid";
   values: TransferRow; old: TransferRow | null; changes: TransferDiff[];
   errors: { column: string; message: string }[];
 };
 export type TransferPreview = {
   importMode?: "new-only";
+  skippedExisting?: number;
   id: string; version: string; expiresAt: string; rows: TransferPreviewRow[];
   kind: "import" | "restore"; retainedInserts?: number; requiresAdminConfirmation?: boolean;
 };
 export type TransferApproval = { index: number; columns: string[] };
 export type TransferOperation = {
   id: string; actor: number; kind: string; status: string; createdAt: string;
-  counts: { inserted?: number; updated?: number; rows?: number }; backup: boolean;
+  counts: { inserted?: number; updated?: number; rows?: number; rejected?: number }; backup: boolean;
+};
+export type TransferCorrection = { index: number; values: TransferRow };
+export type TransferApplyResult = {
+  id: string; status: string; counts: { inserted: number; updated: number; rejected?: number };
 };
 export type TransferTemplate = { id: string; name: string; version: string; mappings: TransferMapping[] };

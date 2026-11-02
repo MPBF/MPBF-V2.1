@@ -201,7 +201,7 @@ try {
     const p=await preview("customers",[{id:"CID001",name:"Changed",phone:""}],["phone"]);
     assert.deepEqual(p.rows,[]);
     await assert.rejects(()=>tools.apply(1,p.id,[{index:0,columns:["name","phone"]}],false),/updates are not permitted/);
-    await assert.rejects(()=>tools.apply(1,p.id,[],true),/Select at least one change/);
+    await assert.rejects(()=>tools.apply(1,p.id,[],true),/No valid new records/);
     assert.equal((await query("SELECT phone FROM customers WHERE id='CID001'"))[0].phone,"0500012345");
     const historical=await historicalCustomerUpdate();
     assert.equal((await query("SELECT phone FROM customers WHERE id='CID001'"))[0].phone,null);
@@ -210,11 +210,10 @@ try {
     assert.deepEqual((await query("SELECT name,phone FROM customers WHERE id='CID001'"))[0],{name:"Original",phone:"0500012345"});
     await assert.rejects(()=>tools.backup(2,historical.id));assert((await tools.backup(1,historical.id)).checksum);
   });
-  await test("duplicate keys, missing relations, invalid types, required fields and cycles reject full batch",async()=>{
+  await test("unimportable-only batches with duplicates, missing relations, invalid types and cycles do not write",async()=>{
     const before=await counts();
     for(const [table,rows] of [
       ["customers",[{id:"CID004",name:"Valid"},{id:"CID004",name:"Dup"}]],
-      ["customers",[{id:"CID004",name:"Valid"},{id:"CID008",name:""}]],
       ["customers",[{id:"CID004",name:""}]],
       ["customers",[{id:"CID004",name:"Bad",tax_number:"12"}]],
       ["categories",[{id:"CAT002",name:"Bad",parent_id:"missing"}]],
@@ -227,6 +226,59 @@ try {
     assert.deepEqual(await counts(),before);
     const numeric=(await tools.schema()).tables.find(t=>t.name==="customer_products")!.columns.find(c=>c.name==="width")!;
     assert.throws(()=>valueFor(numeric,"123456789012345.0001"));assert.throws(()=>valueFor(numeric,"0.00001"));
+  });
+  await test("inline corrections revalidate names and local representatives; partial import retains a private rejection workbook",async()=>{
+    await query("INSERT INTO roles(id,name,permissions) VALUES(90,'Sales representative','[]')");
+    await query("INSERT INTO users(id,username,role_id,display_name) VALUES(90,'fixture-rep',90,'Fixture representative')");
+    const p=await preview("customers",[
+      {id:"CID001",name:"Never update"},
+      {id:"IMP001",name:"Ready"},
+      {id:"IMP002",name:""},
+      {id:"IMP003",name:"Needs rep",sales_rep_id:"9999"},
+      {id:"IMP005",name:"Bad tax",tax_number:"12"},
+    ]);
+    assert.deepEqual(p.rows.map(r=>r.status),["new","invalid","invalid","invalid"]);
+    await assert.rejects(()=>tools.correct(2,p.id,{index:2,values:{name:"Unauthorized"}}),/expired|unavailable/i);
+    await assert.rejects(()=>tools.correct(1,p.id,{index:1,values:{name:"Already valid"}}),/Only rejected/);
+    await assert.rejects(()=>tools.correct(1,p.id,{index:2,values:{password:"Forbidden"}}),/Protected/);
+    assert.equal((await query("SELECT count(*)::int n FROM customers WHERE id LIKE 'IMP%'"))[0].n,0);
+    const corrected=await tools.correct(1,p.id,{index:2,values:{name:"Corrected name"}});
+    assert.equal(corrected.rows.find(r=>r.index===2)!.status,"new");
+    const final=await tools.correct(1,corrected.id,{index:3,values:{sales_rep_id:"90"}});
+    assert.deepEqual(final.rows.map(r=>r.status),["new","new","new","invalid"]);
+    assert.equal(final.rows.find(r=>r.index===3)!.values.sales_rep_id,"90");
+    const beforeReport=new ExcelJS.Workbook();
+    await beforeReport.xlsx.load(await tools.rejectedReport(1,final.id) as any);
+    assert.equal(beforeReport.worksheets[0].rowCount,2);
+    assert(beforeReport.worksheets[0].getRow(2).values.toString().includes("IMP005"));
+    const result=await tools.apply(1,final.id,[],true);
+    assert.deepEqual(result.counts,{inserted:3,updated:0,rejected:1});
+    assert.equal((await query("SELECT name FROM customers WHERE id='CID001'"))[0].name,"Original");
+    assert.equal((await query("SELECT name,sales_rep_id FROM customers WHERE id='IMP002'"))[0].name,"Corrected name");
+    assert.equal((await query("SELECT sales_rep_id FROM customers WHERE id='IMP003'"))[0].sales_rep_id,90);
+    assert.equal((await query("SELECT count(*)::int n FROM customers WHERE id='IMP005'"))[0].n,0);
+    assert.deepEqual(await tools.apply(1,final.id,[],true),result);
+    const afterReport=new ExcelJS.Workbook();
+    await afterReport.xlsx.load(await tools.rejectedReport(1,final.id,true) as any);
+    assert.equal(afterReport.worksheets[0].rowCount,2);
+    assert(afterReport.worksheets[0].getRow(2).values.toString().includes("12"));
+    await assert.rejects(()=>tools.rejectedReport(2,final.id,true),/unavailable/i);
+  });
+  await test("database data constraints reject only the affected record and preserve other valid additions",async()=>{
+    await query("ALTER TABLE customers ADD CONSTRAINT fixture_phone_rejection CHECK (phone IS DISTINCT FROM 'reject-me')");
+    version=(await tools.schema()).version;
+    const p=await preview("customers",[
+      {id:"SQL001",name:"First valid",phone:"0500000001"},
+      {id:"SQL002",name:"Rejected by check",phone:"reject-me"},
+      {id:"SQL003",name:"Last valid",phone:"0500000003"},
+    ]);
+    assert(p.rows.every(row=>row.status==="new"));
+    const result=await tools.apply(1,p.id,[],true);
+    assert.deepEqual(result.counts,{inserted:2,updated:0,rejected:1});
+    assert.deepEqual((await query("SELECT id FROM customers WHERE id LIKE 'SQL%' ORDER BY id")).map(row=>row.id),["SQL001","SQL003"]);
+    const rejected=(await tools.backup(1,p.id)).document.rejected;
+    assert.equal(rejected[0].sourceValues.id,"SQL002");
+    assert(!JSON.stringify(rejected[0].errors).includes("fixture_phone_rejection"));
   });
   await test("Arabic header mapping and cross-file relationships are validated together",async()=>{
     const schema=await tools.schema();

@@ -17,9 +17,9 @@ const WebSocket = require("ws");
   const check = (name, value) => { assert.ok(value, name); assertions++; console.log(`PASS ${name}`); };
   const column = (name) => ({name,labelAr:name,labelEn:name,type:"character varying",nullable:name!=="id",
     default:null,generated:false,writable:true,maxLength:200,precision:null,scale:null});
-  const tables = ["customers","customer_products","users","readonly_table"].map(name=>({
+  const tables = ["customers","customer_products","users","readonly_table","categories","items","machines","orders","suppliers"].map(name=>({
     name,labelAr:name,labelEn:name,group:name==="customers"?"discovered":"catalogue",approved:true,exportable:true,importable:name!=="readonly_table",
-    reasonAr:"",reasonEn:"",keys:[["id"]],relations:[],columns:[column("id"),column("name"),column("unmapped")],
+    reasonAr:"إضافة ومعاينة وتحديث بموافقة؛ لا حذف. الحقول المحسوبة والأسرار محمية.",reasonEn:"",keys:[["id"]],relations:[],columns:[column("id"),column("name"),column("unmapped"),...(name==="customers"?[column("sales_rep_id")]:[])],
   }));
   try {
     await build({stdin:{contents:`import React from "react";import{createRoot}from"react-dom/client";import i18n from "i18next";import{initReactI18next}from"react-i18next";import Panel from "./client/src/pages/admin/DataTransferAdmin";import "./client/src/index.css";const lang=new URL(location.href).searchParams.get("lang")||"ar";i18n.use(initReactI18next).init({lng:lang,resources:{ar:{translation:{}},en:{translation:{}}},initImmediate:false});document.documentElement.dir=lang==="ar"?"rtl":"ltr";createRoot(document.getElementById("root")).render(<main style={{padding:16,maxWidth:1200,margin:"auto"}}><Panel/></main>);`,resolveDir:process.cwd(),loader:"tsx"},
@@ -40,15 +40,24 @@ const WebSocket = require("ws");
           res.setHeader("Content-Disposition",'attachment; filename="fixture.xlsx"');return res.end(Buffer.from("isolated-download-fixture"));
         }
         if(url.pathname.endsWith("/read-file"))return res.end(JSON.stringify({receipt:id,source:"external",tables:[{name:"customers",headers:["id","name"],rows:[{id:"100",name:"Fixture"}]}]}));
+        if(url.pathname.endsWith("/sales-representatives"))return res.end(JSON.stringify([{id:90,display_name:"Fixture representative",display_name_ar:"مندوب تجريبي"}]));
+        if(url.pathname.endsWith("/rejected")){res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");return res.end(Buffer.from("isolated-rejection-report-fixture"));}
+        if(url.pathname.endsWith("/correct")){
+          previewCase="corrected";
+          return res.end(JSON.stringify({id,version:"fixture",expiresAt:"2099-01-01T00:00:00Z",kind:"import",importMode:"new-only",rows:[
+            {index:0,table:"customers",status:"new",values:{id:"100",name:"Fixture"},old:null,changes:[],errors:[]},
+            {index:2,table:"customers",status:"new",values:{id:"102",...body.values},old:null,changes:[],errors:[]},
+          ]}));
+        }
         if(url.pathname.endsWith("/preview")){
           const row={index:0,table:body.mappings[0].table,status:"new",values:{id:"100",name:"Fixture"},old:null,changes:[],errors:[]};
-          const rows=previewCase==="existing"?[]:previewCase==="invalid"?[row,{...row,index:2,status:"invalid",values:{id:"102"},errors:[{column:"name",message:"Required field missing for new row"}]}]:[row];
+          const rows=previewCase==="existing"?[]:previewCase==="invalid"?[row,{...row,index:2,status:"invalid",values:{id:"102"},sourceValues:{id:"102",name:"",...(row.table==="customers"?{sales_rep_id:"999"}:{})},errors:[{column:"name",message:"Required field missing for new row"}]}]:[row];
           return res.end(JSON.stringify({id,version:"fixture",expiresAt:"2099-01-01T00:00:00Z",kind:"import",importMode:"new-only",rows}));
         }
         if(url.pathname.endsWith("/apply")){
           if(!commits)commits++;
           if(uncertain){uncertain=false;res.writeHead(503);return res.end('{"message":"HTTP_503"}');}
-          return res.end(JSON.stringify({id,inserted:1,updated:0}));
+          return res.end(JSON.stringify({id,status:"completed",counts:{inserted:1,updated:0,...(previewCase==="invalid"?{rejected:1}:{})}}));
         }
         return res.end("[]");
       }
@@ -72,7 +81,10 @@ const WebSocket = require("ws");
     for(const lang of ["ar","en"]){
       requests.length=0;commits=0;
       await send("Page.navigate",{url:`http://127.0.0.1:${server.address().port}/?lang=${lang}`});
-      await wait("document.querySelectorAll('[data-transfer-export]').length===4");
+      await wait("document.querySelectorAll('[data-transfer-export]').length===9");
+      check(`${lang} catalogue groups start collapsed`,await evaluate("[...document.querySelectorAll('details.transfer-group')].every(group=>!group.open)"));
+      await evaluate("document.querySelectorAll('.transfer-group summary').forEach(summary=>summary.click())");
+      check(`${lang} obsolete update-policy copy removed`,await evaluate("!document.body.textContent.includes('إضافة ومعاينة وتحديث بموافقة؛ لا حذف. الحقول المحسوبة والأسرار محمية.')"));
       check(`${lang} other data tables group is last`,await evaluate("document.querySelector('.transfer-group:last-child [data-transfer-export=customers]')!==null"));
       check(`${lang} catalogue appears before backups`,await evaluate("Boolean(document.querySelector('.transfer-groups').compareDocumentPosition(document.querySelector('.db-backups-panel')) & Node.DOCUMENT_POSITION_FOLLOWING)"));
       check(`${lang} controlled transfer section removed`,await evaluate("!document.body.textContent.includes('نقل مضبوط')&&!document.body.textContent.includes('CONTROLLED TRANSFER')"));
@@ -102,28 +114,35 @@ const WebSocket = require("ws");
       await setNameMapping("name");
       await wait("document.querySelectorAll('.transfer-null-option').length===1");
       check(`${lang} remapping does not silently restore consent to clear`,await evaluate("!document.querySelector('.transfer-null-option input').checked"));
-      for(const width of [390,768,1280]){await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<481});check(`${lang} ${width}px page has no horizontal overflow`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));const shot=await send("Page.captureScreenshot",{format:"jpeg",quality:65});await fs.writeFile(path.join(temp,`${lang}-${width}.jpg`),Buffer.from(shot.data,"base64"));}
+      for(const width of [390,768,1280]){await send("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:width<481});check(`${lang} ${width}px page has no horizontal overflow`,await evaluate("document.documentElement.scrollWidth<=innerWidth+1"));if(width===1280)check(`${lang} desktop fits five table cards per row`,await evaluate("getComputedStyle(document.querySelector('.transfer-table-grid')).gridTemplateColumns.split(' ').length===5"));const shot=await send("Page.captureScreenshot",{format:"jpeg",quality:65});await fs.writeFile(path.join(temp,`${lang}-${width}.jpg`),Buffer.from(shot.data,"base64"));}
       await click(".transfer-import-workflow .transfer-safety-check input");
       await click(".transfer-import-workflow button.btn-primary");
       await wait("document.body.textContent.includes(" + JSON.stringify(lang==="ar"?"مراجعة الصفوف والتغييرات":"Review rows and changes") + ")");
       const preview=requests.find(r=>r.path.endsWith("/preview"));
       check(`${lang} preview maps file to clicked table`,preview?.body?.mappings?.[0]?.table==="customer_products");
       check(`${lang} preview excludes stale empty-value choices`,preview?.body?.mappings?.[0]?.nullColumns?.length===0);
-      const applySelector="document.querySelector('.transfer-preview-list').closest('section').querySelector('button.btn-primary')";
+      const applySelector="document.querySelector('[data-transfer-apply]')";
       check(`${lang} import does not offer existing-row status or update approvals`,await evaluate("!document.querySelector('.transfer-status--existing')&&!document.querySelector('.transfer-row-approval')"));
       previewCase="invalid";
       await click(".transfer-import-workflow button.btn-primary");
       await wait("document.querySelectorAll('.transfer-preview-row').length===2");
       await evaluate("document.querySelector('.transfer-preview-list').closest('section').querySelector('input[type=checkbox]').click()");
-      check(`${lang} invalid record blocks valid new additions even after confirmation`,await evaluate(`${applySelector}.disabled&&document.querySelector('.transfer-row-errors').textContent.includes('name')`));
+      check(`${lang} invalid records no longer block confirmed valid additions`,await evaluate(`!${applySelector}.disabled&&document.querySelector('.transfer-row-errors').textContent.includes('name')`));
       check(`${lang} invalid preview has never applied`,!requests.some(r=>r.path.endsWith("/apply")));
+      await click("[data-transfer-repair='2']");
+      await wait("!!document.querySelector('.transfer-repair-form')");
+      await evaluate("(()=>{const input=document.querySelector('.transfer-repair-fields input[aria-label=name]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Corrected name');input.dispatchEvent(new Event('input',{bubbles:true}));})()");
+      await click(".transfer-repair-form button[type=submit]");
+      await wait("!document.querySelector('.transfer-repair-form')&&document.querySelectorAll('.transfer-status--invalid').length===1");
+      check(`${lang} name repair posts only explicit edits and revalidates`,requests.some(r=>r.path.endsWith("/correct")&&r.body.index===2&&r.body.values.name==="Corrected name"));
+      check(`${lang} corrected rows require fresh import confirmation`,await evaluate(`${applySelector}.disabled`));
       previewCase="existing";
       await click(".transfer-import-workflow button.btn-primary");
       await wait("document.querySelector('.transfer-preview-list .transfer-empty')!==null");
       check(`${lang} all-existing import is empty and cannot apply`,await evaluate(`${applySelector}.disabled&&document.querySelectorAll('.transfer-preview-row').length===0&&document.body.textContent.includes(${JSON.stringify(lang==="ar"?"لا توجد سجلات جديدة للاستيراد":"No new records to import")})`));
-      previewCase="new";
+      previewCase="invalid";
       await click(".transfer-import-workflow button.btn-primary");
-      await wait("document.querySelectorAll('.transfer-preview-row').length===1");
+      await wait("document.querySelectorAll('.transfer-preview-row').length===2");
       check(`${lang} new rows still require confirmation`,await evaluate(`${applySelector}.disabled===true`));
       await evaluate("document.querySelector('.transfer-preview-list').closest('section').querySelector('input[type=checkbox]').click()");
       uncertain=true;await evaluate(`${applySelector}.click()`);
@@ -135,11 +154,29 @@ const WebSocket = require("ws");
       await wait("!document.querySelector('.transfer-import-workflow')&&!document.querySelector('[data-transfer-import=customers]').disabled");
       const applied=requests.filter(r=>r.path.endsWith("/apply"));
       check(`${lang} retry preserves identical frozen apply request`,applied.length===2&&JSON.stringify(first)===JSON.stringify(applied[1].body)&&commits===1);
+      check(`${lang} partial import shows inserted and rejected result`,await evaluate("document.querySelector('.transfer-import-result').textContent.includes('1')&&!!document.querySelector('.transfer-import-result button')"));
+      await click(".transfer-import-result button");
+      await wait("!document.querySelector('.transfer-import-result button').disabled");
+      check(`${lang} completed rejection report is downloadable`,requests.some(r=>r.path.endsWith(`/operations/${id}/rejected`)));
       check(`${lang} completed workflow releases catalogue`,await evaluate("!document.querySelector('[data-transfer-import=customers]').disabled"));
       chooser=null;await click('[data-transfer-import="customers"]');
       for(let i=0;i<80&&!chooser;i++)await new Promise(r=>setTimeout(r,30));
       await send("DOM.setFileInputFiles",{backendNodeId:chooser.backendNodeId,files:[]});
       check(`${lang} cancelled picker cannot reuse previous file`,await evaluate("!document.querySelector('.transfer-import-workflow')"));
+      chooser=null;await click('[data-transfer-import="customers"]');
+      for(let i=0;i<80&&!chooser;i++)await new Promise(r=>setTimeout(r,30));
+      await send("DOM.setFileInputFiles",{backendNodeId:chooser.backendNodeId,files:[path.join(temp,"selected.csv")]});
+      await wait("!!document.querySelector('.transfer-import-workflow')");
+      await click(".transfer-import-workflow .transfer-safety-check input");
+      await click(".transfer-import-workflow button.btn-primary");
+      await wait("!!document.querySelector('[data-transfer-repair]')");
+      await click("[data-transfer-repair='2']");
+      await wait("document.querySelector('.transfer-repair-fields select')?.options.length===3");
+      await evaluate("(()=>{const select=document.querySelector('.transfer-repair-fields select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'90');select.dispatchEvent(new Event('change',{bubbles:true}));})()");
+      await click(".transfer-repair-form button[type=submit]");
+      await wait("!document.querySelector('.transfer-repair-form')");
+      check(`${lang} representative can be selected from local options and revalidated`,requests.some(r=>r.path.endsWith("/correct")&&r.body.values.sales_rep_id==="90"));
+      previewCase="new";
     }
     check("no uncaught browser exceptions",exceptions.length===0);
     console.log(`Verified ${assertions} direct catalogue browser assertions; screenshots at ${temp}`);

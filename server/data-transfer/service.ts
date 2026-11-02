@@ -1,15 +1,17 @@
 import { randomUUID, randomBytes } from "node:crypto";
 import bcrypt from "bcrypt";
-import type { TransferApproval, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferRow, TransferTemplate } from "../../shared/data-transfer";
+import type { TransferApproval, TransferCorrection, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferRow, TransferTemplate } from "../../shared/data-transfer";
 import { approved, discover, hash, readRows, snapshot, stable, type Queryable, type Snapshot, type TransferPool } from "./schema";
 import { fail, identifier, MAX_ROWS, RETENTION_DAYS, productDerived, protectedColumn } from "./policy";
 import { csvExport, csvZipExport, excelExport, makeBundle, parseFile, verifyBundleShape } from "./files";
 import { makePreview, project, validateBusiness } from "./validation";
 import { derivedProductValues, grantsAdministrator, guardAdministrator, orderedRows, preserveSequences } from "./adapters";
+import { rejectedImportRows, rejectedWorkbook, validImportRows } from "./import-review";
 
 type Document = {
   preview: TransferPreview; graph: Snapshot; guard: string; mappings: TransferMapping[];
   restoredOperation?: string;
+  file?: TransferFile; confirmLocalIds?: boolean; corrections?: TransferCorrection[];
 };
 export class DataTransferService {
   constructor(private pool: TransferPool, private namespace = "public") { identifier(namespace); }
@@ -136,7 +138,7 @@ export class DataTransferService {
         filename: `MPBF-data-${bundle.id}.${format==="csv"&&names.length>1?"zip":format}` };
     } catch (e) { await q.query("ROLLBACK"); throw e; } finally { q.release(); }
   }
-  async preview(actor: number, version: string, submitted: TransferFile, mappings: TransferMapping[], confirmLocalIds = false) {
+  async preview(actor: number, version: string, submitted: TransferFile, mappings: TransferMapping[], confirmLocalIds = false, corrections: TransferCorrection[] = []) {
     if (!submitted?.receipt) fail("Upload the file again; a server receipt is required");
     await this.ready(this.pool);
     const { rows: uploads } = await this.pool.query(`SELECT document FROM ${this.table("data_transfer_previews")}
@@ -153,21 +155,48 @@ export class DataTransferService {
       if (schema.version !== version || (file.schemaVersion && file.source === "same-database" && file.schemaVersion !== version)) fail("Schema changed; refresh and preview again", 409);
       const graph = await snapshot(q, schema, this.namespace);
       const guard = await this.guard(q, Object.keys(graph));
-      const rows = makePreview(schema, file, mappings, graph, confirmLocalIds);
-      const projected = project(graph, rows);
+      const rows = makePreview(schema, file, mappings, graph, confirmLocalIds, corrections);
+      const candidates = validImportRows(rows);
+      const projected = project(graph, candidates);
       try { guardAdministrator(actor, rows, projected); }
       catch (e) { for (const row of rows.filter(r => ["users", "roles"].includes(r.table))) { row.status = "invalid"; row.errors.push({ column: "", message: (e as Error).message }); } }
       if (!file.tables.some(t => mappings.some(m => m.fileTable === t.name) && t.rows.length) || rows.length > MAX_ROWS) fail("File must contain 1–2000 rows");
       document = { preview: { id: randomUUID(), version, expiresAt: new Date(Date.now() + 1800000).toISOString(), rows, kind: "import",
         importMode: "new-only",
-        requiresAdminConfirmation: grantsAdministrator(rows, graph, projected) },
-        graph, guard, mappings };
+        skippedExisting: file.tables.filter(t => mappings.some(m => m.fileTable === t.name)).reduce((n, t) => n + t.rows.length, 0) - rows.length,
+        requiresAdminConfirmation: grantsAdministrator(candidates, graph, projected) },
+        graph, guard, mappings, file: submitted, confirmLocalIds, corrections };
       await q.query("COMMIT");
     } catch (e) { await q.query("ROLLBACK"); throw e; } finally { q.release(); }
     await this.cleanup();
-    await this.log(this.pool, actor, "preview", document!.preview.rows.some(r=>r.errors.length) ? "rejected" : "previewed",
+    await this.log(this.pool, actor, "preview", document!.preview.rows.length && !validImportRows(document!.preview.rows).length ? "rejected" : "previewed",
       {rows:document!.preview.rows.length,invalid:document!.preview.rows.filter(r=>r.errors.length).length});
     return this.savePreview(actor, document!);
+  }
+  async correct(actor: number, previewId: string, correction: TransferCorrection) {
+    const document = await this.getPreview(this.pool, actor, previewId);
+    if (document.preview.kind !== "import" || !document.file) fail("Create a new import preview before correcting records", 409);
+    const row = document.preview.rows.find(item => item.index === correction.index);
+    if (!row || !rejectedImportRows([row]).length) fail("Only rejected import records can be corrected", 400);
+    const schema = await this.ready(this.pool);
+    if (schema.version !== document.preview.version) fail("Schema changed; create a new preview", 409);
+    const table = approved(schema, row.table, true);
+    if (!correction.values || !Object.keys(correction.values).length || Object.keys(correction.values).length > 150 ||
+      Object.entries(correction.values).some(([name, value]) => {
+        const column = table.columns.find(c => c.name === name);
+        return !column?.writable || column.generated || (value !== null && (typeof value !== "string" || value.length > 10000));
+      })) fail("Protected or unknown correction column", 403);
+    const corrections = [...(document.corrections ?? [])];
+    const index = corrections.findIndex(item => item.index === correction.index);
+    const next = { index: correction.index, values: { ...(index < 0 ? {} : corrections[index].values), ...correction.values } };
+    if (index < 0) corrections.push(next); else corrections[index] = next;
+    return this.preview(actor, document.preview.version, document.file, document.mappings, document.confirmLocalIds, corrections);
+  }
+  async rejectedReport(actor: number, id: string, completed = false) {
+    const rows: TransferPreviewRow[] = completed
+      ? (await this.backup(actor, id)).document.rejected ?? []
+      : rejectedImportRows((await this.getPreview(this.pool, actor, id)).preview.rows);
+    return rejectedWorkbook(rows);
   }
   private selected(document: Document, approvals: TransferApproval[], confirmNew: boolean) {
     if (!Array.isArray(approvals) || approvals.length > MAX_ROWS || new Set(approvals.map(a => a.index)).size !== approvals.length) fail("Invalid approval list");
@@ -176,6 +205,10 @@ export class DataTransferService {
       if (document.preview.importMode !== "new-only" || rows.some(row => row.old || row.status === "existing"))
         fail("Import policy changed; create a new preview", 409);
       if (approvals.length) fail("Table imports only allow new records; updates are not permitted", 400);
+      const candidates = validImportRows(rows);
+      if (!candidates.length) fail("No valid new records to import", 400);
+      if (!confirmNew) fail("Explicitly confirm new additions");
+      return candidates;
     }
     if (rows.some(r => r.errors.length || ["invalid", "conflict"].includes(r.status))) fail("Entire batch rejected; resolve all preview errors", 409);
     const allowed = new Map<number, string[]>();
@@ -257,6 +290,7 @@ export class DataTransferService {
       const passwordHash = selected.some(r => r.table === "users" && !r.old)
         ? await bcrypt.hash(randomBytes(32).toString("base64url"), 12) : null;
       const insertedTables = new Set(selected.filter(r => !r.old).map(r => r.table));
+      const rejected = document.preview.kind === "import" ? [...rejectedImportRows(document.preview.rows)] : [];
       await preserveSequences(q, currentSchema, this.namespace, insertedTables);
       for (const row of orderedRows(selected, currentSchema, graph)) {
         const derived = derivedProductValues(row, currentSchema, projected);
@@ -276,15 +310,29 @@ export class DataTransferService {
         } else text = columns.length ? `INSERT INTO ${this.table(row.table)}(${columns.map(identifier).join(",")}) ${table.columns.some(c => c.identity) ? "OVERRIDING SYSTEM VALUE" : ""}
           VALUES(${columns.map((_, i) => `$${i + 1}`).join(",")}) RETURNING ${returning}`
           : `INSERT INTO ${this.table(row.table)} DEFAULT VALUES RETURNING ${returning}`;
-        const { rows } = await q.query(text, params);
-        if (rows.length !== 1) fail("Row changed; create a new preview", 409);
-        applied.push({ table: row.table, old: row.old, after: rows[0], columns });
+        const partial = document.preview.kind === "import";
+        if (partial) await q.query("SAVEPOINT transfer_record");
+        try {
+          const { rows } = await q.query(text, params);
+          if (rows.length !== 1) fail("Row changed; create a new preview", 409);
+          applied.push({ table: row.table, old: row.old, after: rows[0], columns });
+          if (partial) await q.query("RELEASE SAVEPOINT transfer_record");
+        } catch (error) {
+          // Data/constraint errors reject only this row; connection, permission,
+          // timeout and backup errors still abort safely without partial commits.
+          if (!partial || !/^(22|23)/.test(String((error as { code?: string }).code ?? ""))) throw error;
+          await q.query("ROLLBACK TO SAVEPOINT transfer_record");
+          await q.query("RELEASE SAVEPOINT transfer_record");
+          rejected.push({ ...row, status: "invalid",
+            errors: [...row.errors, { column: "", message: "Database constraint rejected this record; review its values and related records" }] });
+        }
       }
       await preserveSequences(q, currentSchema, this.namespace, insertedTables);
-      const counts = { inserted: applied.filter(r => !r.old).length, updated: applied.filter(r => r.old).length };
+      const counts = { inserted: applied.filter(r => !r.old).length, updated: applied.filter(r => r.old).length,
+        ...(rejected.length ? { rejected: rejected.length } : {}) };
       const result = { id: previewId, status: "completed", counts, backup: true, retainedInserts: document.preview.retainedInserts ?? 0 };
       // Detailed before/after images are private backup data, not activity logs.
-      const finalBackup = { ...backup, applied, afterGuard: await this.guard(q, Object.keys(graph)),
+      const finalBackup = { ...backup, applied, rejected, afterGuard: await this.guard(q, Object.keys(graph)),
         ...(document.restoredOperation ? { restoredOperation: document.restoredOperation } : {}) };
       await q.query(`UPDATE ${this.table("data_transfer_backups")} SET document=$2::jsonb,checksum=$3 WHERE id=$1`,
         [previewId, stable(finalBackup), hash(finalBackup)]);

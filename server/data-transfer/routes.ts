@@ -29,6 +29,23 @@ router.get("/operations/:id", asyncRoute("report", async (req, res) => {
   const id = uuid.parse(req.params.id);
   res.attachment(`MPBF-report-${id}.json`).json(await service.report(req.user!.id, id));
 }));
+router.get("/operations/:id/rejected", asyncRoute("rejected-report", async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    .attachment(`MPBF-not-imported-${id}.xlsx`).send(await service.rejectedReport(req.user!.id, id, true));
+}));
+router.get("/previews/:id/rejected", asyncRoute("rejected-report", async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    .attachment(`MPBF-not-imported-${id}.xlsx`).send(await service.rejectedReport(req.user!.id, id));
+}));
+router.post("/previews/:id/correct", asyncRoute("correct", async (req, res) => {
+  const input = z.object({ index: z.number().int().min(0).max(1999),
+    values: z.record(z.string().max(100), z.string().max(10000).nullable())
+      .refine(values => Object.keys(values).length > 0 && Object.keys(values).length <= 150),
+  }).strict().parse(req.body);
+  res.json(await service.correct(req.user!.id, uuid.parse(req.params.id), input));
+}));
 router.get("/backups/:id", asyncRoute("backup-download", async (req, res) => {
   const id = uuid.parse(req.params.id);
   res.attachment(`MPBF-backup-${id}.json`).json(await service.backup(req.user!.id, id));

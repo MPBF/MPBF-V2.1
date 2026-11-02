@@ -73,6 +73,31 @@ describe("new-only table import preview", () => {
     expect(rows[0].status).toBe("invalid");
     expect(rows[0].errors.some(error => error.message.includes("not trusted"))).toBe(true);
   });
+  it("rejects dependencies of invalid parents while preserving independent rows", () => {
+    const parent = { ...table, name: "parents" };
+    const child: TransferTable = {
+      ...table, name: "children", columns: [...table.columns, column("parent_id")],
+      relations: [{ columns: ["parent_id"], table: "parents", targets: ["id"] }],
+    };
+    const rows = makePreview({ ...schema, tables: [parent, child] }, {
+      source: "same-database", tables: [
+        { name: "parents", headers: ["id", "name", "amount"], rows: [{ id: "bad-parent", amount: "bad" }, { id: "good-parent", name: "Good" }] },
+        { name: "children", headers: ["id", "name", "parent_id"], rows: [{ id: "child", name: "Child", parent_id: "bad-parent" }] },
+      ],
+    }, [
+      { ...mapping, fileTable: "parents", table: "parents" },
+      { ...mapping, fileTable: "children", table: "children", columns: { id: "id", name: "name", parent_id: "parent_id" } },
+    ], { parents: [], children: [] });
+    expect(rows.map(row => row.status)).toEqual(["invalid", "new", "invalid"]);
+    expect(rows[2].errors.some(error => error.message.includes("relationship"))).toBe(true);
+  });
+  it("allows explicit corrections to missing fields without modifying the original upload", () => {
+    const file: TransferFile = { source: "same-database", tables: [{ name: "file", headers: ["id", "amount"], rows: [{ id: "fixed", amount: "bad" }] }] };
+    const editMapping = { ...mapping, columns: { id: "id", amount: "amount" } };
+    const rows = makePreview(schema, file, [editMapping], graph, false, [{ index: 0, values: { name: "Fixed", amount: "15" } }]);
+    expect(rows[0]).toMatchObject({ status: "new", values: { id: "fixed", name: "Fixed", amount: "15" }, errors: [] });
+    expect(file.tables[0].rows[0]).toEqual({ id: "fixed", amount: "bad" });
+  });
 });
 
 describe("server-enforced new-only application", () => {
@@ -84,14 +109,16 @@ describe("server-enforced new-only application", () => {
     expect(select(rows)).toEqual(rows);
     expect(() => select(rows, [], false)).toThrow("Explicitly confirm");
   });
-  it("blocks the entire batch when any new record is invalid", () => {
-    expect(() => select(preview([{ id: "new", name: "New" }, { id: "bad", amount: "bad" }]))).toThrow("Entire batch rejected");
+  it("selects only valid additions when other new records are invalid", () => {
+    const mixed = preview([{ id: "new", name: "New" }, { id: "bad", amount: "bad" }]);
+    expect(select(mixed).map((row: TransferPreviewRow) => row.values.id)).toEqual(["new"]);
+    expect(() => select([mixed[1]])).toThrow("No valid new records");
   });
   it("rejects forged update approvals and stale old-policy previews", () => {
     expect(() => select(rows, [{ index: 0, columns: ["name"] }])).toThrow("updates are not permitted");
     expect(() => select(rows, [], true, { importMode: undefined })).toThrow("create a new preview");
     expect(() => select([{ ...rows[0], old: graph.examples[0], status: "existing" }])).toThrow("create a new preview");
-    expect(() => select([])).toThrow("Select at least one change");
+    expect(() => select([])).toThrow("No valid new records");
   });
   it("preserves explicitly approved historical restore updates", () => {
     const row: TransferPreviewRow = {

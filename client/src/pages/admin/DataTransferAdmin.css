@@ -32,12 +32,18 @@
 .transfer-group { background:var(--theme-data-transfer-admin-transfer-group-surface); border:1px solid var(--line); }
 .transfer-group-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 13px; background:var(--theme-data-transfer-admin-transfer-group-head-surface); border-bottom:1px solid var(--line); }
 .transfer-group-head strong { color:var(--teal-deep); }
-.transfer-table-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr)); gap:10px; padding:11px; }
-.transfer-table-card { min-width:0; padding:13px; background:var(--panel); border:1px solid var(--theme-data-transfer-admin-transfer-table-card-border); transition:border-color .16s,transform .16s; }
+.transfer-group > .transfer-group-head { list-style:none; cursor:pointer; }
+.transfer-group > .transfer-group-head::-webkit-details-marker { display:none; }
+.transfer-group > .transfer-group-head::after { content:""; width:8px; height:8px; flex:0 0 8px; margin-inline-start:auto; border-inline-end:2px solid var(--teal-deep); border-bottom:2px solid var(--teal-deep); transform:rotate(45deg); transition:transform .16s; }
+.transfer-group[open] > .transfer-group-head::after { transform:rotate(225deg); }
+.transfer-group > .transfer-group-head:focus-visible { outline:2px solid var(--teal-deep); outline-offset:-3px; }
+.transfer-table-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; padding:9px; }
+.transfer-table-card { min-width:0; padding:10px; background:var(--panel); border:1px solid var(--theme-data-transfer-admin-transfer-table-card-border); transition:border-color .16s,transform .16s; }
 .transfer-table-card:hover { border-color:var(--theme-data-transfer-admin-transfer-table-card-hover-border); transform:translateY(-1px); }
-.transfer-table-card__head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.transfer-table-card__head { display:flex; align-items:flex-start; justify-content:space-between; gap:7px; }
 .transfer-table-card__head strong { overflow-wrap:anywhere; }
-.transfer-table-card p { margin:8px 0; color:var(--muted); font-size:11px; line-height:1.65; }
+.transfer-table-card p { margin:6px 0; color:var(--muted); font-size:11px; line-height:1.55; }
+.transfer-table-card .btn { min-width:0; max-width:100%; min-height:34px; padding:6px 8px; white-space:normal; line-height:1.35; }
 .transfer-chips { display:flex; gap:5px; flex-wrap:wrap; }
 .transfer-chip { display:inline-flex; align-items:center; gap:4px; padding:4px 7px; background:var(--theme-data-transfer-admin-transfer-chip-surface); color:var(--teal-deep); font-size:10px; font-weight:700; }
 .transfer-chip--muted { background:var(--theme-data-transfer-admin-transfer-chip-muted-surface); color:var(--theme-data-transfer-admin-transfer-chip-muted-text); }
@@ -47,6 +53,12 @@
 .transfer-chip--action:focus-visible { outline:2px solid var(--teal-deep); outline-offset:2px; }
 .transfer-chip--action:disabled { cursor:not-allowed; opacity:.62; }
 .transfer-hidden-file-input { position:fixed; inset-inline-start:-10000px; width:1px; height:1px; opacity:0; }
+.transfer-repair-form { display:grid; gap:8px; min-width:0; margin-top:9px; padding:9px; background:var(--theme-data-transfer-admin-transfer-statusline-surface); border:1px solid var(--line); }
+.transfer-repair-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; min-width:0; }
+.transfer-repair-fields label { display:grid; gap:4px; min-width:0; color:var(--muted); font-size:10px; font-weight:700; line-height:1.45; }
+.transfer-repair-fields input,.transfer-repair-fields select { width:100%; min-width:0; min-height:34px; padding:6px 8px; border:1px solid var(--line); border-radius:4px; background:var(--theme-data-transfer-admin-transfer-field-input-not-type-checkbox-surface); color:var(--ink); font:inherit; font-size:11px; }
+.transfer-import-result { min-width:0; margin-top:8px; padding:8px 10px; border:1px solid var(--line); background:var(--theme-data-transfer-admin-transfer-statusline-surface); color:var(--muted); font-size:11px; line-height:1.6; overflow-wrap:anywhere; }
+.transfer-import-result strong { color:var(--ink); }
 .transfer-import-workflow { scroll-margin-top:16px; }
 .transfer-import-file,.transfer-import-target { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 12px; border:1px solid var(--line); background:var(--theme-data-transfer-admin-transfer-statusline-surface); color:var(--muted); font-size:12px; }
 .transfer-import-file svg { flex:0 0 auto; color:var(--teal); }
@@ -104,6 +116,10 @@
 .transfer-footer-note { display:flex; align-items:flex-start; gap:8px; padding:11px 13px; color:var(--muted); font-size:11px; line-height:1.7; background:var(--theme-data-transfer-admin-transfer-footer-note-surface); border:1px solid var(--line); }
 .transfer-footer-note svg { flex:0 0 auto; color:var(--teal); margin-top:2px; }
 .transfer-retry { margin-inline-start:auto; }
+@media(min-width:600px) { .transfer-table-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(min-width:800px) { .transfer-table-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(min-width:1100px) { .transfer-table-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(min-width:1200px) { .transfer-table-grid { grid-template-columns:repeat(5,minmax(0,1fr)); } }
 @media(max-width:800px) { .transfer-facts { grid-template-columns:repeat(2,minmax(0,1fr)); } .transfer-flow-grid { grid-template-columns:1fr; } }
 @media(max-width:600px) {
   .transfer-hero { padding:18px; align-items:flex-start; }
@@ -121,4 +137,5 @@
   .transfer-template-row select,.transfer-template-row input { width:100%; min-width:0; }
   .transfer-import-target { align-items:flex-start; flex-direction:column; }
   .transfer-import-target code { margin-inline-start:0; }
+  .transfer-repair-fields { grid-template-columns:minmax(0,1fr); }
 }

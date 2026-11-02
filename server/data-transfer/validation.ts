@@ -1,6 +1,7 @@
-import type { TransferColumn, TransferFile, TransferMapping, TransferPreviewRow, TransferRow, TransferSchema } from "../../shared/data-transfer";
+import type { TransferColumn, TransferCorrection, TransferFile, TransferMapping, TransferPreviewRow, TransferRow, TransferSchema } from "../../shared/data-transfer";
 import { approved, hash, type Snapshot } from "./schema";
 import { fail, MAX_ROWS, privateSettingKey } from "./policy";
+import { isSalesRepresentative, validImportRows } from "./import-review";
 
 // Legacy spreadsheets serialize Date values as JSON strings (including quotes).
 // Decode only temporal columns; ordinary text and JSON must remain exact.
@@ -76,7 +77,7 @@ export function valueFor(column: TransferColumn, value: unknown): string | null 
   return value;
 }
 const same = (a: string | null | undefined, b: string | null | undefined) => a === b;
-export function makePreview(schema: TransferSchema, file: TransferFile, mappings: TransferMapping[], graph: Snapshot, confirmLocalIds = false): TransferPreviewRow[] {
+export function makePreview(schema: TransferSchema, file: TransferFile, mappings: TransferMapping[], graph: Snapshot, confirmLocalIds = false, corrections: TransferCorrection[] = []): TransferPreviewRow[] {
   if (!Array.isArray(mappings) || !mappings.length || mappings.length > 10 ||
     new Set(mappings.map(m => m.fileTable)).size !== mappings.length ||
     new Set(mappings.map(m => m.table)).size !== mappings.length) fail("Choose one mapping per unique table");
@@ -96,19 +97,31 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
       if (!input.headers.includes(from) || (to && !table.columns.find(c => c.name === to)?.writable)) fail("Mapping contains protected or unknown column");
     }
     if (!Array.isArray(mapping.nullColumns) || mapping.nullColumns.some(c => !targets.includes(c) || !table.columns.find(x => x.name === c)?.nullable)) fail("Invalid explicit empty-value choice");
-    const seen = new Set<string>();
+    const seen = new Map<string, TransferPreviewRow>();
     for (const raw of input.rows) {
       const row: TransferPreviewRow = { index: sourceIndex++, table: table.name, status: "new", values: {}, old: null, changes: [], errors: [] };
+      const sourceValues: TransferRow = {};
       for (const [source, target] of Object.entries(mapping.columns)) {
         if (!target) continue;
         const rawValue = raw[source];
-        if (rawValue === undefined || rawValue === "" || rawValue === null) {
+        if (rawValue !== undefined) sourceValues[target] = rawValue;
+      }
+      const correction = corrections.find(edit => edit.index === row.index);
+      Object.assign(sourceValues, correction?.values);
+      row.sourceValues = sourceValues;
+      for (const [target, rawValue] of Object.entries(sourceValues)) {
+        const corrected = !!correction && Object.hasOwn(correction.values, target);
+        if (!corrected && (rawValue === "" || rawValue === null)) {
           if (mapping.nullColumns.includes(target)) row.values[target] = null;
           continue;
         }
         try {
-          const column = table.columns.find(c => c.name === target)!;
-          if (!confirmLocalIds && file.source !== "same-database" && table.relations.some(r => r.columns.includes(target)) &&
+          const column = table.columns.find(c => c.name === target);
+          if (!column?.writable || (corrected && column.generated)) fail("Protected or unknown correction column", 403);
+          // A deliberate repair chooses a local relationship; it is still
+          // validated against the actual graph below. Uploaded numeric IDs
+          // retain the original provenance confirmation requirement.
+          if (!corrected && rawValue !== null && !confirmLocalIds && file.source !== "same-database" && table.relations.some(r => r.columns.includes(target)) &&
             (["integer", "bigint", "smallint"].includes(column.type) || /^\d+$/.test(rawValue))) fail("Numeric foreign IDs from another source are not trusted");
           row.values[target] = valueFor(column, rawValue);
         } catch (e) { row.errors.push({ column: target, message: (e as Error).message }); }
@@ -132,8 +145,14 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
         rows.push(row);
         continue;
       }
-      if (seen.has(key)) { row.status = "conflict"; row.errors.push({ column: mapping.matchKey.join(","), message: "Duplicate match key in file" }); }
-      seen.add(key);
+      const duplicate = seen.get(key);
+      if (duplicate) {
+        for (const item of [duplicate, row]) {
+          item.status = "conflict";
+          item.errors.push({ column: mapping.matchKey.join(","), message: "Duplicate match key in file" });
+        }
+      }
+      seen.set(key, row);
       if (matches.length > 1) { row.status = "conflict"; row.errors.push({ column: "", message: "Ambiguous database match" }); }
       for (const c of table.columns.filter(c => !c.generated && !c.nullable && !c.default)) {
         if (row.values[c.name] == null) row.errors.push({ column: c.name, message: "Required field missing for new row" });
@@ -142,8 +161,14 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
       rows.push(row);
     }
   }
-  const projected = project(graph, rows);
-  for (const row of rows) {
+  // Revalidate against only importable records. A row that depends on a rejected
+  // parent is itself rejected, rather than causing all good rows to fail at apply.
+  let changed: boolean;
+  do {
+    changed = false;
+    const candidates = validImportRows(rows);
+    const projected = project(graph, candidates);
+    for (const row of candidates) {
     const merged = { ...row.old, ...row.values };
     try {
       validateBusiness(row.table, merged, projected);
@@ -160,8 +185,34 @@ export function makePreview(schema: TransferSchema, file: TransferFile, mappings
         }
       }
     }
-    catch (e) { row.errors.push({ column: "", message: (e as Error).message }); if (row.status !== "conflict") row.status = "invalid"; }
-  }
+    catch (e) { row.errors.push({ column: "", message: (e as Error).message }); if (row.status !== "conflict") row.status = "invalid"; changed = true; }
+    }
+    if (!changed) {
+      // Exclude dependency cycles while preserving independent importable rows.
+      const pending = [...validImportRows(rows)];
+      const available = structuredClone(graph);
+      while (pending.length) {
+        const next = pending.findIndex(row => {
+          return approved(schema, row.table, true).relations.every(relation =>
+            relation.columns.some(column => row.values[column] == null) ||
+            available[relation.table]?.some(target => relation.columns.every((column, i) =>
+              target[relation.targets[i]] === row.values[column])) ||
+            (relation.table === row.table && relation.columns.every((column, i) =>
+              row.values[relation.targets[i]] === row.values[column])));
+        });
+        if (next < 0) {
+          for (const row of pending) {
+            row.status = "invalid";
+            row.errors.push({ column: "", message: "Foreign dependency cycle cannot be imported safely" });
+          }
+          changed = true;
+          break;
+        }
+        const row = pending.splice(next, 1)[0];
+        (available[row.table] ??= []).push(row.values);
+      }
+    }
+  } while (changed);
   return rows;
 }
 export function project(graph: Snapshot, rows: TransferPreviewRow[]): Snapshot {
@@ -176,6 +227,8 @@ export function project(graph: Snapshot, rows: TransferPreviewRow[]): Snapshot {
   return result;
 }
 export function validateBusiness(table: string, row: TransferRow, graph: Snapshot) {
+  if (table === "customers" && row.sales_rep_id != null && !isSalesRepresentative(row.sales_rep_id, graph))
+    fail("Selected sales representative is invalid");
   for (const key of ["key", "setting_key", "config_key"]) {
     if (row[key] && "value" in row && privateSettingKey.test(row[key]!)) fail("Security settings are excluded from general transfer");
   }
