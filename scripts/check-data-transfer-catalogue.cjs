@@ -19,7 +19,7 @@ const WebSocket = require("ws");
     default:null,generated:false,writable:true,maxLength:200,precision:null,scale:null});
   const tables = ["customers","customer_products","users","readonly_table","categories","items","machines","orders","suppliers"].map(name=>({
     name,labelAr:name,labelEn:name,group:name==="customers"?"discovered":"catalogue",approved:true,exportable:true,importable:name!=="readonly_table",
-    reasonAr:"إضافة ومعاينة وتحديث بموافقة؛ لا حذف. الحقول المحسوبة والأسرار محمية.",reasonEn:"",keys:[["id"]],relations:[],columns:[column("id"),column("name"),column("unmapped"),...(name==="customers"?[column("sales_rep_id")]:[])],
+    reasonAr:"إضافة ومعاينة وتحديث بموافقة؛ لا حذف. الحقول المحسوبة والأسرار محمية.",reasonEn:"",keys:[["id"]],relations:[],columns:[column("id"),column("name"),column("unmapped"),{...column("universal_thickness"),writable:false},...(name==="customers"?[column("sales_rep_id")]:[])],
   }));
   try {
     await build({stdin:{contents:`import React from "react";import{createRoot}from"react-dom/client";import i18n from "i18next";import{initReactI18next}from"react-i18next";import Panel from "./client/src/pages/admin/DataTransferAdmin";import "./client/src/index.css";const lang=new URL(location.href).searchParams.get("lang")||"ar";i18n.use(initReactI18next).init({lng:lang,resources:{ar:{translation:{}},en:{translation:{}}},initImmediate:false});document.documentElement.dir=lang==="ar"?"rtl":"ltr";createRoot(document.getElementById("root")).render(<main style={{padding:16,maxWidth:1200,margin:"auto"}}><Panel/></main>);`,resolveDir:process.cwd(),loader:"tsx"},
@@ -39,7 +39,7 @@ const WebSocket = require("ws");
           res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
           res.setHeader("Content-Disposition",'attachment; filename="fixture.xlsx"');return res.end(Buffer.from("isolated-download-fixture"));
         }
-        if(url.pathname.endsWith("/read-file"))return res.end(JSON.stringify({receipt:id,source:"external",tables:[{name:"customers",headers:["id","name"],rows:[{id:"100",name:"Fixture"}]}]}));
+        if(url.pathname.endsWith("/read-file"))return res.end(JSON.stringify({receipt:id,source:"external",tables:[{name:"customers",headers:["id","name","universal_thickness"],rows:[{id:"100",name:"Fixture",universal_thickness:"50"}]}]}));
         if(url.pathname.endsWith("/sales-representatives"))return res.end(JSON.stringify([{id:90,display_name:"Fixture representative",display_name_ar:"مندوب تجريبي"}]));
         if(url.pathname.endsWith("/rejected")){res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");return res.end(Buffer.from("isolated-rejection-report-fixture"));}
         if(url.pathname.endsWith("/correct")){
@@ -120,6 +120,7 @@ const WebSocket = require("ws");
       await wait("document.body.textContent.includes(" + JSON.stringify(lang==="ar"?"مراجعة الصفوف والتغييرات":"Review rows and changes") + ")");
       const preview=requests.find(r=>r.path.endsWith("/preview"));
       check(`${lang} preview maps file to clicked table`,preview?.body?.mappings?.[0]?.table==="customer_products");
+      check(`${lang} derived columns are not bound or sent as writable destinations`,!Object.values(preview?.body?.mappings?.[0]?.columns||{}).includes("universal_thickness")&&await evaluate("document.querySelector('select[aria-label$=\"universal_thickness\"]').value===''"));
       check(`${lang} preview sends only the upload receipt, never cell contents`,preview?.body?.file?.receipt===id&&Object.keys(preview.body.file).length===1);
       check(`${lang} preview excludes stale empty-value choices`,preview?.body?.mappings?.[0]?.nullColumns?.length===0);
       const applySelector="document.querySelector('[data-transfer-apply]')";
