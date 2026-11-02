@@ -30,6 +30,13 @@ function preview(rows: TransferFile["tables"][number]["rows"], customGraph = gra
 }
 
 describe("new-only table import preview", () => {
+  it("still rejects a manually submitted mapping to a non-writable derived column", () => {
+    const target = { ...table, columns: [...table.columns, column("derived", { writable: false })] };
+    expect(() => makePreview({ ...schema, tables: [target] }, {
+      source: "same-database", tables: [{ name: "file", headers: ["id", "derived"], rows: [{ id: "new", derived: "99" }] }],
+    }, [{ ...mapping, columns: { id: "id", derived: "derived" } }], graph))
+      .toThrow("Mapping contains protected or unknown column");
+  });
   it("omits existing records even if changed or repeated, preserving source row numbers", () => {
     const rows = preview([
       { id: "old", name: "Changed", amount: "not an integer" },

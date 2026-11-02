@@ -1,11 +1,34 @@
 import { describe, expect, it } from "@jest/globals";
 import type { TransferColumn, TransferTable } from "../shared/data-transfer";
-import { clearableMappingColumns, mappedNullColumns } from "../client/src/lib/data-transfer-mapping";
+import { clearableMappingColumns, exactMappingSuggestions, mappedNullColumns, writableMappingColumns } from "../client/src/lib/data-transfer-mapping";
 
 const column = (name: string, overrides: Partial<TransferColumn> = {}): TransferColumn => ({
   name, labelAr: name, labelEn: name, type: "text", nullable: true,
   default: null, generated: false, writable: true, maxLength: null,
   precision: null, scale: null, ...overrides,
+});
+
+describe("import bindings follow the server writable-column policy", () => {
+  it("never auto-maps derived or protected fields, including matching labels", () => {
+    const target = { ...table, columns: [
+      column("name", { labelAr: "الاسم" }),
+      column("universal_thickness", { writable: false }),
+      column("computed", { writable: false, generated: true, labelEn: "Total" }),
+      column("id", { generated: true, default: "nextval('example_id_seq')" }),
+    ] };
+    expect(exactMappingSuggestions([" الاسم ", "universal_thickness", "Total", "id", "missing"], target))
+      .toEqual({ " الاسم ": "name", id: "id" });
+  });
+  it("drops stale sources and skips protected/retired targets from saved bindings", () => {
+    expect(writableMappingColumns(["Name", "Derived", "Retired", "Skip"], table, {
+      Name: "name", Derived: "protected", Retired: "missing", Skip: "", OldHeader: "notes",
+    })).toEqual({ Name: "name", Derived: "", Retired: "", Skip: "" });
+  });
+  it("does not guess between ambiguous allowed labels", () => {
+    expect(exactMappingSuggestions(["label"], { ...table, columns: [
+      column("one", { labelEn: "label" }), column("two", { labelEn: "label" }),
+    ] })).toEqual({});
+  });
 });
 const table: TransferTable = {
   name: "example", labelAr: "", labelEn: "", group: "discovered",

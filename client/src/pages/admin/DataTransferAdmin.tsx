@@ -4,7 +4,7 @@ import { AlertTriangle, ArrowLeftRight, Check, CheckCircle2, ChevronDown, Clock3
 import type { TransferApplyResult, TransferApproval, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferRow, TransferSchema, TransferTable, TransferTemplate } from "../../../../shared/data-transfer";
 import "./DataTransferAdmin.css";
 import DatabaseBackupsPanel from "./DatabaseBackupsPanel";
-import { clearableMappingColumns, mappedNullColumns } from "../../lib/data-transfer-mapping";
+import { clearableMappingColumns, exactMappingSuggestions, mappedNullColumns, writableMappingColumns } from "../../lib/data-transfer-mapping";
 import ImportRowRepair from "./ImportRowRepair";
 
 type Props = { refreshToken?: number };
@@ -72,18 +72,6 @@ function localError(error: unknown, tr: (ar: string, en: string) => string): Err
     message: knownErrorMessage(raw, tr) || tr("تعذر إكمال العملية. تحقق من الاتصال والصلاحيات ثم حاول مجدداً.", "The operation could not be completed. Check your connection and permissions, then retry."),
     detail: raw ? `SERVER_RESPONSE · ${raw}` : "REQUEST_FAILED",
   };
-}
-
-function exactSuggestions(headers: string[], table: TransferTable): Record<string, string> {
-  const result: Record<string, string> = {};
-  headers.forEach((header) => {
-    const normalized = header.trim().toLocaleLowerCase();
-    const matches = table.columns.filter((column) =>
-      [column.name, column.labelAr, column.labelEn].some((candidate) => candidate.trim().toLocaleLowerCase() === normalized),
-    );
-    if (matches.length === 1) result[header] = matches[0].name;
-  });
-  return result;
 }
 
 function numberLabel(value: number, language: string) {
@@ -216,11 +204,12 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     }
     const stored = mappingConfigs[selectedFileTable.name];
     if (stored?.table === targetTable.name) {
-      setMappingColumns(stored.columns);
+      const columns = writableMappingColumns(selectedFileTable.headers, targetTable, stored.columns);
+      setMappingColumns(columns);
       setMatchKey(stored.matchKey);
-      setNullColumns(mappedNullColumns(targetTable, stored.columns, stored.nullColumns));
+      setNullColumns(mappedNullColumns(targetTable, columns, stored.nullColumns));
     } else {
-      setMappingColumns(exactSuggestions(selectedFileTable.headers, targetTable));
+      setMappingColumns(exactMappingSuggestions(selectedFileTable.headers, targetTable));
       setMatchKey(targetTable.keys[0] || []);
       setNullColumns([]);
     }
@@ -319,7 +308,8 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
 
   const currentMapping = (): TransferMapping | null => {
     if (!selectedFileTable || !targetTable) return null;
-    return { table: targetTable.name, fileTable: selectedFileTable.name, columns: mappingColumns, matchKey, nullColumns: mappedNullColumns(targetTable, mappingColumns, nullColumns) };
+    const columns = writableMappingColumns(selectedFileTable.headers, targetTable, mappingColumns);
+    return { table: targetTable.name, fileTable: selectedFileTable.name, columns, matchKey, nullColumns: mappedNullColumns(targetTable, columns, nullColumns) };
   };
 
   const rememberCurrentMapping = () => {
@@ -368,9 +358,9 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
       setError({ message: tr("القالب لا يطابق الجدول والملف المحددين", "The template does not match the selected file and target tables"), detail: "TEMPLATE_MAPPING_MISMATCH" });
       return;
     }
-    const targetColumns = new Set(targetTable?.columns.map((column) => column.name) || []);
+    if (!targetTable || !selectedFileTable) return;
     clearWorkflow();
-    const columns = Object.fromEntries(Object.entries(mapping.columns).filter(([source, target]) => selectedFileTable?.headers.includes(source) && (!target || targetColumns.has(target))));
+    const columns = writableMappingColumns(selectedFileTable.headers, targetTable, mapping.columns);
     setMappingColumns(columns);
     setMatchKey(mapping.matchKey.filter((column) => targetTable?.keys.flat().includes(column)));
     setNullColumns(mappedNullColumns(targetTable, columns, mapping.nullColumns));
@@ -625,7 +615,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
                     setNullColumns(current => mappedNullColumns(targetTable, columns, current));
                   }}>
                     <option value="">{tr("تجاوز هذا العمود", "Skip this column")}</option>
-                    {targetTable.columns.filter((column) => column.writable && !column.generated).map((column) => {
+                    {targetTable.columns.filter((column) => column.writable).map((column) => {
                       const foreignNumeric = file.source === "external" && targetTable.relations.some((relation) => relation.columns.includes(column.name)) && /int|numeric|serial|bigint/i.test(column.type);
                       const localIdConfirmationNeeded = foreignNumeric && !confirmLocalIds;
                       return <option key={column.name} value={column.name} disabled={localIdConfirmationNeeded}>{language === "ar" ? column.labelAr : column.labelEn} · {column.name}{localIdConfirmationNeeded ? ` — ${tr("يتطلب تأكيد المعرّفات المحلية", "requires local-ID confirmation")}` : ""}</option>;
