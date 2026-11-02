@@ -11,9 +11,29 @@
   vertical-align: top;
 }
 
+.hr-table-wrap .hr-audit-table :is(th, td):nth-child(2) {
+  width: 36px;
+  min-width: 36px;
+  padding-inline: 4px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.hr-table-wrap .hr-audit-table :is(th, td):nth-child(3) {
+  width: 104px;
+  min-width: 104px;
+  padding-inline: 6px;
+}
+
 .hr-table-wrap .hr-audit-table td:nth-child(3) {
   text-align: center;
   white-space: nowrap;
+}
+
+.hr-table-wrap .hr-audit-table td:nth-child(3) > .approved-leave {
+  display: flex;
+  width: max-content;
+  margin-inline: auto;
 }
 
 .hr-audit-selection-toolbar {

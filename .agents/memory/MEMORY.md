@@ -116,3 +116,4 @@
 - [Raw-mixing operator presentation](raw-mixing-mobile-actions.md) — three actions share one phone row; film operators keep mix history but not saved composition.
 - [Archive search approval](production-history-search-approval.md) — synthetic local measurements only; separate approval before any index/schema change or published DB change; no search/customer logging.
 - [Shared CSS cascade](shared-css-cascade.md) — identical rules can change behavior when moved; keep reduced-motion overrides after local animation shorthands in lazy components.
+- [Table width verification](table-column-width-verification.md) — compare rendered before/after widths in both languages; auto-layout widths can exceed declared CSS widths.
