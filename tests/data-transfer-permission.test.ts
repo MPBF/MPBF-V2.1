@@ -16,7 +16,10 @@ describe("general data transfer uses effective explicit admin permission",()=>{
  afterAll(()=>new Promise<void>(resolve=>server.close(()=>resolve())));
  it.each(["","*","manage_users","view_finished_inventory"])("blocks %s on schema/uploads/export/apply/download before processing",async(grants)=>{
    for(const [path,method] of [["schema","GET"],["read-file","POST"],["export","POST"],["apply","POST"],
-     ["backups/00000000-0000-0000-0000-000000000000","GET"]] as const){
+     ["backups/00000000-0000-0000-0000-000000000000","GET"],
+     ["previews/00000000-0000-0000-0000-000000000000/correct","POST"],
+     ["previews/00000000-0000-0000-0000-000000000000/rejected","GET"],
+     ["operations/00000000-0000-0000-0000-000000000000/rejected","GET"]] as const){
      const response=await fetch(`${origin}/data/${path}`,{method,headers:{"x-grants":grants,"x-role":"10"}});
      expect(response.status).toBe(403);
    }

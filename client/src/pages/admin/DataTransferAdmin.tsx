@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowLeftRight, Check, CheckCircle2, ChevronDown, Clock3, Download, FileArchive, FileSpreadsheet, FileText, RefreshCw, RotateCcw, Save, ShieldCheck, Upload, X } from "lucide-react";
-import type { TransferApproval, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferSchema, TransferTable, TransferTemplate } from "../../../../shared/data-transfer";
+import type { TransferApplyResult, TransferApproval, TransferFile, TransferMapping, TransferOperation, TransferPreview, TransferPreviewRow, TransferRow, TransferSchema, TransferTable, TransferTemplate } from "../../../../shared/data-transfer";
 import "./DataTransferAdmin.css";
 import DatabaseBackupsPanel from "./DatabaseBackupsPanel";
 import { clearableMappingColumns, mappedNullColumns } from "../../lib/data-transfer-mapping";
+import ImportRowRepair from "./ImportRowRepair";
 
 type Props = { refreshToken?: number };
 type ErrorInfo = { message: string; detail: string };
@@ -25,6 +26,10 @@ const groups: Record<string, [string, string]> = {
   discovered: ["جداول البيانات الأخرى", "Other data tables"],
 };
 const knownErrors: Record<string, [string, string]> = {
+  "No valid new records to import": ["لا توجد سجلات جديدة صالحة للاستيراد. صحّح السجلات المستبعدة أولًا.", "No valid new records to import. Correct rejected records first."],
+  "Selected sales representative is invalid": ["المندوب المحدد غير صالح. اختر مندوب مبيعات من القائمة.", "The selected sales representative is invalid. Choose a sales representative from the list."],
+  "Foreign relationship is missing": ["السجل المرتبط غير موجود أو تعذر استيراده. صحّح المرجع أو السجل المرتبط.", "A related record is missing or could not be imported. Correct the reference or the related record."],
+  "Database constraint rejected this record; review its values and related records": ["رفضت قاعدة البيانات هذا السجل. راجع قيمه والسجلات المرتبطة به.", "The database rejected this record. Review its values and related records."],
   "Import policy changed; create a new preview": ["تغيّرت سياسة الاستيراد إلى السجلات الجديدة فقط. أنشئ معاينة جديدة قبل المتابعة.", "Imports now allow new records only. Create a new preview before continuing."],
   "Table imports only allow new records; updates are not permitted": ["استيراد الجداول يضيف السجلات الجديدة فقط ولا يسمح بتحديث الموجودة.", "Table imports add new records only; existing records cannot be updated."],
   "Required field missing for new row": ["حقل مطلوب مفقود في السجل الجديد.", "A required field is missing for this new record."],
@@ -145,6 +150,8 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
   const lastImportButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingApply = useRef<{previewId:string;approvals:TransferApproval[];confirmNew:boolean;confirmAdminGrants:boolean}|null>(null);
   const [uncertain,setUncertain] = useState(false);
+  const [editingRow, setEditingRow] = useState<number | null>(null);
+  const [lastImport, setLastImport] = useState<TransferApplyResult | null>(null);
 
   const selectedFileTable = file?.tables.find((item) => item.name === fileTableName) || null;
   const targetTable = schema?.tables.find((table) => table.name === importTargetName && table.approved && table.importable) || null;
@@ -221,6 +228,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
 
   const clearWorkflow = () => {
     if(pendingApply.current)return;
+    setEditingRow(null);
     setPreview(null);
     setApprovals({});
     setConfirmNew(false);
@@ -371,7 +379,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
 
   const applyPreview = async () => {
     if (!preview) return;
-    const blocked = preview.rows.some((row) => row.status === "invalid" || row.status === "conflict");
+    const blocked = preview.kind === "restore" && preview.rows.some((row) => row.status === "invalid" || row.status === "conflict");
     if (blocked) return;
     const approvalsPayload: TransferApproval[] = preview.rows
       .filter((row) => row.status === "existing" && (approvals[row.index]?.length ?? 0) > 0)
@@ -384,10 +392,11 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
     const payload=pendingApply.current??{previewId:preview.id,approvals:approvalsPayload,confirmNew,confirmAdminGrants};
     pendingApply.current=payload;
     try {
-      await api("/data-transfer/apply", {
+      const result = await api("/data-transfer/apply", {
         method: "POST",
         body: JSON.stringify(payload),
-      });
+      }) as TransferApplyResult;
+      if (preview.kind === "import") setLastImport(result);
       setNotice(tr("اكتمل النقل بنجاح", "Transfer completed successfully"));
       pendingApply.current=null;setUncertain(false);
       setPreview(null);
@@ -407,6 +416,27 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
         pendingApply.current=null;setUncertain(false);
       } else setUncertain(true);
     }
+    finally { setBusy(""); }
+  };
+
+  const correctRow = async (row: TransferPreviewRow, values: TransferRow) => {
+    if (!preview || pendingApply.current) return;
+    setBusy("correct"); setError(null);
+    try {
+      const next = await api(`/data-transfer/previews/${encodeURIComponent(preview.id)}/correct`, {
+        method: "POST", body: JSON.stringify({ index: row.index, values }),
+      }) as TransferPreview;
+      setPreview(next); setEditingRow(null); setApprovals({}); setConfirmNew(false); setConfirmAdminGrants(false);
+      setNotice(tr("تمت إعادة التحقق من بيانات الاستيراد. راجع الحالة الجديدة قبل التأكيد.", "Import data was revalidated. Review the new status before confirming."));
+    } catch (e) { setError(localError(e, tr)); }
+    finally { setBusy(""); }
+  };
+
+  const downloadRejected = async (id: string, completed: boolean) => {
+    setBusy("rejected-report"); setError(null);
+    try {
+      await downloadResponse(`/api/data-transfer/${completed ? "operations" : "previews"}/${encodeURIComponent(id)}/rejected`, `not-imported-${id}.xlsx`);
+    } catch (e) { setError(localError(e, tr)); }
     finally { setBusy(""); }
   };
 
@@ -499,9 +529,14 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
           <div className="transfer-fact"><span>{tr("الحد الأقصى للملف", "Maximum file size")}</span><strong>{numberLabel(schema.limits.bytes / (1024 * 1024), language)} MB</strong></div>
           <div className="transfer-fact"><span>{tr("حد صفوف الاستيراد", "Import row limit")}</span><strong>{numberLabel(schema.limits.rows, language)}</strong></div>
           <div className="transfer-fact"><span>{tr("الاحتفاظ بالنسخ", "Backup retention")}</span><strong>{numberLabel(schema.limits.retentionDays, language)} {tr("يوماً", "days")}</strong></div>
-          <div className="transfer-fact"><span>{tr("نمط التطبيق", "Apply mode")}</span><strong>{tr("ALL · OR · NOTHING", "ALL · OR · NOTHING")}</strong></div>
+          <div className="transfer-fact"><span>{tr("نمط الاستيراد", "Import mode")}</span><strong>{tr("السجلات الصالحة فقط", "Valid records only")}</strong></div>
         </div>
-        <div className="transfer-footer-note"><ShieldCheck size={16} /><span>{tr("استيراد الجداول يضيف السجلات الجديدة فقط؛ لا يحدّث السجلات الموجودة ولا يحذفها. أي سجل غير صالح أو متعارض يوقف الاستيراد كاملًا حتى تصحيح الأخطاء. الاسترجاع الكامل عملية مستقلة بتأكيد منفصل.", "Table imports add new records only; existing records are never updated or deleted. Any invalid or conflicting record blocks the entire import until corrected. Full restore is a separate operation requiring separate confirmation.")}</span></div>
+        <div className="transfer-footer-note"><ShieldCheck size={16} /><span>{tr("تُستورد السجلات الجديدة الصالحة فقط، وتُتجاوز الموجودة دون تحديث أو حذف. يمكنك تصحيح السجلات غير الصالحة داخل المعاينة أو استيراد الصالحة وتنزيل تقرير بالمستبعدة. الاسترجاع الكامل عملية مستقلة.", "Only valid new records are imported; existing records are skipped without updates or deletion. Correct invalid records in the preview, or import valid ones and download the rejection report. Full restore is separate.")}</span></div>
+        {lastImport && <div className="transfer-import-result" role="status">
+          <strong>{tr("نتيجة الاستيراد", "Import result")}</strong>
+          <span>{tr("تم استيراد", "Imported")}: {numberLabel(lastImport.counts.inserted, language)} · {tr("لم يتم استيراد", "Not imported")}: {numberLabel(lastImport.counts.rejected ?? 0, language)}</span>
+          {!!lastImport.counts.rejected && <button type="button" className="btn btn-muted" disabled={busy !== ""} onClick={() => void downloadRejected(lastImport.id, true)}><Download size={15} />{tr("تقرير السجلات غير المستوردة", "Not-imported records report")}</button>}
+        </div>}
 
         <section className="panel transfer-section">
           <div className="panel-head">
@@ -510,14 +545,14 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
           </div>
           <div className="transfer-groups">
             {groupsList.length === 0 && <div className="transfer-empty"><strong>{tr("لا توجد جداول مكتشفة", "No discovered tables")}</strong>{tr("سيظهر المخطط هنا عند توفره.", "The schema will appear here when available.")}</div>}
-            {groupsList.map(([group, tables]) => <div className="transfer-group" key={group}>
-              <div className="transfer-group-head"><strong>{groups[group]?.[language === "ar" ? 0 : 1] || group}</strong><span className="mono">{tables.length}</span></div>
+            {groupsList.map(([group, tables]) => <details className="transfer-group" key={group}>
+              <summary className="transfer-group-head"><strong>{groups[group]?.[language === "ar" ? 0 : 1] || group}</strong><span className="mono">{tables.length}</span></summary>
               <div className="transfer-table-grid">
                 {tables.map((table) => <article className="transfer-table-card" key={table.name}>
                   <div className="transfer-table-card__head"><div><strong>{language === "ar" ? table.labelAr : table.labelEn}</strong><small className="cell-sub mono">{table.name}</small></div>
                     <span className={`tag ${table.approved ? "" : "neutral"}`}>{table.approved ? tr("معتمد", "Approved") : tr("غير معتمد", "Not approved")}</span>
                   </div>
-                  <p>{table.approved ? (language === "ar" ? table.reasonAr : table.reasonEn) : (language === "ar" ? table.reasonAr : table.reasonEn) || tr("غير مصرح بالاستيراد لأسباب سلامة البيانات.", "Import is restricted for data-integrity reasons.")}</p>
+                  {!table.approved && <p>{(language === "ar" ? table.reasonAr : table.reasonEn) || tr("غير مصرح بالاستيراد لأسباب سلامة البيانات.", "Import is restricted for data-integrity reasons.")}</p>}
                   <div className="transfer-chips">
                     <button
                       type="button"
@@ -542,7 +577,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
                   {relationNames(table) && <p><strong>{tr("العلاقات:", "Relations:")}</strong> {relationNames(table)}</p>}
                 </article>)}
               </div>
-            </div>)}
+            </details>)}
           </div>
         </section>
 
@@ -644,7 +679,11 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
             <span className="transfer-status transfer-status--invalid">{tr("غير صالح", "Invalid")} · {numberLabel(c.invalid, language)}</span>
             {preview.kind === "restore" && <span className="transfer-chip transfer-chip--muted">{tr("إدراجات محتفظ بها", "Retained inserts")}: {numberLabel(preview.retainedInserts || 0, language)}</span>}
           </div>; })()}
-          {(preview.rows.some((row) => row.status === "invalid" || row.status === "conflict")) && <div className="transfer-callout" style={{ margin: 12 }}><AlertTriangle size={16} /><span>{tr("يوجد تعارض أو صف غير صالح؛ يمنع التطبيق بالكامل حتى إنشاء معاينة سليمة.", "A conflict or invalid row blocks the entire apply until a clean preview is created.")}</span></div>}
+          {(preview.rows.some((row) => row.status === "invalid" || row.status === "conflict")) && <div className="transfer-callout" style={{ margin: 12 }}><AlertTriangle size={16} /><span>{preview.kind === "import"
+            ? tr("ستُستبعد السجلات غير الصالحة والمتعارضة، ولن تمنع استيراد السجلات الصالحة. يمكنك تصحيحها قبل الاستيراد أو تنزيل تقرير بها.", "Invalid and conflicting records are excluded without blocking valid records. Correct them before importing or download their report.")
+            : tr("يوجد تعارض أو صف غير صالح؛ يمنع التطبيق بالكامل حتى إنشاء معاينة سليمة.", "A conflict or invalid row blocks the entire apply until a clean preview is created.")}</span>
+            {preview.kind === "import" && <button type="button" className="btn btn-muted" disabled={busy !== "" || editingRow !== null} onClick={() => void downloadRejected(preview.id, false)}><Download size={15} />{tr("تنزيل التقرير", "Download report")}</button>}
+          </div>}
           <div className="transfer-preview-list">
             {preview.rows.map((row) => {
               const selected = approvals[row.index] || [];
@@ -668,6 +707,11 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
                   const message = knownErrorMessage(item.message, tr);
                   return <li key={`${item.column}-${index}`}><code>{item.column}</code>: {message || tr("تعذر التحقق من هذه القيمة", "This value could not be validated")} <details><summary>{tr("تفاصيل فنية", "Technical details")}</summary><code dir="ltr">{item.message || "ROW_VALIDATION_ERROR"}</code></details></li>;
                 })}</ul>}
+                {preview.kind === "import" && isBlocked && schema?.tables.some(table => table.name === row.table) && <>
+                  {editingRow === row.index
+                    ? <ImportRowRepair key={`${preview.id}-${row.index}`} row={row} table={schema.tables.find(table => table.name === row.table)!} language={language} busy={busy !== ""} onSave={values => correctRow(row, values)} onCancel={() => setEditingRow(null)} />
+                    : <button type="button" className="btn btn-muted" data-transfer-repair={row.index} disabled={busy !== "" || Boolean(pendingApply.current)} onClick={() => setEditingRow(row.index)}>{tr("تصحيح السجل", "Correct record")}</button>}
+                </>}
               </article>;
             })}
             {preview.rows.length === 0 && <div className="transfer-empty"><strong>{preview.kind === "import" ? tr("لا توجد سجلات جديدة للاستيراد", "No new records to import") : tr("لا توجد صفوف للمعاينة", "No rows to preview")}</strong>{preview.kind === "import" ? tr("جميع السجلات موجودة بالفعل؛ تم تجاوزها دون أي تعديل.", "All records already exist and were skipped without changes.") : tr("لم يتضمن الملف صفوفاً قابلة للعرض.", "The file contained no rows to display.")}</div>}
@@ -682,7 +726,7 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
           </label>}
           <div className="transfer-section-body transfer-inline">
             {uncertain&&<p role="alert">{tr("تعذر تأكيد النتيجة. إعادة المحاولة ترسل نفس العملية دون تكرارها.", "Result not confirmed. Retry sends the exact same operation without duplication.")}</p>}
-            <button type="button" className="btn btn-primary" onClick={() => void applyPreview()} disabled={busy !== "" || preview.rows.some((row) => row.status === "invalid" || row.status === "conflict") || (preview.rows.some((row) => row.status === "new") && !confirmNew) || (preview.requiresAdminConfirmation && !confirmAdminGrants) || (!preview.rows.some((row) => row.status === "new") && !preview.rows.some((row) => (approvals[row.index]?.length || 0) > 0))}>
+            <button type="button" className="btn btn-primary" data-transfer-apply="true" onClick={() => void applyPreview()} disabled={busy !== "" || editingRow !== null || (preview.kind === "restore" && preview.rows.some((row) => row.status === "invalid" || row.status === "conflict")) || (preview.rows.some((row) => row.status === "new") && !confirmNew) || (preview.requiresAdminConfirmation && !confirmAdminGrants) || (!preview.rows.some((row) => row.status === "new") && !preview.rows.some((row) => (approvals[row.index]?.length || 0) > 0))}>
               <CheckCircle2 size={16} />{busy === "apply" ? tr("جارٍ التطبيق…", "Applying…") : preview.kind === "import" ? tr("استيراد السجلات الجديدة", "Import new records") : tr("تطبيق الموافقات المحددة", "Apply selected approvals")}
             </button>
             <span className="muted-text">{preview.kind === "import" ? tr("تُضاف السجلات الجديدة فقط. السجلات الموجودة لا تُعرض ولا تُحدّث.", "Only new records are added. Existing records are neither displayed nor updated.") : tr("سيتم تطبيق التغييرات المحددة فقط. لا تتضمن الاستعادة حذف الإدراجات اللاحقة.", "Only selected changes are applied. Restore never deletes later inserts.")}</span>
@@ -698,11 +742,13 @@ export default function DataTransferAdmin({ refreshToken = 0 }: Props) {
                   {operation.counts.inserted !== undefined && <span>{tr("مدرج", "Inserted")} {numberLabel(operation.counts.inserted, language)}</span>}
                   {operation.counts.updated !== undefined && <span>{tr("محدّث", "Updated")} {numberLabel(operation.counts.updated, language)}</span>}
                   {operation.counts.rows !== undefined && <span>{tr("صف", "Rows")} {numberLabel(operation.counts.rows, language)}</span>}
+                  {!!operation.counts.rejected && <span>{tr("لم يتم استيراد", "Not imported")} {numberLabel(operation.counts.rejected, language)}</span>}
                   {operation.backup && <span className="transfer-chip"><FileArchive size={12} />{tr("نسخة احتياطية", "Backup")}</span>}
                 </div>
               </div>
               <div className="transfer-toolbar">
                 <button type="button" className="btn btn-muted" onClick={async () => { setBusy(`report-${operation.id}`); setError(null); try { await downloadResponse(`/api/data-transfer/operations/${encodeURIComponent(operation.id)}`, `operation-${operation.id}.json`); } catch (e) { setError(localError(e, tr)); } finally { setBusy(""); } }} disabled={busy !== ""}><FileText size={15} />{tr("تنزيل التقرير", "Download report")}</button>
+                {!!operation.counts.rejected && operation.backup && <button type="button" className="btn btn-muted" disabled={busy !== ""} onClick={() => void downloadRejected(operation.id, true)}><Download size={15} />{tr("تقرير السجلات غير المستوردة", "Not-imported records report")}</button>}
                 {operation.backup && <button type="button" className="btn btn-muted" onClick={async () => { setBusy(`backup-${operation.id}`); setError(null); try { await downloadResponse(`/api/data-transfer/backups/${encodeURIComponent(operation.id)}`, `backup-${operation.id}.json`); } catch (e) { setError(localError(e, tr)); } finally { setBusy(""); } }} disabled={busy !== ""}><Download size={15} />{tr("تنزيل النسخة", "Download backup")}</button>}
                  {operation.backup && <button type="button" className="btn btn-danger" onClick={() => void previewRestore(operation)} disabled={busy !== "" || Boolean(pendingApply.current)}><RotateCcw size={15} />{busy === `restore-${operation.id}` ? tr("جارٍ تجهيز الاستعادة…", "Preparing restore…") : tr("معاينة الاستعادة", "Preview restore")}</button>}
               </div>
