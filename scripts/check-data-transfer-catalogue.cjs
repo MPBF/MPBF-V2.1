@@ -120,6 +120,7 @@ const WebSocket = require("ws");
       await wait("document.body.textContent.includes(" + JSON.stringify(lang==="ar"?"مراجعة الصفوف والتغييرات":"Review rows and changes") + ")");
       const preview=requests.find(r=>r.path.endsWith("/preview"));
       check(`${lang} preview maps file to clicked table`,preview?.body?.mappings?.[0]?.table==="customer_products");
+      check(`${lang} preview sends only the upload receipt, never cell contents`,preview?.body?.file?.receipt===id&&Object.keys(preview.body.file).length===1);
       check(`${lang} preview excludes stale empty-value choices`,preview?.body?.mappings?.[0]?.nullColumns?.length===0);
       const applySelector="document.querySelector('[data-transfer-apply]')";
       check(`${lang} import does not offer existing-row status or update approvals`,await evaluate("!document.querySelector('.transfer-status--existing')&&!document.querySelector('.transfer-row-approval')"));

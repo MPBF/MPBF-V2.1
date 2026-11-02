@@ -19,6 +19,8 @@ export type TransferFile = {
   source: "external" | "same-database"; schemaVersion?: string;
   receipt?: string;
 };
+// Preview the immutable, owner-scoped upload without resending its cell values.
+export type TransferFileReference = { receipt: string };
 export type TransferMapping = {
   table: string; fileTable: string; columns: Record<string, string>;
   matchKey: string[]; nullColumns: string[];

@@ -27,7 +27,8 @@ const mapping=(table:string,headers:string[],fileTable="file",nullColumns:string
 });
 const preview=async(table:string,rows:Record<string,string|null>[],nullColumns:string[]=[])=>{
   const headers=[...new Set(rows.flatMap(r=>Object.keys(r)))];
-  return tools.preview(1,version,await file(table,headers,rows),[mapping(table,headers,"file",nullColumns)]);
+  const uploaded=await file(table,headers,rows);
+  return tools.preview(1,version,{receipt:uploaded.receipt!},[mapping(table,headers,"file",nullColumns)]);
 };
 const counts=async()=>query(`SELECT (SELECT count(*) FROM customers)::int customers,
  (SELECT count(*) FROM categories)::int categories,(SELECT count(*) FROM items)::int items`);
@@ -279,6 +280,23 @@ try {
     const rejected=(await tools.backup(1,p.id)).document.rejected;
     assert.equal(rejected[0].sourceValues.id,"SQL002");
     assert(!JSON.stringify(rejected[0].errors).includes("fixture_phone_rejection"));
+  });
+  await test("receipt preview handles large ignored cells, owner/expiry checks and inline repair",async()=>{
+    const uploaded=await file("customers",["id","name","ignored_artwork"],[
+      {id:"CID_RECEIPT_TEST",name:"",ignored_artwork:"x".repeat(300000)},
+    ]);
+    const reference={receipt:uploaded.receipt!};
+    const m=mapping("customers",["id","name"]);
+    const p=await tools.preview(1,version,reference,[m]);
+    assert.equal(p.rows[0].status,"invalid");
+    assert.equal(p.rows[0].sourceValues?.ignored_artwork,undefined);
+    const fixed=await tools.correct(1,p.id,{index:0,values:{name:"Receipt fixture"}});
+    assert.equal(fixed.rows[0].status,"new");
+    assert.equal(fixed.rows[0].values.name,"Receipt fixture");
+    assert.equal((await query("SELECT count(*)::int n FROM customers WHERE id=$1",["CID_RECEIPT_TEST"]))[0].n,0);
+    await assert.rejects(()=>tools.preview(2,version,reference,[m]),/expired or unavailable/);
+    await query("UPDATE data_transfer_previews SET expires_at=clock_timestamp()-interval '1 minute' WHERE id=$1",[reference.receipt]);
+    await assert.rejects(()=>tools.preview(1,version,reference,[m]),/expired or unavailable/);
   });
   await test("Arabic header mapping and cross-file relationships are validated together",async()=>{
     const schema=await tools.schema();
