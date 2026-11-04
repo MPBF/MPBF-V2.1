@@ -1,10 +1,11 @@
-import { and, desc, eq, gt, gte, isNull, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { attendance_events, attendance_sessions, shift_definitions, user_shift_assignments } from "@shared/schema";
 import { db } from "./db";
 import { dayRange } from "./hr-report";
 import { dailyBreakScope } from "./hr-single-break";
 import { currentShiftOccurrence } from "./shift-geofence";
+import { correctionSessionOverlap } from "./hr-correction-overlap";
 
 const action = z.enum(["check_in", "break_start", "break_end", "check_out"]);
 export const correctionInput = z.object({
@@ -141,10 +142,7 @@ async function correctAttendanceInTransaction(tx: CorrectionTransaction, input: 
         .where(and(eq(attendance_sessions.user_id, input.user_id), eq(attendance_sessions.shift_date, input.shift_date))).limit(1);
       if (recorded.length || recordedSessions.length) conflict("تغير سجل الحضور أثناء التصحيح؛ حدّث الصفحة ثم أعد المحاولة");
       const overlapping = await tx.select({ id: attendance_sessions.id }).from(attendance_sessions)
-        .where(and(eq(attendance_sessions.user_id, input.user_id),
-          lt(attendance_sessions.check_in_at, checkOut),
-          or(isNull(attendance_sessions.check_out_at), gt(attendance_sessions.check_out_at, checkIn)),
-        )).limit(1);
+        .where(correctionSessionOverlap(input.user_id, checkIn, checkOut)).limit(1);
       if (overlapping.length) conflict("أوقات التصحيح تتداخل مع وردية أخرى");
       const otherEvents = await tx.select({ id: attendance_events.id }).from(attendance_events)
         .where(and(eq(attendance_events.user_id, input.user_id),
@@ -182,15 +180,8 @@ async function correctAttendanceInTransaction(tx: CorrectionTransaction, input: 
       if (checkOut.getTime() > session.shift_start_at.getTime() + 24 * 60 * 60 * 1000) {
         conflict("تجاوزت الجلسة مهلة التصحيح البالغة 24 ساعة من بداية الوردية");
       }
-      const overlapping = await tx.select({ id: attendance_sessions.id }).from(attendance_sessions).where(and(
-        eq(attendance_sessions.user_id, input.user_id),
-        ne(attendance_sessions.id, session.id),
-        lt(attendance_sessions.check_in_at, checkOut),
-        or(
-          sql`${attendance_sessions.check_out_at} > ${checkIn}`,
-          and(isNull(attendance_sessions.check_out_at), gte(attendance_sessions.check_in_at, checkIn)),
-        ),
-      )).limit(1);
+      const overlapping = await tx.select({ id: attendance_sessions.id }).from(attendance_sessions)
+        .where(correctionSessionOverlap(input.user_id, checkIn, checkOut, session.id)).limit(1);
       if (overlapping.length) conflict("أوقات التصحيح تتداخل مع وردية أخرى");
     } else if (timeline.some((event) => {
       const time = new Date(event.occurred_at);
