@@ -5,6 +5,18 @@ description: Avoid false failures when checking focus-dependent controls in mult
 
 Run focus-dependent interaction checks sequentially across responsive iframe viewports, not concurrently.
 
+Bring the application target to the foreground before testing browser PDF
+exports after opening a separate print target.
+
+**Why:** Chromium can delay image decoding and canvas-clone work in background
+targets, making a working foreground export appear permanently busy. A loaded
+off-screen iframe image can also have a pending `decode()` despite valid
+`complete` and `naturalWidth`.
+
+**How to apply:** activate the correct CDP page before export interactions.
+For already-loaded embedded PNGs in print iframes, verify load completion and
+nonzero natural dimensions rather than requiring an additional decode/paint.
+
 For native `<details>`, verify the `open` state and descendant `checkVisibility()`,
 not the presence of layout rectangles, when asserting that collapsed content is hidden.
 

@@ -10,6 +10,7 @@ import { buildAuditCalendar, calendarCorrectionGroup, isDatedAuditLeave, type Au
 import { resolveCorrectionTimes, type CorrectionAction } from "../lib/hr-correction-time";
 import "./hr-audit.css";
 import { riyadhDateTimeInput, riyadhDateTimeToIso } from "../lib/riyadh-time";
+import type { MonthlyReport } from "../lib/hr-monthly-report";
 
 export type HrEmployee = {
   id: number;
@@ -162,7 +163,6 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const reportRef = useRef<HTMLDivElement>(null);
   const loadSequence = useRef(0);
 
   const sections = useMemo(() => Array.from(new Map(employees.filter((employee) => employee.section_id).map((employee) => [employee.section_id!, sectionName(employee)])).entries()), [employees]);
@@ -322,64 +322,32 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
     finally { setBusy(""); }
   };
 
-  const exportExcel = async () => {
-    setBusy("excel"); setError("");
+  const monthlyReport = (rows: SummaryRow[]): MonthlyReport => ({
+    language: i18n.language === "en" ? "en" : "ar",
+    title: translate("كشف الحضور الشهري"),
+    month,
+    filters: [
+      `${translate("القسم")}: ${sections.find(([id]) => id === filters.section)?.[1] || translate("كل الأقسام")}`,
+      `${translate("الموظف")}: ${rows.length === 1 ? employeeName(rows[0]) : employees.find(employee => String(employee.id) === filters.user) ? employeeName(employees.find(employee => String(employee.id) === filters.user)!) : translate("كل الموظفين")}`,
+    ],
+    headers: ["اسم المستخدم", "القسم", "م ساعات العمل", "م أيام العمل", "م الغياب", "وردية ناقصة", "م الاضافي"].map(header => translate(header)),
+    rows: rows.map(row => ({
+      nameAr: reportArabicName(row), nameEn: reportEnglishName(row), section: sectionName(row),
+      worked: formatMinutes(row.workedMinutes), days: row.daysWorked, absent: row.absentDays,
+      incomplete: row.incompleteDays, overtime: formatMinutes(row.overtimeMinutes),
+    })),
+  });
+  const runReport = async (kind: "print" | "pdf" | "excel", rows = summary) => {
+    setBusy(kind); setError("");
     try {
-      const { Workbook } = await import("exceljs");
-      const { saveAs } = await import("file-saver");
-      const rows = summary.map((row) => ({
-        [translate("اسم المستخدم")]: `${reportArabicName(row)}\n${reportEnglishName(row)}`, [translate("القسم")]: sectionName(row), [translate("م ساعات العمل")]: formatMinutes(row.workedMinutes),
-        [translate("م أيام العمل")]: row.daysWorked, [translate("م الغياب")]: row.absentDays, [translate("وردية ناقصة")]: row.incompleteDays, [translate("م الاضافي")]: formatMinutes(row.overtimeMinutes),
-      }));
-      const workbook = new Workbook();
-      const sheet = workbook.addWorksheet(translate("كشف الحضور"));
-      const headers = [
-        translate("اسم المستخدم"), translate("القسم"), translate("م ساعات العمل"),
-        translate("م أيام العمل"), translate("م الغياب"), translate("وردية ناقصة"), translate("م الاضافي"),
-      ];
-      sheet.addRow(headers);
-      for (const row of rows) sheet.addRow(headers.map((header) => row[header]));
-      sheet.columns.forEach((column, index) => { column.width = [28, 22, 20, 18, 16, 22, 20][index]; });
-      const bytes = await workbook.xlsx.writeBuffer();
-      saveAs(new Blob([new Uint8Array(bytes)], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      }), `${i18n.language === "en" ? "attendance" : "كشف-الحضور"}-${month}.xlsx`);
-    } catch (cause) { setError((cause as Error).message); }
-    finally { setBusy(""); }
-  };
-
-  const exportPdf = async () => {
-    if (!reportRef.current) return;
-    setBusy("pdf"); setError("");
-    try {
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
-      const canvas = await html2canvas(reportRef.current, { scale: 2, backgroundColor: "#ffffff", ignoreElements: (element) => element.classList.contains("hr-no-export") });
-      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-      const width = 277;
-      const height = canvas.height * width / canvas.width;
-      const image = canvas.toDataURL("image/png");
-      const pageHeight = 190;
-      let position = 10;
-      let remaining = height;
-      pdf.addImage(image, "PNG", 10, position, width, height);
-      while (remaining > pageHeight) {
-        remaining -= pageHeight;
-        position -= pageHeight;
-        pdf.addPage();
-        pdf.addImage(image, "PNG", 10, position, width, height);
-      }
-      pdf.save(`${i18n.language === "en" ? "attendance" : "كشف-الحضور"}-${month}.pdf`);
-    } catch (cause) { setError((cause as Error).message); }
-    finally { setBusy(""); }
-  };
-
-  const printSummary = (rows: SummaryRow[], title = translate("كشف الحضور الشهري — {{month}}", { month })) => {
-    const headers = ["اسم المستخدم", "القسم", "م ساعات العمل", "م أيام العمل", "م الغياب", "وردية ناقصة", "م الاضافي"];
-    const body = `<table><thead><tr>${headers.map((header) => `<th>${escapeHtml(translate(header))}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr><td><strong>${escapeHtml(reportArabicName(row))}</strong><br><small>${escapeHtml(reportEnglishName(row))}</small></td><td>${escapeHtml(sectionName(row))}</td><td>${formatMinutes(row.workedMinutes)}</td><td>${row.daysWorked}</td><td>${row.absentDays}</td><td>${row.incompleteDays}</td><td>${formatMinutes(row.overtimeMinutes)}</td></tr>`).join("")}</tbody></table>`;
-    const reportTitle = i18n.language === "en" && title.startsWith("كشف حضور —") && rows[0]
-      ? translate("تقرير حضور {{employee}} — {{month}}", { employee: employeeName(rows[0]), month })
-      : translate(title);
-    printDocument(escapeHtml(reportTitle), body);
+      const report = monthlyReport(rows);
+      const module = await import("../lib/hr-monthly-report");
+      if (kind === "print") await module.printMonthlyReport(report);
+      else if (kind === "pdf") await module.downloadMonthlyPdf(report);
+      else await module.downloadMonthlyExcel(report);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally { setBusy(""); }
   };
 
   const printViolation = (violation: Violation) => printDocument(translate("مخالفة موظف"), `<p><strong>${escapeHtml(translate("الموظف:"))}</strong> ${escapeHtml(employeeName(violation))}</p><p><strong>${escapeHtml(translate("القسم:"))}</strong> ${escapeHtml(sectionName(violation))}</p><p><strong>${escapeHtml(translate("التاريخ:"))}</strong> ${escapeHtml(formatDateTime(violation.created_at))}</p><h2>${escapeHtml(violation.title)}</h2><p>${escapeHtml(violation.details)}</p><div class="signature"><span>${escapeHtml(translate("توقيع الموظف:"))} ________________</span><span>${escapeHtml(translate("اعتماد الإدارة:"))} ________________</span></div>`);
@@ -477,8 +445,8 @@ export default function HumanResourcesOperations({ tab, employees, refreshToken 
       </>}
 
       {tab === "report" && <>
-        <div className="hr-ops-head"><div><span>{translate("الحضور الشهري")}</span><h3>{translate("كشف الحضور الشهري")}</h3><p>{translate("ملخص تراكمي محسوب من حركات الحضور والورديات الفعلية.")}</p></div><div className="hr-export-actions"><button type="button" onClick={() => printSummary(summary)}><Printer size={16} />{" "}{translate("طباعة الكل")}</button><button type="button" disabled={busy === "excel"} onClick={() => void exportExcel()}><Download size={16} /> Excel</button><button type="button" disabled={busy === "pdf"} onClick={() => void exportPdf()}><FileDown size={16} /> PDF</button></div></div>
-        <div ref={reportRef} className="hr-report-sheet"><div className="hr-report-caption"><CalendarDays size={19} /><div><strong>{translate("كشف الحضور")}</strong><small>{translate("الشهر")}{" "}{month}</small></div></div><div className="hr-table-wrap"><table className="hr-data-table"><thead><tr><th>{translate("اسم المستخدم")}</th><th>{translate("القسم")}</th><th>{translate("م ساعات العمل")}</th><th>{translate("م أيام العمل")}</th><th>{translate("م الغياب")}</th><th>{translate("وردية ناقصة")}</th><th>{translate("م الاضافي")}</th><th className="hr-no-export">{translate("طباعة")}</th></tr></thead><tbody>{summary.map((row) => <tr key={row.id}><td className="hr-employee-cell"><strong>{reportArabicName(row)}</strong><small>{reportEnglishName(row)}</small></td><td>{sectionName(row)}</td><td>{formatMinutes(row.workedMinutes)}</td><td><b>{row.daysWorked}</b></td><td><b className={row.absentDays ? "hr-negative" : ""}>{row.absentDays}</b></td><td><b className={row.incompleteDays ? "hr-negative" : ""}>{row.incompleteDays}</b></td><td><b className="hr-positive">{formatMinutes(row.overtimeMinutes)}</b></td><td className="hr-no-export"><button className="hr-icon-action" type="button" onClick={() => printSummary([row], `كشف حضور — ${reportArabicName(row)} — ${month}`)}><Printer size={15} />{" "}{translate("طباعة")}</button></td></tr>)}</tbody></table>{!loading && !summary.length && <div className="hr-empty">{translate("لا توجد بيانات مطابقة للفلاتر.")}</div>}</div></div>
+        <div className="hr-ops-head"><div><span>{translate("الحضور الشهري")}</span><h3>{translate("كشف الحضور الشهري")}</h3><p>{translate("ملخص تراكمي محسوب من حركات الحضور والورديات الفعلية.")}</p></div><div className="hr-export-actions"><button type="button" disabled={loading || !!busy} onClick={() => void runReport("print")}><Printer size={16} />{" "}{translate("طباعة الكل")}</button><button type="button" disabled={loading || !!busy} onClick={() => void runReport("excel")}><Download size={16} /> Excel</button><button type="button" disabled={loading || !!busy} onClick={() => void runReport("pdf")}><FileDown size={16} /> PDF</button></div></div>
+        <div className="hr-report-sheet"><div className="hr-report-caption"><CalendarDays size={19} /><div><strong>{translate("كشف الحضور")}</strong><small>{translate("الشهر")}{" "}{month}</small></div></div><div className="hr-table-wrap"><table className="hr-data-table"><thead><tr><th>{translate("اسم المستخدم")}</th><th>{translate("القسم")}</th><th>{translate("م ساعات العمل")}</th><th>{translate("م أيام العمل")}</th><th>{translate("م الغياب")}</th><th>{translate("وردية ناقصة")}</th><th>{translate("م الاضافي")}</th><th className="hr-no-export">{translate("طباعة")}</th></tr></thead><tbody>{summary.map((row) => <tr key={row.id}><td className="hr-employee-cell"><strong>{reportArabicName(row)}</strong><small>{reportEnglishName(row)}</small></td><td>{sectionName(row)}</td><td>{formatMinutes(row.workedMinutes)}</td><td><b>{row.daysWorked}</b></td><td><b className={row.absentDays ? "hr-negative" : ""}>{row.absentDays}</b></td><td><b className={row.incompleteDays ? "hr-negative" : ""}>{row.incompleteDays}</b></td><td><b className="hr-positive">{formatMinutes(row.overtimeMinutes)}</b></td><td className="hr-no-export"><button className="hr-icon-action" type="button" disabled={loading || !!busy} onClick={() => void runReport("print", [row])}><Printer size={15} />{" "}{translate("طباعة")}</button></td></tr>)}</tbody></table>{!loading && !summary.length && <div className="hr-empty">{translate("لا توجد بيانات مطابقة للفلاتر.")}</div>}</div></div>
       </>}
 
       {tab === "violations" && <>
